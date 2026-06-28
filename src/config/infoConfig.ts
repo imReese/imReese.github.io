@@ -8,23 +8,23 @@ export * from "./activity"
 
 // personal info
 export const name = "Reese"
-export const headline = "Software engineer, Full-Stack web developer, and indie hacker."
-export const introduction = "I'm Reese, a software engineer based in Shenzhen, China. I like coding, and building interesting things"
+export const headline = "Backend systems for cloud-native products."
+export const introduction = "I'm Reese, a Shenzhen-based software engineer focused on reliable backend services, Linux tooling, and cloud-native infrastructure."
 export const email = "reese_duan@outlook.com"
 export const githubUsername = "imReese"
 
 // about page
-export const aboutMeHeadline = "I'm Reese, a software engineer based in Shenzhen, China."
+export const aboutMeHeadline = "I'm Reese, a backend and cloud-native engineer based in Shenzhen, China."
 export const aboutParagraphs = [
-  "I love coding. I learned programming in college and wrote my first program in Java when I was 18.",
-  "I have a lot of hobbies, such as travelling, photography, watching movies, and music.",
-  "I'm working as a software develop engineer in Shenzhen, China now. And I'm building interesting side projects in my spare time."
+  "I like building reliable backend services, learning how systems fail, and turning practical engineering work into useful notes.",
+  "My day-to-day interests sit around Linux, distributed systems, cloud-native infrastructure, observability, and the tools that keep products running.",
+  "Outside of coding, I enjoy travelling, photography, movies, and music."
 ]
 
 
 // blog
-export const blogHeadLine = "What I've thinking about."
-export const blogIntro = "I've written something about AI, programming and life."
+export const blogHeadLine = "Engineering notes and field logs."
+export const blogIntro = "Notes about backend systems, cloud-native tooling, AI, programming, and life."
 
 
 // social links
@@ -50,30 +50,27 @@ export const socialLinks: Array<SocialLinkType> = [
 
 // https://simpleicons.org/
 export const techIcons = [
-  "C",
-  "cplusplus",
-  "python",
   "go",
-  "shell",
-  "typescript",
-  "swift",
+  "python",
+  "c",
+  "cplusplus",
+  "linux",
+  "kubernetes",
+  "docker",
+  "redis",
   "mysql",
   "nginx",
-  "redis",
-  "memcached",
+  "prometheus",
+  "grafana",
+  "cmake",
+  "gnubash",
+  "git",
+  "githubactions",
+  "typescript",
   "react",
-  "nodedotjs",
   "nextdotjs",
   "vercel",
-  "docker",
-  "git",
-  "github",
   "visualstudiocode",
-  "pycharm",
-  "xcode",
-  "ios",
-  "wechat",
-  "mcdonalds"
+  "vim"
 ];
-
 
