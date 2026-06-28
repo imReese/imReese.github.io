@@ -14,7 +14,7 @@ export const email = "reese_duan@outlook.com"
 export const githubUsername = "imReese"
 
 // about page
-export const aboutMeHeadline = "I'm Reese, a backend and cloud-native engineer based in Shenzhen, China."
+export const aboutMeHeadline = "I'm Reese, a backend/cloud-native engineer based in Shenzhen, China."
 export const aboutParagraphs = [
   "I like building reliable backend services, learning how systems fail, and turning practical engineering work into useful notes.",
   "My day-to-day interests sit around Linux, distributed systems, cloud-native infrastructure, observability, and the tools that keep products running.",
