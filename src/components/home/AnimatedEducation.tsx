@@ -13,8 +13,8 @@ function EducationItem({ educationItem, isExpanded, onClick }: {
 }) {
   return (
     <motion.li 
-      className={`flex gap-4 p-4 rounded-xl cursor-pointer transition-all duration-300 ${
-        isExpanded ? 'bg-muted/50 shadow-md' : 'hover:bg-muted/20'
+      className={`flex gap-4 rounded-xl p-4 transition-all duration-300 ${
+        isExpanded ? 'bg-primary/10 shadow-sm' : 'hover:bg-secondary/70'
       }`}
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
@@ -51,21 +51,13 @@ function EducationItem({ educationItem, isExpanded, onClick }: {
                 <span className="text-sm text-muted-foreground">
                   {educationItem.start} - {educationItem.end}
                 </span>
-                <span className="text-xs px-2 py-1 bg-blue-500/10 text-blue-500 rounded-full">
+                <span className="rounded-full bg-[hsl(var(--chart-3))]/10 px-2 py-1 text-xs font-medium text-[hsl(var(--chart-3))]">
                   Bachelor&apos;s Degree
                 </span>
               </div>
               
-              {/* 这里可以添加更多详细信息 */}
-              <div className="mt-2 text-sm text-muted-foreground">
-                <p>Focused on computer science fundamentals, algorithms, and software engineering principles.</p>
-                {educationItem.school.includes('Southern University') && (
-                  <ul className="mt-2 space-y-1">
-                    <li>• GPA: 3.8/4.0</li>
-                    <li>• Dean&apos;s List Honoree</li>
-                    <li>• Computer Science Honor Society</li>
-                  </ul>
-                )}
+              <div className="mt-2 text-sm leading-6 text-muted-foreground">
+                <p>Computer science fundamentals, algorithms, software engineering, and systems programming foundations.</p>
               </div>
             </motion.div>
           )}
@@ -84,7 +76,7 @@ export default function AnimatedEducation() {
 
   return (
     <motion.div 
-      className="rounded-3xl border border-border bg-card p-6 shadow-sm"
+      className="rounded-2xl border border-border/70 bg-card/70 p-6 shadow-sm backdrop-blur"
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6 }}

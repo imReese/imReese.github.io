@@ -17,7 +17,7 @@ export const cloudProps: Omit<ICloud, "children"> = {
       justifyContent: "center",
       alignItems: "center",
       width: "100%",
-      paddingTop: 40,
+      paddingTop: 12,
     },
   },
   options: {
@@ -99,14 +99,15 @@ export default function IconCloud({ iconSlugs }: DynamicCloudProps) {
 
   const renderedIcons = useMemo(() => {
     if (!shouldRender) {
-      // 懒加载状态：返回占位符
       return (
-        <div 
-          id="icon-cloud-container" 
-          className="flex justify-center items-center w-full"
-          style={{ height: '200px' }} // 占位高度
+        <div
+          id="icon-cloud-container"
+          className="flex h-56 w-full items-center justify-center"
         >
-          <div className="animate-pulse bg-muted rounded-full w-32 h-32" />
+          <div className="relative flex h-32 w-32 items-center justify-center rounded-full border border-border bg-secondary/60">
+            <div className="absolute h-24 w-24 animate-pulse rounded-full border border-primary/25" />
+            <div className="h-14 w-14 rounded-full bg-primary/15" />
+          </div>
         </div>
       );
     }
