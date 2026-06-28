@@ -130,9 +130,9 @@ export default function AnimatedCareer() {
         transition={{ duration: 0.6, delay: 0.3 }}
         viewport={{ once: true }}
       >
-        <a 
-          href="/about" 
-          className="inline-flex items-center text-sm text-primary hover:text-primary/80 transition-colors"
+        <a
+          href="/about"
+          className="inline-flex items-center text-sm text-primary transition-colors hover:underline"
         >
           View full work history
           <ArrowRight size={16} className="ml-1" />
