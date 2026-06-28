@@ -46,7 +46,7 @@ export function SystemsPanel() {
       initial={{ opacity: 0, y: 20, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.7, delay: 0.2, ease: "easeOut" }}
-      className="relative overflow-hidden rounded-2xl border border-border/70 bg-card/80 p-4 shadow-2xl shadow-primary/10 backdrop-blur md:p-5"
+      className="relative overflow-hidden rounded-2xl border border-border/80 bg-card/95 p-4 shadow-2xl shadow-primary/15 backdrop-blur md:p-5"
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_10%,hsl(var(--primary)/0.18),transparent_16rem)]" />
       <div className="relative">
@@ -70,7 +70,7 @@ export function SystemsPanel() {
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.45, delay: 0.32 + index * 0.08 }}
-                className="rounded-xl border border-border/60 bg-secondary/55 p-3"
+                className="rounded-xl border border-border/70 bg-secondary/80 p-3"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -79,7 +79,7 @@ export function SystemsPanel() {
                   </div>
                   <Icon className={`h-4 w-4 ${service.tone}`} />
                 </div>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-background/70">
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-background/80">
                   <motion.div
                     initial={{ scaleX: 0 }}
                     animate={{ scaleX: 1 }}
@@ -92,7 +92,7 @@ export function SystemsPanel() {
           })}
         </div>
 
-        <div className="mt-4 rounded-xl border border-border/50 bg-background/55 p-3 font-mono text-[0.72rem] leading-6 text-muted-foreground">
+        <div className="mt-4 rounded-xl border border-border/60 bg-background/80 p-3 font-mono text-[0.72rem] leading-6 text-muted-foreground">
           {logLines.map((line, index) => (
             <motion.div
               key={line}

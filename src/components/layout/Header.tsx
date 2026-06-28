@@ -15,8 +15,6 @@ import { GithubRepo } from '@/components/shared/GithubRepo'
 import { name } from '@/config/infoConfig'
 import { ChevronDownIcon, XIcon } from 'lucide-react'
 
-import TypingAnimation from "@/components/ui/typing-animation"
-
 function MobileNavItem({
   href,
   children,
@@ -264,7 +262,7 @@ export function Header() {
     }
 
     function updateAvatarStyles() {
-      if (!isHomePage) {
+      if (!isHomePage || !avatarRef.current || downDelay <= 0) {
         return
       }
 
@@ -289,7 +287,7 @@ export function Header() {
     }
 
     function updateHiStyles() {
-      if (!isHomePage) {
+      if (!isHomePage || !avatarRef.current) {
         return
       }
 
@@ -327,61 +325,6 @@ export function Header() {
           marginBottom: 'var(--header-mb)',
         }}
       >
-        {isHomePage && (
-          <>
-            <div
-              ref={avatarRef}
-              className="order-last mt-8 md:mt-[calc(theme(spacing.16)-theme(spacing.3))]"
-            />
-            <Container
-              className="top-0 order-last -mb-3 pt-3"
-              style={{
-                position:
-                  'var(--header-position)' as React.CSSProperties['position'],
-              }}
-            >
-              <div
-                className="top-[var(--avatar-top,theme(spacing.3))] w-full"
-                style={{
-                  position:
-                    'var(--header-inner-position)' as React.CSSProperties['position'],
-                }}
-              >
-                <div className="relative">
-                  <AvatarContainer
-                    className="absolute left-0 top-3 origin-left transition-opacity"
-                    style={{
-                      opacity: 'var(--avatar-border-opacity, 0)',
-                      transform: 'var(--avatar-border-transform)',
-                    }}
-                  />
-                  <div className="flex flex-row items-center gap-4">
-                    <Avatar
-                      large
-                      className="block h-16 w-16 origin-left"
-                      style={{ transform: 'var(--avatar-image-transform)' }}
-                    />
-                    <div
-                      className="hidden text-3xl font-bold tracking-tight sm:flex md:text-5xl lg:text-6xl"
-                      style={{
-                        opacity: 'var(--avatar-hi-opacity, 0)',
-                        transform: 'var(--avatar-hi-transform)'
-                      }}
-                    >
-                      Hi,{' '}
-                      <TypingAnimation
-                        className="text-3xl font-bold tracking-tight md:text-5xl lg:text-6xl"
-                        text={`I'm ${name} `}
-                        duration={150}
-                      />
-                      👋
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Container>
-          </>
-        )}
         <div
           ref={headerRef}
           className="top-0 z-10 h-16 pt-6"
@@ -399,11 +342,9 @@ export function Header() {
           >
             <div className="relative flex gap-4">
               <div className="flex flex-1">
-                {!isHomePage && (
-                  <AvatarContainer showName={true}>
-                    <Avatar />
-                  </AvatarContainer>
-                )}
+                <AvatarContainer showName={true}>
+                  <Avatar />
+                </AvatarContainer>
               </div>
               <div className="flex flex-1 justify-start">
                 <MobileNavigation className="pointer-events-auto md:hidden" />
@@ -419,12 +360,6 @@ export function Header() {
           </Container>
         </div>
       </header>
-      {isHomePage && (
-        <div
-          className="flex-none"
-          style={{ height: 'var(--content-offset)' }}
-        />
-      )}
     </>
   )
 }
