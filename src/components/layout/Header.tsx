@@ -38,7 +38,7 @@ function MobileNavigation(
 ) {
   return (
     <Popover {...props}>
-      <Popover.Button className="group flex items-center rounded-full px-4 py-2 text-sm font-medium shadow-lg ring-1 ring-muted backdrop-blur ">
+      <Popover.Button className="group flex items-center rounded-full bg-card/80 px-4 py-2 text-sm font-medium shadow-lg ring-1 ring-border/70 backdrop-blur">
         Menu
         <ChevronDownIcon className="ml-3 h-auto w-2" />
       </Popover.Button>
@@ -121,7 +121,7 @@ function NavItem({
 function DesktopNavigation(props: React.ComponentPropsWithoutRef<'nav'>) {
   return (
     <nav {...props}>
-      <ul className="flex rounded-full px-3 text-sm font-medium bg-card ring-1 ring-muted shadow-md backdrop-blur">
+      <ul className="flex rounded-full bg-card/80 px-3 text-sm font-medium shadow-md ring-1 ring-border/70 backdrop-blur">
         {navItems.map((item, index) => (
           <Fragment key={item.name}>
             {index > 0 && (
@@ -331,7 +331,7 @@ export function Header() {
           <>
             <div
               ref={avatarRef}
-              className="order-last mt-[calc(theme(spacing.16)-theme(spacing.3))]"
+              className="order-last mt-8 md:mt-[calc(theme(spacing.16)-theme(spacing.3))]"
             />
             <Container
               className="top-0 order-last -mb-3 pt-3"
@@ -362,7 +362,7 @@ export function Header() {
                       style={{ transform: 'var(--avatar-image-transform)' }}
                     />
                     <div
-                      className="text-3xl md:text-6xl font-bold tracking-tight flex flex-row"
+                      className="hidden text-3xl font-bold tracking-tight sm:flex md:text-5xl lg:text-6xl"
                       style={{
                         opacity: 'var(--avatar-hi-opacity, 0)',
                         transform: 'var(--avatar-hi-transform)'
@@ -370,7 +370,7 @@ export function Header() {
                     >
                       Hi,{' '}
                       <TypingAnimation
-                        className="text-3xl md:text-6xl font-bold tracking-tight"
+                        className="text-3xl font-bold tracking-tight md:text-5xl lg:text-6xl"
                         text={`I'm ${name} `}
                         duration={150}
                       />
