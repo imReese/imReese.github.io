@@ -81,10 +81,10 @@ export function SystemsPanel() {
                 </div>
                 <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-background/70">
                   <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: "100%" }}
+                    initial={{ scaleX: 0 }}
+                    animate={{ scaleX: 1 }}
                     transition={{ duration: 0.8, delay: 0.55 + index * 0.08 }}
-                    className={`h-full rounded-full bg-current ${service.tone} ${service.width}`}
+                    className={`h-full origin-left rounded-full bg-current ${service.tone} ${service.width}`}
                   />
                 </div>
               </motion.div>
