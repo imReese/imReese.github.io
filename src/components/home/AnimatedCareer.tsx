@@ -12,66 +12,69 @@ function CareerItem({ careerItem, isExpanded, onClick }: {
   onClick: () => void
 }) {
   return (
-    <motion.li 
-      className={`flex cursor-pointer gap-4 rounded-xl p-4 transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-        isExpanded ? 'bg-primary/10 shadow-sm' : 'hover:bg-secondary/70'
-      }`}
-      role="button"
-      tabIndex={0}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      onClick={onClick}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onClick()
-        }
-      }}
-    >
-      <div className="relative mt-1 flex h-12 w-12 flex-none items-center justify-center rounded-full shadow-md border border-muted bg-background">
-        <CustomIcon name={careerItem.logo} size={20} />
-      </div>
-      
-      <div className="flex flex-auto flex-col gap-1">
-        <div className="flex justify-between items-start">
-          <div>
-            <h4 className="font-semibold text-foreground">{careerItem.company}</h4>
-            <p className="text-sm text-muted-foreground">{careerItem.title}</p>
-          </div>
-          <motion.div
-            animate={{ rotate: isExpanded ? 90 : 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <ArrowRight size={16} className="text-muted-foreground" />
-          </motion.div>
+    <motion.li>
+      <motion.div
+        className={`flex cursor-pointer gap-4 rounded-xl p-4 transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+          isExpanded ? 'bg-primary/10 shadow-sm' : 'hover:bg-secondary/70'
+        }`}
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        onClick={onClick}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            onClick()
+          }
+        }}
+      >
+        <div className="relative mt-1 flex h-12 w-12 flex-none items-center justify-center rounded-full shadow-md border border-muted bg-background">
+          <CustomIcon name={careerItem.logo} size={20} />
         </div>
         
-        <AnimatePresence>
-          {isExpanded && (
+        <div className="flex flex-auto flex-col gap-1">
+          <div className="flex justify-between items-start">
+            <div>
+              <h4 className="font-semibold text-foreground">{careerItem.company}</h4>
+              <p className="text-sm text-muted-foreground">{careerItem.title}</p>
+            </div>
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
+              animate={{ rotate: isExpanded ? 90 : 0 }}
               transition={{ duration: 0.3 }}
-              className="overflow-hidden"
             >
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-sm text-muted-foreground">
-                  {careerItem.start} - {careerItem.end}
-                </span>
-                <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
-                  Full-time
-                </span>
-              </div>
-              
-              {/* 这里可以添加更多详细信息 */}
-              <div className="mt-2 text-sm text-muted-foreground">
-                <p>Backend product engineering with a focus on reliable services, internal tooling, and production operations.</p>
-              </div>
+              <ArrowRight size={16} className="text-muted-foreground" />
             </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+          </div>
+          
+          <AnimatePresence>
+            {isExpanded && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+                className="overflow-hidden"
+              >
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-sm text-muted-foreground">
+                    {careerItem.start} - {careerItem.end}
+                  </span>
+                  <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+                    Full-time
+                  </span>
+                </div>
+                
+                {/* 这里可以添加更多详细信息 */}
+                <div className="mt-2 text-sm text-muted-foreground">
+                  <p>Backend product engineering with a focus on reliable services, internal tooling, and production operations.</p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.div>
     </motion.li>
   )
 }
