@@ -13,12 +13,20 @@ function EducationItem({ educationItem, isExpanded, onClick }: {
 }) {
   return (
     <motion.li 
-      className={`flex gap-4 rounded-xl p-4 transition-all duration-300 ${
+      className={`flex cursor-pointer gap-4 rounded-xl p-4 transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
         isExpanded ? 'bg-primary/10 shadow-sm' : 'hover:bg-secondary/70'
       }`}
+      role="button"
+      tabIndex={0}
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onClick()
+        }
+      }}
     >
       <div className="relative mt-1 flex h-12 w-12 flex-none items-center justify-center rounded-full shadow-md border border-muted bg-background">
         <CustomIcon name={educationItem.logo} size={20} />
