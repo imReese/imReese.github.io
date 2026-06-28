@@ -6,8 +6,8 @@ import { GraduationCap, ArrowRight } from 'lucide-react'
 import { EducationItemType, educationList } from '@/config/infoConfig'
 import { CustomIcon } from '@/components/shared/CustomIcon'
 
-function EducationItem({ educationItem, isExpanded, onClick }: { 
-  educationItem: EducationItemType 
+function EducationItem({ educationItem, isExpanded, onClick }: {
+  educationItem: EducationItemType
   isExpanded: boolean
   onClick: () => void
 }) {
@@ -33,7 +33,7 @@ function EducationItem({ educationItem, isExpanded, onClick }: {
         <div className="relative mt-1 flex h-12 w-12 flex-none items-center justify-center rounded-full shadow-md border border-muted bg-background">
           <CustomIcon name={educationItem.logo} size={20} />
         </div>
-        
+
         <div className="flex flex-auto flex-col gap-1">
           <div className="flex justify-between items-start">
             <div>
@@ -47,7 +47,7 @@ function EducationItem({ educationItem, isExpanded, onClick }: {
               <ArrowRight size={16} className="text-muted-foreground" />
             </motion.div>
           </div>
-          
+
           <AnimatePresence>
             {isExpanded && (
               <motion.div
@@ -65,7 +65,7 @@ function EducationItem({ educationItem, isExpanded, onClick }: {
                     Bachelor&apos;s Degree
                   </span>
                 </div>
-                
+
                 <div className="mt-2 text-sm leading-6 text-muted-foreground">
                   <p>Computer science fundamentals, algorithms, software engineering, and systems programming foundations.</p>
                 </div>
@@ -86,14 +86,14 @@ export default function AnimatedEducation() {
   }
 
   return (
-    <motion.div 
+    <motion.div
       className="rounded-2xl border border-border/70 bg-card/70 p-6 shadow-sm backdrop-blur"
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6 }}
       viewport={{ once: true, margin: "-50px" }}
     >
-      <motion.h2 
+      <motion.h2
         className="flex items-center text-lg font-semibold mb-6"
         initial={{ opacity: 0, x: -20 }}
         whileInView={{ opacity: 1, x: 0 }}
@@ -103,8 +103,8 @@ export default function AnimatedEducation() {
         <GraduationCap size={20} className="mr-3" />
         Education
       </motion.h2>
-      
-      <motion.ol 
+
+      <motion.ol
         className="space-y-3"
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
@@ -120,9 +120,9 @@ export default function AnimatedEducation() {
           />
         ))}
       </motion.ol>
-      
+
       {/* 添加查看更多信息的链接 */}
-      <motion.div 
+      <motion.div
         className="mt-6 pt-4 border-t border-border"
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}

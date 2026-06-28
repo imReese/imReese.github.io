@@ -1,6 +1,5 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { ArrowRight, BookOpen, Github } from "lucide-react"
 import { headline, introduction } from "@/config/infoConfig"
@@ -9,25 +8,6 @@ import { SystemsPanel } from "@/components/home/SystemsPanel"
 const focusAreas = ["Go", "Python", "C/C++", "Kubernetes", "Docker", "Redis", "MySQL", "Linux"]
 
 export function ElegantIntro() {
-  const [isVisible, setIsVisible] = useState(false)
-
-  useEffect(() => {
-    setIsVisible(true)
-  }, [])
-
-  if (!isVisible) {
-    return (
-      <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
-        <div className="space-y-5">
-          <div className="h-12 w-4/5 animate-pulse rounded-xl bg-muted" />
-          <div className="h-5 w-full animate-pulse rounded-md bg-muted" />
-          <div className="h-5 w-3/4 animate-pulse rounded-md bg-muted" />
-        </div>
-        <div className="h-72 animate-pulse rounded-2xl bg-muted" />
-      </div>
-    )
-  }
-
   return (
     <section className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
       <motion.div

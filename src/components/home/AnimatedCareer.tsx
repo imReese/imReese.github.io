@@ -6,8 +6,8 @@ import { Briefcase, ArrowRight } from 'lucide-react'
 import { CareerItemType, careerList } from '@/config/infoConfig'
 import { CustomIcon } from '@/components/shared/CustomIcon'
 
-function CareerItem({ careerItem, isExpanded, onClick }: { 
-  careerItem: CareerItemType 
+function CareerItem({ careerItem, isExpanded, onClick }: {
+  careerItem: CareerItemType
   isExpanded: boolean
   onClick: () => void
 }) {
@@ -33,7 +33,7 @@ function CareerItem({ careerItem, isExpanded, onClick }: {
         <div className="relative mt-1 flex h-12 w-12 flex-none items-center justify-center rounded-full shadow-md border border-muted bg-background">
           <CustomIcon name={careerItem.logo} size={20} />
         </div>
-        
+
         <div className="flex flex-auto flex-col gap-1">
           <div className="flex justify-between items-start">
             <div>
@@ -47,7 +47,7 @@ function CareerItem({ careerItem, isExpanded, onClick }: {
               <ArrowRight size={16} className="text-muted-foreground" />
             </motion.div>
           </div>
-          
+
           <AnimatePresence>
             {isExpanded && (
               <motion.div
@@ -65,7 +65,7 @@ function CareerItem({ careerItem, isExpanded, onClick }: {
                     Full-time
                   </span>
                 </div>
-                
+
                 {/* 这里可以添加更多详细信息 */}
                 <div className="mt-2 text-sm text-muted-foreground">
                   <p>Backend product engineering with a focus on reliable services, internal tooling, and production operations.</p>
@@ -87,14 +87,14 @@ export default function AnimatedCareer() {
   }
 
   return (
-    <motion.div 
+    <motion.div
       className="rounded-2xl border border-border/70 bg-card/70 p-6 shadow-sm backdrop-blur"
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6 }}
       viewport={{ once: true, margin: "-50px" }}
     >
-      <motion.h2 
+      <motion.h2
         className="flex items-center text-lg font-semibold mb-6"
         initial={{ opacity: 0, x: -20 }}
         whileInView={{ opacity: 1, x: 0 }}
@@ -104,8 +104,8 @@ export default function AnimatedCareer() {
         <Briefcase size={20} className="mr-3" />
         Work Experience
       </motion.h2>
-      
-      <motion.ol 
+
+      <motion.ol
         className="space-y-3"
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
@@ -121,9 +121,9 @@ export default function AnimatedCareer() {
           />
         ))}
       </motion.ol>
-      
+
       {/* 添加查看完整简历的链接 */}
-      <motion.div 
+      <motion.div
         className="mt-6 pt-4 border-t border-border"
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}

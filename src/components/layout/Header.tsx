@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -135,12 +135,6 @@ function DesktopNavigation(props: React.ComponentPropsWithoutRef<'nav'>) {
   )
 }
 
-function clamp(number: number, a: number, b: number) {
-  let min = Math.min(a, b)
-  let max = Math.max(a, b)
-  return Math.min(Math.max(number, min), max)
-}
-
 function AvatarContainer({
   showName = false,
   className,
@@ -202,144 +196,13 @@ function Avatar({
 }
 
 export function Header() {
-  let isHomePage = usePathname() === '/'
-
-  let headerRef = useRef<React.ElementRef<'div'>>(null)
-  let avatarRef = useRef<React.ElementRef<'div'>>(null)
-  let isInitial = useRef(true)
-
-  useEffect(() => {
-    let downDelay = avatarRef.current?.offsetTop ?? 0
-    let upDelay = 64
-
-    function setProperty(property: string, value: string) {
-      document.documentElement.style.setProperty(property, value)
-    }
-
-    function removeProperty(property: string) {
-      document.documentElement.style.removeProperty(property)
-    }
-
-    function updateHeaderStyles() {
-      if (!headerRef.current) {
-        return
-      }
-
-      let { top, height } = headerRef.current.getBoundingClientRect()
-      let scrollY = clamp(
-        window.scrollY,
-        0,
-        document.body.scrollHeight - window.innerHeight,
-      )
-
-      if (isInitial.current) {
-        setProperty('--header-position', 'sticky')
-      }
-
-      setProperty('--content-offset', `${downDelay}px`)
-
-      if (isInitial.current || scrollY < downDelay) {
-        setProperty('--header-height', `${downDelay + height}px`)
-        setProperty('--header-mb', `${-downDelay}px`)
-      } else if (top + height < -upDelay) {
-        let offset = Math.max(height, scrollY - upDelay)
-        setProperty('--header-height', `${offset}px`)
-        setProperty('--header-mb', `${height - offset}px`)
-      } else if (top === 0) {
-        setProperty('--header-height', `${scrollY + height}px`)
-        setProperty('--header-mb', `${-scrollY}px`)
-      }
-
-      // if (top === 0 && scrollY > 0 && scrollY >= downDelay) {
-      //   setProperty('--header-inner-position', 'fixed')
-      //   removeProperty('--header-top')
-      //   removeProperty('--avatar-top')
-      // } else {
-      //   removeProperty('--header-inner-position')
-      //   setProperty('--header-top', '0px')
-      //   setProperty('--avatar-top', '0px')
-      // }
-    }
-
-    function updateAvatarStyles() {
-      if (!isHomePage || !avatarRef.current || downDelay <= 0) {
-        return
-      }
-
-      let fromScale = 1
-      let toScale = 36 / 64
-      let fromX = 0
-      let toX = 2 / 16
-
-      let scrollY = downDelay - window.scrollY
-
-      let scale = (scrollY * (fromScale - toScale)) / downDelay + toScale
-      scale = clamp(scale, fromScale, toScale)
-
-      let x = (scrollY * (fromX - toX)) / downDelay + toX
-      x = clamp(x, fromX, toX)
-
-      setProperty(
-        '--avatar-image-transform',
-        `translate3d(${x}rem, 0, 0) scale(${scale})`,
-      )
-      setProperty('--avatar-hi-opacity', scale === toScale ? '0' : '1')
-    }
-
-    function updateHiStyles() {
-      if (!isHomePage || !avatarRef.current) {
-        return
-      }
-
-      // 当滚动超过一定距离时，完全隐藏 Hi
-      let opacity = window.scrollY < 50 ? 1 : 0
-
-      setProperty('--avatar-hi-opacity', opacity.toString())
-    }
-
-
-
-    function updateStyles() {
-      updateHeaderStyles()
-      updateAvatarStyles()
-      updateHiStyles()
-      isInitial.current = false
-    }
-
-    updateStyles()
-    window.addEventListener('scroll', updateStyles, { passive: true })
-    window.addEventListener('resize', updateStyles)
-
-    return () => {
-      window.removeEventListener('scroll', updateStyles)
-      window.removeEventListener('resize', updateStyles)
-    }
-  }, [isHomePage])
-
   return (
     <>
       <header
-        className="pointer-events-none relative z-50 flex flex-none flex-col"
-        style={{
-          height: 'var(--header-height)',
-          marginBottom: 'var(--header-mb)',
-        }}
+        className="pointer-events-none z-50 flex h-16 flex-none flex-col pt-6"
+        style={{ position: 'sticky', top: 0 }}
       >
-        <div
-          ref={headerRef}
-          className="top-0 z-10 h-16 pt-6"
-          style={{
-            position:
-              'var(--header-position)' as React.CSSProperties['position'],
-          }}
-        >
-          <Container
-            className="top-[var(--header-top,theme(spacing.6))] w-full"
-            style={{
-              position:
-                'var(--header-inner-position)' as React.CSSProperties['position'],
-            }}
-          >
+        <Container className="w-full">
             <div className="relative flex gap-4">
               <div className="flex flex-1">
                 <AvatarContainer showName={true}>
@@ -357,8 +220,7 @@ export function Header() {
                 </div>
               </div>
             </div>
-          </Container>
-        </div>
+        </Container>
       </header>
     </>
   )
