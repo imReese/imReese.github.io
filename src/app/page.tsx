@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { Container } from "@/components/layout/Container"
 import { ElegantIntro } from "@/components/home/ElegantIntro"
 import AnimatedCareer from "@/components/home/AnimatedCareer"
@@ -9,7 +10,7 @@ import { OpenSourcePulse } from "@/components/home/OpenSourcePulse"
 import { HomepageNotes } from "@/components/home/HomepageNotes"
 
 export default async function Home() {
-  let blogList = (await getAllBlogs()).slice(0, 3)
+  const blogList = (await getAllBlogs()).slice(0, 3)
 
   return (
     <div className="min-h-screen">
@@ -75,12 +76,12 @@ export default async function Home() {
               >
                 Get in touch
               </a>
-              <a
+              <Link
                 href="/projects"
                 className="inline-flex items-center justify-center rounded-full border border-primary/35 px-6 py-3 text-sm font-semibold text-primary transition hover:-translate-y-0.5 hover:bg-primary/10"
               >
                 View projects
-              </a>
+              </Link>
             </div>
           </div>
         </Container>

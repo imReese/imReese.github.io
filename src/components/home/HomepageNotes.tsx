@@ -32,7 +32,9 @@ export function HomepageNotes({ blogs }: { blogs: BlogType[] }) {
                   <FileText className="h-4 w-4" />
                 </span>
                 <div>
-                  <div className="text-xs text-muted-foreground">{formatDate(blog.date)}</div>
+                  <time dateTime={blog.date} className="text-xs text-muted-foreground">
+                    {formatDate(blog.date)}
+                  </time>
                   <h3 className="mt-1 text-base font-semibold tracking-tight text-foreground group-hover:text-primary">
                     {blog.title}
                   </h3>
