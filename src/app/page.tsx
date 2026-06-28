@@ -14,13 +14,13 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen">
-      <section className="pb-14 pt-10 sm:pt-14 lg:pb-20 lg:pt-20">
+      <section className="pb-6 pt-8 sm:pt-10 lg:pb-6 lg:pt-14">
         <Container>
           <ElegantIntro />
         </Container>
       </section>
 
-      <section className="py-10 lg:py-14">
+      <section className="py-8 lg:py-10">
         <Container>
           <OpenSourcePulse />
         </Container>
