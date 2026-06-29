@@ -35,12 +35,14 @@ function CareerItem({ careerItem, isExpanded, onClick }: {
         </div>
 
         <div className="flex flex-auto flex-col gap-1">
-          <div className="flex justify-between items-start">
-            <div>
-              <h4 className="font-semibold text-foreground">{careerItem.company}</h4>
-              <p className="text-sm text-muted-foreground">{careerItem.title}</p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h4 className="break-words font-semibold text-foreground">{careerItem.company}</h4>
+              <p className="mt-0.5 text-sm text-muted-foreground">{careerItem.team}</p>
+              <p className="text-xs leading-5 text-muted-foreground">{careerItem.title}</p>
             </div>
             <motion.div
+              className="flex-none"
               animate={{ rotate: isExpanded ? 90 : 0 }}
               transition={{ duration: 0.3 }}
             >
@@ -66,10 +68,14 @@ function CareerItem({ careerItem, isExpanded, onClick }: {
                   </span>
                 </div>
 
-                {/* 这里可以添加更多详细信息 */}
-                <div className="mt-2 text-sm text-muted-foreground">
-                  <p>Backend product engineering with a focus on reliable services, internal tooling, and production operations.</p>
-                </div>
+                <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
+                  {careerItem.highlights.map((highlight) => (
+                    <li key={highlight} className="flex gap-2">
+                      <span className="mt-2 h-1.5 w-1.5 flex-none rounded-full bg-primary" />
+                      <span>{highlight}</span>
+                    </li>
+                  ))}
+                </ul>
               </motion.div>
             )}
           </AnimatePresence>
@@ -122,7 +128,6 @@ export default function AnimatedCareer() {
         ))}
       </motion.ol>
 
-      {/* 添加查看完整简历的链接 */}
       <motion.div
         className="mt-6 pt-4 border-t border-border"
         initial={{ opacity: 0 }}

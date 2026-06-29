@@ -2,10 +2,8 @@
 
 import { motion } from "framer-motion"
 import { ArrowRight, BookOpen, Github } from "lucide-react"
-import { headline, introduction } from "@/config/infoConfig"
+import { headline, introduction, profileSummary } from "@/config/infoConfig"
 import { SystemsPanel } from "@/components/home/SystemsPanel"
-
-const focusAreas = ["Go", "Python", "C/C++", "Kubernetes", "Docker", "Redis", "MySQL", "Linux"]
 
 export function ElegantIntro() {
   return (
@@ -24,7 +22,7 @@ export function ElegantIntro() {
         </p>
 
         <div className="mt-6 flex flex-wrap gap-2">
-          {focusAreas.map((area) => (
+          {profileSummary.focusAreas.map((area) => (
             <span
               key={area}
               className="rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-sm font-medium text-primary"

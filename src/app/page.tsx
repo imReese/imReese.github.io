@@ -4,7 +4,7 @@ import { ElegantIntro } from "@/components/home/ElegantIntro"
 import AnimatedCareer from "@/components/home/AnimatedCareer"
 import AnimatedEducation from "@/components/home/AnimatedEducation"
 import { getAllBlogs } from "@/lib/blogs"
-import { techIcons } from "@/config/infoConfig"
+import { stackGroups, techIcons } from "@/config/infoConfig"
 import IconCloud from "@/components/ui/icon-cloud"
 import { OpenSourcePulse } from "@/components/home/OpenSourcePulse"
 import { HomepageNotes } from "@/components/home/HomepageNotes"
@@ -48,9 +48,11 @@ export default async function Home() {
                 </p>
               </div>
               <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
-                <span className="rounded-full bg-secondary px-3 py-1">Backend</span>
-                <span className="rounded-full bg-secondary px-3 py-1">Cloud Native</span>
-                <span className="rounded-full bg-secondary px-3 py-1">Observability</span>
+                {stackGroups.map((group) => (
+                  <span key={group.title} className="rounded-full bg-secondary px-3 py-1">
+                    {group.title}: {group.items.slice(0, 3).join(" / ")}
+                  </span>
+                ))}
               </div>
               <div className="mt-5 rounded-xl border border-border/50 bg-background/55">
                 <IconCloud iconSlugs={techIcons} />

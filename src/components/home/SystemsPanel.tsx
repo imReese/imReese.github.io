@@ -5,39 +5,39 @@ import { Activity, Boxes, Database, GitBranch, ServerCog } from "lucide-react"
 
 const services = [
   {
-    name: "gateway",
-    detail: "routing / auth",
+    name: "router",
+    detail: "gateway / gRPC",
     icon: GitBranch,
     tone: "text-primary",
     width: "w-10/12",
   },
   {
-    name: "workers",
-    detail: "queues / jobs",
+    name: "scheduler",
+    detail: "prefill / decode",
     icon: Boxes,
     tone: "text-[hsl(var(--chart-3))]",
+    width: "w-9/12",
+  },
+  {
+    name: "kv transfer",
+    detail: "PD / Mooncake",
+    icon: Database,
+    tone: "text-[hsl(var(--chart-2))]",
     width: "w-8/12",
   },
   {
-    name: "storage",
-    detail: "mysql / redis",
-    icon: Database,
-    tone: "text-[hsl(var(--chart-2))]",
-    width: "w-7/12",
-  },
-  {
-    name: "observe",
-    detail: "metrics / logs",
+    name: "kernels",
+    detail: "cuda / cpu boundary",
     icon: Activity,
     tone: "text-[hsl(var(--chart-4))]",
-    width: "w-9/12",
+    width: "w-7/12",
   },
 ]
 
 const logLines = [
-  "deploy backend-api@sha256:7f42",
-  "redis cache warmup completed",
-  "p95 latency steady at 38ms",
+  "sglang serve --runtime rust",
+  "prefill batch planned with kv pages",
+  "decode worker waiting for kv-ready signal",
 ]
 
 export function SystemsPanel() {
@@ -53,7 +53,7 @@ export function SystemsPanel() {
         <div className="mb-4 flex items-center justify-between text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
             <ServerCog className="h-4 w-4 text-primary" />
-            <span className="font-medium">service topology</span>
+            <span className="font-medium">sglang runtime</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-[hsl(var(--chart-2))]" />

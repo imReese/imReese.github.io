@@ -35,12 +35,13 @@ function EducationItem({ educationItem, isExpanded, onClick }: {
         </div>
 
         <div className="flex flex-auto flex-col gap-1">
-          <div className="flex justify-between items-start">
-            <div>
-              <h4 className="font-semibold text-foreground">{educationItem.school}</h4>
-              <p className="text-sm text-muted-foreground">{educationItem.major}</p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h4 className="break-words font-semibold text-foreground">{educationItem.school}</h4>
+              <p className="text-sm leading-6 text-muted-foreground">{educationItem.major}</p>
             </div>
             <motion.div
+              className="flex-none"
               animate={{ rotate: isExpanded ? 90 : 0 }}
               transition={{ duration: 0.3 }}
             >
@@ -66,9 +67,14 @@ function EducationItem({ educationItem, isExpanded, onClick }: {
                   </span>
                 </div>
 
-                <div className="mt-2 text-sm leading-6 text-muted-foreground">
-                  <p>Computer science fundamentals, algorithms, software engineering, and systems programming foundations.</p>
-                </div>
+                <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
+                  {educationItem.details.map((detail) => (
+                    <li key={detail} className="flex gap-2">
+                      <span className="mt-2 h-1.5 w-1.5 flex-none rounded-full bg-[hsl(var(--chart-3))]" />
+                      <span>{detail}</span>
+                    </li>
+                  ))}
+                </ul>
               </motion.div>
             )}
           </AnimatePresence>
@@ -121,7 +127,6 @@ export default function AnimatedEducation() {
         ))}
       </motion.ol>
 
-      {/* 添加查看更多信息的链接 */}
       <motion.div
         className="mt-6 pt-4 border-t border-border"
         initial={{ opacity: 0 }}
