@@ -202,17 +202,17 @@ export function Header() {
         style={{ position: 'sticky', top: 0 }}
       >
         <Container className="w-full">
-            <div className="relative flex gap-4">
-              <div className="flex flex-1">
+            <div className="relative flex min-w-0 items-center gap-4">
+              <div className="flex min-w-0 flex-1">
                 <AvatarContainer showName={true}>
                   <Avatar />
                 </AvatarContainer>
               </div>
-              <div className="flex flex-1 justify-start">
+              <div className="flex flex-none justify-end md:flex-1 md:justify-start">
                 <MobileNavigation className="pointer-events-auto md:hidden" />
                 <DesktopNavigation className="pointer-events-auto hidden md:block" />
               </div>
-              <div className="flex justify-end md:flex-1">
+              <div className="hidden justify-end md:flex md:flex-1">
                 <div className="pointer-events-auto flex flex-row items-center gap-2 md:mr-2">
                   <ThemeToggle />
                   <GithubRepo />

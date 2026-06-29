@@ -1,26 +1,29 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { BriefcaseBusiness, Database, MapPin, Sparkles } from "lucide-react"
+import { BriefcaseBusiness, MapPin, Sparkles } from "lucide-react"
 
-const nowItems = [
-  "Runtime and scheduler paths for prefill/decode serving",
-  "Cache and KV-cache residency, hit behavior, and transfer readiness",
-  "NVIDIA GPU and Kunlunxin P-series backend optimization",
-]
-
-const timeline = [
+const experiences = [
   {
-    year: "2025",
-    text: "Baidu AI Computing, inference engine work",
+    period: "2025.06 - Now",
+    organization: "Baidu AI Computing",
+    summary: "Inference engine performance for large-model serving.",
+    current: true,
+    details: [
+      "Serving runtime: SGLang scheduler boundaries and prefill/decode paths",
+      "Memory and transfer: cache/KV residency and Mooncake TE readiness",
+      "Backend tuning across NVIDIA GPUs and Kunlunxin P-series",
+    ],
   },
   {
-    year: "2023",
-    text: "Huawei Cloud, CPU architecture performance analysis",
+    period: "2023",
+    organization: "Huawei Cloud",
+    summary: "CPU architecture performance analysis.",
   },
   {
-    year: "2022",
-    text: "Huawei Data Storage, distributed systems",
+    period: "2022",
+    organization: "Huawei Data Storage",
+    summary: "Distributed systems engineering.",
   },
 ]
 
@@ -50,57 +53,54 @@ export function SystemsPanel() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-primary/30 bg-primary/10 p-4 shadow-sm shadow-primary/10">
-          <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/20">
-              <BriefcaseBusiness className="h-5 w-5" />
-            </span>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <h2 className="text-base font-semibold tracking-tight text-foreground">Current role</h2>
-                <span className="rounded-full border border-primary/25 bg-background/70 px-2 py-0.5 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-primary">
-                  2025 - Now
-                </span>
-              </div>
-              <p className="mt-1 text-sm font-medium leading-6 text-foreground">
-                Baidu AI Computing, inference engine performance.
-              </p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Optimizing serving runtime, cache paths, Mooncake TE integration, and heterogeneous accelerator backends.
-              </p>
-            </div>
-          </div>
-        </div>
-
         <div className="rounded-xl border border-border/70 bg-background/70 p-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Database className="h-4 w-4 text-primary" />
-            <span>{"Systems I'm working on"}</span>
+            <BriefcaseBusiness className="h-4 w-4 text-primary" />
+            <span>Experience</span>
           </div>
-          <div className="mt-4 grid gap-3">
-            {nowItems.map((item, index) => (
+          <div className="mt-5 space-y-5">
+            {experiences.map((experience) => (
               <div
-                key={item}
-                className="flex items-center gap-3 text-sm text-muted-foreground"
+                key={`${experience.period}-${experience.organization}`}
+                className="grid gap-3 sm:grid-cols-[6.5rem_1fr]"
               >
-                <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                  {index + 1}
-                </span>
-                <span>{item}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-border/60 bg-secondary/55 p-4">
-          <div className="space-y-3">
-            {timeline.map((item) => (
-              <div
-                key={`${item.year}-${item.text}`}
-                className="grid grid-cols-[3.25rem_1fr] gap-3 text-sm"
-              >
-                <span className="font-mono text-xs font-semibold text-primary">{item.year}</span>
-                <span className="leading-5 text-muted-foreground">{item.text}</span>
+                <div className="flex flex-wrap items-center gap-2 sm:block">
+                  <span className="font-mono text-xs font-semibold text-primary">
+                    {experience.period}
+                  </span>
+                  {experience.current ? (
+                    <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-primary sm:mt-2 sm:inline-block">
+                      Current
+                    </span>
+                  ) : null}
+                </div>
+                <div
+                  className={
+                    experience.current
+                      ? "border-l-2 border-primary pl-4"
+                      : "border-l border-border/70 pl-4"
+                  }
+                >
+                  <p className="text-sm font-semibold text-foreground">
+                    {experience.organization}
+                  </p>
+                  <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                    {experience.summary}
+                  </p>
+                  {experience.details ? (
+                    <ul className="mt-3 space-y-1.5">
+                      {experience.details.map((detail) => (
+                        <li
+                          key={detail}
+                          className="flex gap-2 text-xs leading-4 text-muted-foreground"
+                        >
+                          <span className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-primary" />
+                          <span>{detail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
               </div>
             ))}
           </div>

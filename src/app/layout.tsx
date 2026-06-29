@@ -48,9 +48,9 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="Reese Website" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=20260629" />
       </head>
-      <body className="flex h-full bg-background">
+      <body className="flex h-full w-full overflow-x-hidden bg-background">
         <Providers>
-          <div className="flex w-full">
+          <div className="flex min-w-0 w-full overflow-x-hidden">
             <Layout>{children}</Layout>
           </div>
           <Analytics />
