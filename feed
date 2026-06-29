@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+    <channel>
+        <title>Reese</title>
+        <link>https://imreese.github.io</link>
+        <description>Reese's blog</description>
+        <lastBuildDate>Mon, 29 Jun 2026 06:31:36 GMT</lastBuildDate>
+        <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
+        <generator>https://github.com/jpmonette/feed</generator>
+        <image>
+            <title>Reese</title>
+            <url>https://imreese.github.io/favicon.ico</url>
+            <link>https://imreese.github.io</link>
+        </image>
+        <copyright>All rights reserved Reese 2026</copyright>
+        <item>
+            <title><![CDATA[Blog Test]]></title>
+            <link>https://imreese.github.io/blogs/test-blog</link>
+            <guid>https://imreese.github.io/blogs/test-blog</guid>
+            <pubDate>Wed, 11 Dec 2024 00:00:00 GMT</pubDate>
+            <description><![CDATA[This is a test blog]]></description>
+            <content:encoded><![CDATA[
+# H1
+
+## H2
+
+### H3
+
+
+
+
+
+---
+
+]]></content:encoded>
+            <author>reese_duan@outlook.com (Reese)</author>
+        </item>
+    </channel>
+</rss>
