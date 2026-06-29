@@ -46,30 +46,3 @@ export const socialLinks: Array<SocialLinkType> = [
     href: 'https://github.com/imReese/reese-personal-website'
   }
 ]
-
-// https://simpleicons.org/
-export const techIcons = [
-  "rust",
-  "go",
-  "python",
-  "c",
-  "cplusplus",
-  "linux",
-  "kubernetes",
-  "docker",
-  "redis",
-  "mysql",
-  "nginx",
-  "prometheus",
-  "grafana",
-  "cmake",
-  "gnubash",
-  "git",
-  "githubactions",
-  "typescript",
-  "react",
-  "nextdotjs",
-  "vercel",
-  "visualstudiocode",
-  "vim"
-];

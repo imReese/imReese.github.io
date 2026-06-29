@@ -1,13 +1,10 @@
 import Link from "next/link"
 import { Container } from "@/components/layout/Container"
 import { ElegantIntro } from "@/components/home/ElegantIntro"
-import AnimatedCareer from "@/components/home/AnimatedCareer"
-import AnimatedEducation from "@/components/home/AnimatedEducation"
 import { getAllBlogs } from "@/lib/blogs"
-import { stackGroups, techIcons } from "@/config/infoConfig"
-import IconCloud from "@/components/ui/icon-cloud"
 import { OpenSourcePulse } from "@/components/home/OpenSourcePulse"
 import { HomepageNotes } from "@/components/home/HomepageNotes"
+import { ExperienceStack } from "@/components/home/ExperienceStack"
 
 export default async function Home() {
   const blogList = (await getAllBlogs()).slice(0, 3)
@@ -28,32 +25,7 @@ export default async function Home() {
 
       <section className="py-10 lg:py-14">
         <Container>
-          <div className="grid gap-6 lg:grid-cols-[1.12fr_0.88fr] lg:items-start">
-            <AnimatedCareer />
-
-            <div className="grid gap-6">
-              <section className="rounded-2xl border border-border/70 bg-card/70 p-6 shadow-sm backdrop-blur">
-                <div className="max-w-xl">
-                  <h2 className="text-2xl font-bold tracking-tight text-foreground">Engineering stack</h2>
-                  <p className="mt-2 text-sm leading-7 text-muted-foreground">
-                    Runtime, cache, transfer, backend, and observability tools I reach for when debugging serving systems.
-                  </p>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
-                  {stackGroups.map((group) => (
-                    <span key={group.title} className="rounded-full bg-secondary px-3 py-1">
-                      {group.title}: {group.items.slice(0, 3).join(" / ")}
-                    </span>
-                  ))}
-                </div>
-                <div className="mt-5 rounded-xl border border-border/50 bg-background/55">
-                  <IconCloud iconSlugs={techIcons} />
-                </div>
-              </section>
-
-              <AnimatedEducation />
-            </div>
-          </div>
+          <ExperienceStack />
         </Container>
       </section>
 
