@@ -1,30 +1,30 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { BookOpen, BriefcaseBusiness, Code2, MapPin, PencilLine, Sparkles } from "lucide-react"
+import { Activity, BriefcaseBusiness, Cpu, Database, MapPin, Network, Sparkles } from "lucide-react"
 
 const highlights = [
   {
-    title: "Current role",
-    detail: "Baidu AI Computing, inference performance.",
-    icon: BriefcaseBusiness,
+    title: "Runtime path",
+    detail: "SGLang-style request lifecycle, scheduler boundaries, and backend dispatch.",
+    icon: Activity,
   },
   {
-    title: "Writing",
-    detail: "SGLang, Mooncake, cache notes.",
-    icon: PencilLine,
+    title: "KV transfer",
+    detail: "Mooncake TE integration boundaries, descriptors, and readiness checks.",
+    icon: Network,
   },
   {
-    title: "Lab",
-    detail: "Runtime and infrastructure experiments.",
-    icon: Code2,
+    title: "Backend tuning",
+    detail: "NVIDIA GPU and Kunlunxin P-series accelerator optimization paths.",
+    icon: Cpu,
   },
 ]
 
 const nowItems = [
-  "Large-model inference performance",
-  "Cache and KV-cache behavior",
-  "Mooncake TE and SGLang runtime notes",
+  "Runtime and scheduler paths for prefill/decode serving",
+  "Cache and KV-cache residency, hit behavior, and transfer readiness",
+  "NVIDIA GPU and Kunlunxin P-series backend optimization",
 ]
 
 const timeline = [
@@ -34,7 +34,7 @@ const timeline = [
   },
   {
     year: "2023",
-    text: "Huawei Cloud, CPU architecture research",
+    text: "Huawei Cloud, CPU architecture performance analysis",
   },
   {
     year: "2022",
@@ -59,7 +59,7 @@ export function SystemsPanel() {
             </span>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">{"Reese's workspace"}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Engineering, notes, and small experiments</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Inference systems and backend performance</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-3 py-1 text-xs text-muted-foreground">
@@ -68,10 +68,32 @@ export function SystemsPanel() {
           </div>
         </div>
 
+        <div className="rounded-xl border border-primary/30 bg-primary/10 p-4 shadow-sm shadow-primary/10">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/20">
+              <BriefcaseBusiness className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <h2 className="text-base font-semibold tracking-tight text-foreground">Current role</h2>
+                <span className="rounded-full border border-primary/25 bg-background/70 px-2 py-0.5 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-primary">
+                  2025 - Now
+                </span>
+              </div>
+              <p className="mt-1 text-sm font-medium leading-6 text-foreground">
+                Baidu AI Computing, inference engine performance.
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Optimizing serving runtime, cache paths, Mooncake TE integration, and heterogeneous accelerator backends.
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="rounded-xl border border-border/70 bg-background/70 p-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <BookOpen className="h-4 w-4 text-primary" />
-            <span>{"What I'm focused on now"}</span>
+            <Database className="h-4 w-4 text-primary" />
+            <span>{"Systems I'm working on"}</span>
           </div>
           <div className="mt-4 grid gap-3">
             {nowItems.map((item, index) => (

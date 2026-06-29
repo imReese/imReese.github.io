@@ -70,7 +70,7 @@ export default async function Home() {
               Have a backend or infrastructure problem worth solving?
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-muted-foreground">
-              I like turning practical systems work into reliable products and useful notes.
+              I like turning messy performance paths into measurable, maintainable systems.
             </p>
             <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
               <a

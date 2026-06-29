@@ -67,17 +67,17 @@ export const profileSummary: ProfileSummary = {
   name: "Reese",
   headline: "Hi, I'm Reese. I build reliable backend systems.",
   introduction:
-    "I'm a Beijing-based software engineer working on large-model inference performance at Baidu AI Computing. I like turning runtime, cache, and accelerator problems into dependable systems, and writing down what I learn along the way.",
+    "I'm a Beijing-based software engineer in Baidu AI Computing, focused on large-model inference engines. My work sits around runtime paths, cache and KV-cache behavior, Mooncake TransferEngine, and heterogeneous backends across NVIDIA GPUs and Kunlunxin P-series accelerators.",
   location: "Beijing, China",
   email: "reese_duan@outlook.com",
   githubUsername: "imReese",
   focusAreas: [
     "Backend Systems",
-    "AI Infrastructure",
-    "Performance",
-    "SGLang Notes",
-    "Mooncake Research",
-    "Beijing",
+    "Inference Runtime",
+    "KV Cache Systems",
+    "Mooncake TransferEngine",
+    "SGLang Runtime",
+    "NVIDIA / Kunlunxin",
   ],
   aboutParagraphs: [
     "I build backend systems where reliability, performance, and operational clarity matter.",
@@ -89,13 +89,13 @@ export const profileSummary: ProfileSummary = {
 
 export const currentFocus: CurrentFocus = {
   eyebrow: "Current focus",
-  title: "LLM serving systems research",
+  title: "LLM serving systems engineering",
   summary:
     "I work on inference engine optimization for large-model serving at Baidu AI Computing Department, with a focus on cache behavior, KV-transfer paths, Mooncake TransferEngine, and backend performance across NVIDIA GPUs and Kunlunxin P-series accelerators.",
   bullets: [
     "Analyze throughput, latency, cache hit behavior, memory efficiency, and runtime bottlenecks in production-oriented inference workloads.",
-    "Study prefix cache, KV cache lifecycle, cache residency, and transfer readiness across prefill/decode serving paths.",
-    "Research Mooncake TransferEngine boundaries for KV transfer planning, descriptors, readiness checks, and backend integration.",
+    "Trace prefix cache, KV cache lifecycle, cache residency, and transfer readiness across prefill/decode serving paths.",
+    "Validate Mooncake TransferEngine boundaries for KV transfer planning, descriptors, readiness checks, and backend integration.",
     "Carry SGLang runtime experience into serving-system design: request lifecycle, scheduling, cache management, and transfer boundaries.",
   ],
   links: [
@@ -121,7 +121,7 @@ export const researchAreas: ResearchArea[] = [
     title: "Cache & KV Cache",
     label: "memory behavior",
     description:
-      "Studying prefix cache and KV-cache lifecycle behavior for reuse, residency, memory pressure, and serving stability.",
+      "Tracing prefix cache and KV-cache lifecycle behavior for reuse, residency, memory pressure, and serving stability.",
     points: [
       "prefix cache behavior",
       "KV page lifecycle",
@@ -133,7 +133,7 @@ export const researchAreas: ResearchArea[] = [
     title: "Mooncake TE",
     label: "transfer engine",
     description:
-      "Researching Mooncake TransferEngine integration for KV transfer planning, descriptors, readiness checks, and runtime boundaries.",
+      "Validating Mooncake TransferEngine integration for KV transfer planning, descriptors, readiness checks, and runtime boundaries.",
     points: [
       "KV transfer planning",
       "descriptor and checksum paths",
@@ -159,12 +159,12 @@ export const impactStats: ImpactStat[] = [
   {
     value: "cache + KV",
     label: "memory path",
-    detail: "Study prefix cache, KV-cache lifecycle, residency, and serving memory behavior.",
+    detail: "Trace prefix cache, KV-cache lifecycle, residency, and serving memory behavior.",
   },
   {
     value: "Mooncake TE",
     label: "transfer path",
-    detail: "Research KV transfer planning, descriptor boundaries, and readiness checks.",
+    detail: "Validate KV transfer planning, descriptor boundaries, and readiness checks.",
   },
   {
     value: "NVIDIA + P-series",
@@ -213,7 +213,7 @@ export const experienceHighlights: ExperienceHighlight[] = [
     end: "Present",
     highlights: [
       "Work on inference engine performance for large-model serving systems.",
-      "Research cache, KV-cache, and Mooncake TransferEngine paths for prefill/decode serving workloads.",
+      "Trace cache, KV-cache, and Mooncake TransferEngine paths for prefill/decode serving workloads.",
       "Optimize runtime and backend paths across NVIDIA GPUs and Kunlunxin P-series accelerators.",
       "Investigate bottlenecks across kernels, operators, scheduling, memory behavior, transfer boundaries, and execution paths.",
     ],
