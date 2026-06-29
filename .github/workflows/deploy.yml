@@ -4,9 +4,14 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: write
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SITE_URL: https://imreese.github.io
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -14,7 +19,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
           
       - name: Install dependencies
