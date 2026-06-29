@@ -18,11 +18,16 @@ export default function VisitData() {
     const fetchVisitStats = async () => {
       try {
         const response = await fetch('/api/visit-stats');
+        if (!response.ok) {
+          return;
+        }
         const data = await response.json();
-        // console.log('data: ', data)
-        setStats(data);
-      } catch (error) {
-        console.error('Error fetching visit stats:', error);
+        setStats({
+          totalUV: data.totalUV ?? '-',
+          dailyUV: data.dailyUV ?? '-',
+        });
+      } catch {
+        // Keep the footer quiet when analytics is unavailable locally.
       }
     };
 
