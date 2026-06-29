@@ -12,6 +12,8 @@ import avatarImage from '@/images/avatar.jpg'
 import { navItems } from '@/config/siteConfig'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
 import { GithubRepo } from '@/components/shared/GithubRepo'
+import { LanguageToggle } from '@/components/shared/LanguageToggle'
+import { useLanguage } from '@/components/shared/LanguageProvider'
 import { name } from '@/config/infoConfig'
 import { ChevronDownIcon, XIcon } from 'lucide-react'
 
@@ -34,10 +36,12 @@ function MobileNavItem({
 function MobileNavigation(
   props: React.ComponentPropsWithoutRef<typeof Popover>,
 ) {
+  const { t } = useLanguage()
+
   return (
     <Popover {...props}>
       <Popover.Button className="group flex items-center rounded-full bg-card/80 px-4 py-2 text-sm font-medium shadow-lg ring-1 ring-border/70 backdrop-blur">
-        Menu
+        {t("common.menu")}
         <ChevronDownIcon className="ml-3 h-auto w-2" />
       </Popover.Button>
       <Transition.Root>
@@ -66,7 +70,7 @@ function MobileNavigation(
             className="fixed inset-x-4 top-8 z-50 origin-top rounded-3xl p-8 ring-1 ring-muted bg-card"
           >
             <div className="flex flex-row-reverse items-center justify-between">
-              <Popover.Button aria-label="Close menu" className="-m-1 p-1">
+              <Popover.Button aria-label={t("common.closeMenu")} className="-m-1 p-1">
                 <XIcon className="h-6 w-6 text-muted-foreground" />
               </Popover.Button>
               <h2 className="text-sm font-medium text-muted-foreground">
@@ -76,10 +80,17 @@ function MobileNavigation(
             <nav className="mt-6">
               <ul className="-my-2 divide-y divide-zinc-100 text-base dark:divide-zinc-100/5">
                 {navItems.map((item) => (
-                  <MobileNavItem key={item.name} href={item.href}>{item.name}</MobileNavItem>
+                  <MobileNavItem key={item.name} href={item.href}>
+                    {t(`nav.${item.name}` as Parameters<typeof t>[0])}
+                  </MobileNavItem>
                 ))}
               </ul>
             </nav>
+            <div className="mt-6 flex items-center gap-1 border-t border-border/70 pt-5">
+              <LanguageToggle />
+              <ThemeToggle />
+              <GithubRepo />
+            </div>
           </Popover.Panel>
         </Transition.Child>
       </Transition.Root>
@@ -117,6 +128,8 @@ function NavItem({
 }
 
 function DesktopNavigation(props: React.ComponentPropsWithoutRef<'nav'>) {
+  const { t } = useLanguage()
+
   return (
     <nav {...props}>
       <ul className="flex rounded-full bg-card/80 px-3 text-sm font-medium shadow-md ring-1 ring-border/70 backdrop-blur">
@@ -127,7 +140,9 @@ function DesktopNavigation(props: React.ComponentPropsWithoutRef<'nav'>) {
                 <div className="h-4 w-px bg-muted-foreground/30" />
               </li>
             )}
-            <NavItem href={item.href}>{item.name}</NavItem>
+            <NavItem href={item.href}>
+              {t(`nav.${item.name}` as Parameters<typeof t>[0])}
+            </NavItem>
           </Fragment>
         ))}
       </ul>
@@ -214,6 +229,7 @@ export function Header() {
               </div>
               <div className="hidden justify-end md:flex md:flex-1">
                 <div className="pointer-events-auto flex flex-row items-center gap-2 md:mr-2">
+                  <LanguageToggle />
                   <ThemeToggle />
                   <GithubRepo />
                 </div>

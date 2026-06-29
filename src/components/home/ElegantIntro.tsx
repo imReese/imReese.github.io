@@ -4,8 +4,11 @@ import { motion } from "framer-motion"
 import { ArrowRight, BookOpen, Github } from "lucide-react"
 import { headline, introduction, profileSummary } from "@/config/infoConfig"
 import { SystemsPanel } from "@/components/home/SystemsPanel"
+import { useLanguage } from "@/components/shared/LanguageProvider"
 
 export function ElegantIntro() {
+  const { t } = useLanguage()
+
   return (
     <section className="grid min-w-0 gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
       <motion.div
@@ -38,14 +41,14 @@ export function ElegantIntro() {
             className="inline-flex max-w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/15 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/20"
           >
             <Github className="h-4 w-4" />
-            View projects
+            {t("home.viewProjects")}
           </a>
           <a
             href="/blogs"
             className="inline-flex max-w-full items-center justify-center gap-2 rounded-full border border-primary/35 px-6 py-3 text-sm font-semibold text-primary transition hover:-translate-y-0.5 hover:bg-primary/10"
           >
             <BookOpen className="h-4 w-4" />
-            Read notes
+            {t("home.readNotes")}
             <ArrowRight className="h-4 w-4" />
           </a>
         </div>

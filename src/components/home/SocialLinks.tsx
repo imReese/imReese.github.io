@@ -7,12 +7,15 @@ import { CustomIcon } from '@/components/shared/CustomIcon'
 import { cn } from '@/lib/utils'
 
 export default function SocialLinks({ className }: { className?: string }) {
+    const withUtmSource = (href: string) =>
+        utm_source ? `${href}?utm_source=${utm_source}` : href
+
     return (
         <div className={cn("mt-6 flex items-center", className)}>
             {socialLinks.map((link) => (
                 <Link
                     key={link.name}
-                    href={`${link.href}?utm_source=${utm_source}`}
+                    href={withUtmSource(link.href)}
                     target="_blank"
                     rel="noreferrer"
                     aria-label={link.ariaLabel ?? `Follow on ${link.name}`}

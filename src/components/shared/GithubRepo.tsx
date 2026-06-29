@@ -1,19 +1,21 @@
 "use client"
 
-import * as React from "react"
 import { GithubLogo } from "@phosphor-icons/react"
 import Link from "next/link"
+import { useLanguage } from "@/components/shared/LanguageProvider"
 
 export function GithubRepo() {
+  const { t } = useLanguage()
+
   return (
     <Link
       href="https://github.com/imReese/reese-personal-website"
       target="_blank"
       rel="noopener noreferrer nofollow"
-      className="group flex flex-row  justify-start items-center text-md font-medium transition hover:text-teal-500 dark:text-zinc-200 dark:hover:text-teal-500"
+      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
     >
       <GithubLogo size={18} weight="duotone" />
-      <span className="sr-only">Github Repo</span>
+      <span className="sr-only">{t("common.githubRepo")}</span>
     </Link>
   )
 }
