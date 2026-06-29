@@ -14,6 +14,18 @@ export const metadata: Metadata = {
   },
   description:
     `${introduction}`,
+  manifest: "/manifest.json?v=20260629",
+  icons: {
+    icon: [
+      { url: "/favicon.ico?v=20260629", sizes: "any" },
+      { url: "/favicon.svg?v=20260629", type: "image/svg+xml" },
+      { url: "/favicon-32x32.png?v=20260629", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-16x16.png?v=20260629", sizes: "16x16", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png?v=20260629", sizes: "180x180", type: "image/png" },
+    ],
+  },
   alternates: {
     types: {
       'application/rss+xml': `${process.env.NEXT_PUBLIC_SITE_URL}/feed`,
@@ -29,12 +41,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <head>
-        <link rel="manifest" href="/manifest.json" />
+        <link rel="manifest" href="/manifest.json?v=20260629" />
         <meta name="theme-color" content="#0f172a" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Reese Website" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=20260629" />
       </head>
       <body className="flex h-full bg-background">
         <Providers>
