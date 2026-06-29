@@ -4,7 +4,7 @@
         <title>Reese</title>
         <link>https://imreese.github.io</link>
         <description>Reese's blog</description>
-        <lastBuildDate>Mon, 29 Jun 2026 09:56:43 GMT</lastBuildDate>
+        <lastBuildDate>Mon, 29 Jun 2026 10:05:06 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>https://github.com/jpmonette/feed</generator>
         <image>
@@ -156,28 +156,6 @@ Mooncake 和上层 serving 框架的关系，最好不要一上来就脑补成�
 - SGLang 侧 scheduler 如何把 prefix cache、remote KVCache 和 recompute cost 统一到请求调度决策里。
 
 这篇先作为公开版入口。后续如果继续写，我会把 Store Put/Get、Transfer Engine transport selection、Sunrise Link/TENT、以及 SGLang KVCache path 分开写成系列文章。
-]]></content:encoded>
-            <author>reese_duan@outlook.com (Reese)</author>
-        </item>
-        <item>
-            <title><![CDATA[Blog Test]]></title>
-            <link>https://imreese.github.io/blogs/test-blog</link>
-            <guid>https://imreese.github.io/blogs/test-blog</guid>
-            <pubDate>Wed, 11 Dec 2024 00:00:00 GMT</pubDate>
-            <description><![CDATA[This is a test blog]]></description>
-            <content:encoded><![CDATA[
-# H1
-
-## H2
-
-### H3
-
-
-
-
-
----
-
 ]]></content:encoded>
             <author>reese_duan@outlook.com (Reese)</author>
         </item>
