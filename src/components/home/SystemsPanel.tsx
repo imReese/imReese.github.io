@@ -1,25 +1,7 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { Activity, BriefcaseBusiness, Cpu, Database, MapPin, Network, Sparkles } from "lucide-react"
-
-const highlights = [
-  {
-    title: "Runtime path",
-    detail: "SGLang-style request lifecycle, scheduler boundaries, and backend dispatch.",
-    icon: Activity,
-  },
-  {
-    title: "KV transfer",
-    detail: "Mooncake TE integration boundaries, descriptors, and readiness checks.",
-    icon: Network,
-  },
-  {
-    title: "Backend tuning",
-    detail: "NVIDIA GPU and Kunlunxin P-series accelerator optimization paths.",
-    icon: Cpu,
-  },
-]
+import { BriefcaseBusiness, Database, MapPin, Sparkles } from "lucide-react"
 
 const nowItems = [
   "Runtime and scheduler paths for prefill/decode serving",
@@ -108,26 +90,6 @@ export function SystemsPanel() {
               </div>
             ))}
           </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          {highlights.map((item) => {
-            const Icon = item.icon
-            return (
-              <div
-                key={item.title}
-                className="min-w-0 rounded-xl border border-border/65 bg-card/70 p-3"
-              >
-                <div className="flex flex-col gap-2">
-                  <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-background/80 text-primary ring-1 ring-border/70">
-                    <Icon className="h-4 w-4" />
-                  </span>
-                  <h2 className="text-sm font-semibold leading-5 text-foreground">{item.title}</h2>
-                  <p className="text-xs leading-5 text-muted-foreground">{item.detail}</p>
-                </div>
-              </div>
-            )
-          })}
         </div>
 
         <div className="rounded-xl border border-border/60 bg-secondary/55 p-4">
