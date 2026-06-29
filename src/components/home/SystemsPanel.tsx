@@ -1,43 +1,43 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { Activity, Boxes, Database, GitBranch, ServerCog } from "lucide-react"
+import { Activity, Boxes, Cpu, Database, ServerCog } from "lucide-react"
 
 const services = [
   {
-    name: "router",
-    detail: "gateway / gRPC",
-    icon: GitBranch,
+    name: "scheduler",
+    detail: "batch / dispatch",
+    icon: Boxes,
     tone: "text-primary",
     width: "w-10/12",
   },
   {
-    name: "scheduler",
-    detail: "prefill / decode",
-    icon: Boxes,
+    name: "operators",
+    detail: "fusion / backend",
+    icon: Activity,
     tone: "text-[hsl(var(--chart-3))]",
     width: "w-9/12",
   },
   {
-    name: "kv transfer",
-    detail: "PD / Mooncake",
-    icon: Database,
+    name: "kernels",
+    detail: "nvidia / p-series",
+    icon: Cpu,
     tone: "text-[hsl(var(--chart-2))]",
     width: "w-8/12",
   },
   {
-    name: "kernels",
-    detail: "cuda / cpu boundary",
-    icon: Activity,
+    name: "memory",
+    detail: "kv / workspace",
+    icon: Database,
     tone: "text-[hsl(var(--chart-4))]",
     width: "w-7/12",
   },
 ]
 
 const logLines = [
-  "sglang serve --runtime rust",
-  "prefill batch planned with kv pages",
-  "decode worker waiting for kv-ready signal",
+  "profile batch latency and throughput",
+  "tune operator and kernel execution paths",
+  "validate NVIDIA and Kunlunxin P-series backends",
 ]
 
 export function SystemsPanel() {
@@ -53,7 +53,7 @@ export function SystemsPanel() {
         <div className="mb-4 flex items-center justify-between text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
             <ServerCog className="h-4 w-4 text-primary" />
-            <span className="font-medium">sglang runtime</span>
+            <span className="font-medium">inference engine</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-[hsl(var(--chart-2))]" />

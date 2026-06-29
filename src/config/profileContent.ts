@@ -57,37 +57,38 @@ export type StackGroup = {
 
 export const profileSummary: ProfileSummary = {
   name: "Reese",
-  headline: "Backend systems for LLM serving and cloud-native products.",
+  headline: "Inference engines for LLM serving and backend systems.",
   introduction:
-    "I'm Reese, a Beijing-based systems engineer building Rust runtime infrastructure for SGLang, with production experience across distributed storage, Linux tooling, and CPU performance analysis.",
+    "I'm Reese, a Beijing-based systems engineer working on inference engine performance for large-model serving, with experience across SGLang runtime infrastructure, heterogeneous accelerator optimization, distributed storage, and Linux performance analysis.",
   location: "Beijing, China",
   email: "reese_duan@outlook.com",
   githubUsername: "imReese",
   focusAreas: [
+    "Inference Engine",
+    "LLM Serving",
+    "GPU Optimization",
+    "Kunlunxin P-series",
     "SGLang",
-    "Rust Runtime",
-    "PD Disaggregation",
     "Backend Systems",
-    "Cloud Native",
-    "Linux",
   ],
   aboutParagraphs: [
     "I build backend systems where reliability, performance, and operational clarity matter.",
-    "My recent work focuses on SGLang's Rust runtime direction: request lifecycle, scheduler/router boundaries, gRPC protocols, tokenization edges, and PD-style KV transfer planning.",
+    "My current work focuses on inference engine performance for large-model serving, including runtime paths, backend execution, and heterogeneous accelerator optimization across NVIDIA GPUs and Kunlunxin P-series accelerators.",
+    "I also work on SGLang's Rust runtime direction: request lifecycle, scheduler/router boundaries, gRPC protocols, tokenization edges, and PD-style KV transfer planning.",
     "Before that I worked on distributed storage cluster management and CPU microarchitecture performance analysis at Huawei, which shaped how I debug systems from product behavior down to instruction-level traces.",
   ],
 }
 
 export const currentFocus: CurrentFocus = {
   eyebrow: "Current focus",
-  title: "SGLang Rust runtime infrastructure",
+  title: "Inference engine performance",
   summary:
-    "I am working on a Rust-first serving runtime for SGLang that moves request lifecycle, scheduling, routing, protocol, tokenizer, cache, and transfer boundaries into a testable systems layer.",
+    "I work on inference engine optimization for large-model serving at Baidu AI Computing Department, focusing on runtime behavior and backend performance across NVIDIA GPUs and Kunlunxin P-series accelerators.",
   bullets: [
-    "Define router and gRPC service boundaries for tokenized generation, health, model info, and control-plane calls.",
-    "Shape scheduler, prefix-cache, KV page allocation, and prefill/decode batching paths for clearer runtime ownership.",
-    "Model PD disaggregation, KV transfer planning, descriptor checksums, and Mooncake-backed transfer boundaries.",
-    "Keep kernel execution behind portable backend boundaries for CUDA, CPU, Metal, ROCm, and MUSA directions.",
+    "Analyze throughput, latency, memory efficiency, and runtime bottlenecks in production-oriented inference workloads.",
+    "Tune execution paths around kernels, operators, scheduling, and backend dispatch for heterogeneous accelerators.",
+    "Work across NVIDIA GPU and Kunlunxin P-series accelerator paths while keeping device-specific details behind clear runtime boundaries.",
+    "Carry SGLang runtime experience into serving-system design: request lifecycle, scheduling, KV cache, and transfer boundaries.",
   ],
   links: [
     { label: "sglang-rs", href: "https://github.com/imReese/sglang-rs" },
@@ -96,6 +97,21 @@ export const currentFocus: CurrentFocus = {
 }
 
 export const impactStats: ImpactStat[] = [
+  {
+    value: "NVIDIA + P-series",
+    label: "accelerators",
+    detail: "Optimize inference paths across GPU and Kunlunxin accelerator backends.",
+  },
+  {
+    value: "latency / throughput",
+    label: "serving metrics",
+    detail: "Focus on practical performance signals for large-model serving systems.",
+  },
+  {
+    value: "runtime + kernels",
+    label: "engine layers",
+    detail: "Investigate bottlenecks across scheduling, operators, kernels, and memory paths.",
+  },
   {
     value: "128 -> 256",
     label: "cluster scale",
@@ -129,6 +145,19 @@ export const impactStats: ImpactStat[] = [
 ]
 
 export const experienceHighlights: ExperienceHighlight[] = [
+  {
+    company: "Baidu",
+    team: "AI Computing Department",
+    title: "Software Engineer, Inference Engine",
+    logo: "cpu",
+    start: "2025.06.30",
+    end: "Present",
+    highlights: [
+      "Work on inference engine performance for large-model serving systems.",
+      "Optimize runtime and backend paths across NVIDIA GPUs and Kunlunxin P-series accelerators.",
+      "Investigate bottlenecks across kernels, operators, scheduling, memory behavior, and execution paths.",
+    ],
+  },
   {
     company: "Huawei Cloud Computing",
     team: "Shuhai Lab",
