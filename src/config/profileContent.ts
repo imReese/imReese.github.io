@@ -65,19 +65,19 @@ export type StackGroup = {
 
 export const profileSummary: ProfileSummary = {
   name: "Reese",
-  headline: "Inference engines, cache systems, and backend paths for LLM serving.",
+  headline: "Hi, I'm Reese. I build reliable backend systems.",
   introduction:
-    "I'm Reese, a Beijing-based systems engineer working on inference engine performance for large-model serving, with research across cache and KV paths, Mooncake TransferEngine, SGLang runtime infrastructure, and heterogeneous accelerator backends.",
+    "I'm a Beijing-based software engineer working on large-model inference performance at Baidu AI Computing. I like turning runtime, cache, and accelerator problems into dependable systems, and writing down what I learn along the way.",
   location: "Beijing, China",
   email: "reese_duan@outlook.com",
   githubUsername: "imReese",
   focusAreas: [
-    "Inference Engine",
-    "Cache / KV Cache",
-    "Mooncake TE",
-    "Kunlunxin P-series",
-    "SGLang",
-    "NVIDIA GPUs",
+    "Backend Systems",
+    "AI Infrastructure",
+    "Performance",
+    "SGLang Notes",
+    "Mooncake Research",
+    "Beijing",
   ],
   aboutParagraphs: [
     "I build backend systems where reliability, performance, and operational clarity matter.",

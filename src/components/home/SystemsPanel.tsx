@@ -1,51 +1,45 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { Boxes, Cpu, Database, Network, ServerCog, Workflow } from "lucide-react"
+import { BookOpen, BriefcaseBusiness, Code2, MapPin, PencilLine, Sparkles } from "lucide-react"
 
-const pathSteps = [
+const highlights = [
   {
-    name: "request",
-    detail: "tokenized req",
-    icon: Workflow,
+    title: "Current role",
+    detail: "Baidu AI Computing, inference performance.",
+    icon: BriefcaseBusiness,
   },
   {
-    name: "scheduler",
-    detail: "prefill / decode",
-    icon: Boxes,
+    title: "Writing",
+    detail: "SGLang, Mooncake, cache notes.",
+    icon: PencilLine,
   },
   {
-    name: "prefix cache",
-    detail: "reuse / hit behavior",
-    icon: Database,
-  },
-  {
-    name: "KV cache",
-    detail: "pages / residency",
-    icon: Database,
-  },
-  {
-    name: "Mooncake TE",
-    detail: "KV transfer boundary",
-    icon: Network,
-  },
-  {
-    name: "backend",
-    detail: "GPU / P-series",
-    icon: Cpu,
+    title: "Lab",
+    detail: "Runtime and infrastructure experiments.",
+    icon: Code2,
   },
 ]
 
-const signals = [
-  { label: "cache hit", value: "prefix / KV" },
-  { label: "transfer", value: "Mooncake TE" },
-  { label: "backend", value: "GPU / P-series" },
+const nowItems = [
+  "Large-model inference performance",
+  "Cache and KV-cache behavior",
+  "Mooncake TE and SGLang runtime notes",
 ]
 
-const logLines = [
-  "trace request -> cache lookup -> TE transfer",
-  "measure prefill/decode cache residency",
-  "validate NVIDIA and Kunlunxin P-series backends",
+const timeline = [
+  {
+    year: "2025",
+    text: "Baidu AI Computing, inference engine work",
+  },
+  {
+    year: "2023",
+    text: "Huawei Cloud, CPU architecture research",
+  },
+  {
+    year: "2022",
+    text: "Huawei Data Storage, distributed systems",
+  },
 ]
 
 export function SystemsPanel() {
@@ -54,94 +48,78 @@ export function SystemsPanel() {
       initial={{ opacity: 0, y: 20, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.7, delay: 0.2, ease: "easeOut" }}
-      className="relative overflow-hidden rounded-2xl border border-border/80 bg-card/95 p-4 shadow-2xl shadow-primary/15 backdrop-blur md:p-5"
+      className="relative min-w-0 max-w-full overflow-hidden rounded-2xl border border-border/80 bg-card/95 p-5 shadow-2xl shadow-primary/10 backdrop-blur md:p-6"
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,hsl(var(--primary)/0.18),transparent_18rem),radial-gradient(circle_at_85%_88%,hsl(var(--chart-3)/0.16),transparent_16rem)]" />
-      <div className="relative">
-        <div className="mb-4 flex items-center justify-between text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <ServerCog className="h-4 w-4 text-primary" />
-            <span className="font-medium">inference path</span>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,hsl(var(--primary)/0.14),transparent_18rem),radial-gradient(circle_at_90%_90%,hsl(var(--chart-3)/0.12),transparent_16rem)]" />
+      <div className="relative space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/20">
+              <Sparkles className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">{"Reese's workspace"}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Engineering, notes, and small experiments</p>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-[hsl(var(--chart-2))]" />
-            <span>cache-aware</span>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-border/70 bg-background/70 p-3">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {pathSteps.map((step, index) => {
-              const Icon = step.icon
-              const isTransfer = step.name === "Mooncake TE"
-              const isCache = step.name.includes("cache")
-              return (
-                <motion.div
-                  key={step.name}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.45, delay: 0.28 + index * 0.06 }}
-                  className={`relative overflow-hidden rounded-lg border p-3 ${
-                    isTransfer
-                      ? "border-primary/35 bg-primary/10"
-                      : isCache
-                        ? "border-[hsl(var(--chart-2)/0.35)] bg-[hsl(var(--chart-2)/0.08)]"
-                        : "border-border/70 bg-card/75"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-background/80 text-primary ring-1 ring-border/70">
-                      <Icon className="h-3.5 w-3.5" />
-                    </span>
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold leading-5 text-foreground">{step.name}</div>
-                      <div className="truncate text-xs text-muted-foreground">{step.detail}</div>
-                    </div>
-                  </div>
-                  <div className="mt-3 h-1 overflow-hidden rounded-full bg-background/80">
-                    <motion.div
-                      initial={{ scaleX: 0 }}
-                      animate={{ scaleX: 1 }}
-                      transition={{ duration: 0.7, delay: 0.5 + index * 0.05 }}
-                      className="h-full origin-left rounded-full bg-primary"
-                    />
-                  </div>
-                </motion.div>
-              )
-            })}
+          <div className="flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-3 py-1 text-xs text-muted-foreground">
+            <MapPin className="h-3.5 w-3.5 text-primary" />
+            <span>Beijing</span>
           </div>
         </div>
 
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          {signals.map((signal, index) => (
-            <motion.div
-              key={signal.label}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, delay: 0.72 + index * 0.06 }}
-              className="min-w-0 rounded-lg border border-border/60 bg-secondary/70 p-2"
-            >
-              <div className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-primary">
-                {signal.label}
+        <div className="rounded-xl border border-border/70 bg-background/70 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <BookOpen className="h-4 w-4 text-primary" />
+            <span>{"What I'm focused on now"}</span>
+          </div>
+          <div className="mt-4 grid gap-3">
+            {nowItems.map((item, index) => (
+              <div
+                key={item}
+                className="flex items-center gap-3 text-sm text-muted-foreground"
+              >
+                <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                  {index + 1}
+                </span>
+                <span>{item}</span>
               </div>
-              <div className="mt-1 text-xs leading-5 text-muted-foreground">{signal.value}</div>
-            </motion.div>
-          ))}
+            ))}
+          </div>
         </div>
 
-        <div className="mt-4 rounded-xl border border-border/60 bg-background/80 p-3 font-mono text-[0.72rem] leading-6 text-muted-foreground">
-          {logLines.map((line, index) => (
-            <motion.div
-              key={line}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.4, delay: 0.72 + index * 0.08 }}
-              className="flex gap-2"
-            >
-              <span className="text-primary">$</span>
-              <span>{line}</span>
-            </motion.div>
-          ))}
+        <div className="grid gap-3 sm:grid-cols-3">
+          {highlights.map((item) => {
+            const Icon = item.icon
+            return (
+              <div
+                key={item.title}
+                className="min-w-0 rounded-xl border border-border/65 bg-card/70 p-3"
+              >
+                <div className="flex flex-col gap-2">
+                  <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-background/80 text-primary ring-1 ring-border/70">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <h2 className="text-sm font-semibold leading-5 text-foreground">{item.title}</h2>
+                  <p className="text-xs leading-5 text-muted-foreground">{item.detail}</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="rounded-xl border border-border/60 bg-secondary/55 p-4">
+          <div className="space-y-3">
+            {timeline.map((item) => (
+              <div
+                key={`${item.year}-${item.text}`}
+                className="grid grid-cols-[3.25rem_1fr] gap-3 text-sm"
+              >
+                <span className="font-mono text-xs font-semibold text-primary">{item.year}</span>
+                <span className="leading-5 text-muted-foreground">{item.text}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </motion.div>
