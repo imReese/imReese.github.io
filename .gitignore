@@ -95,6 +95,15 @@ out
 /friends/
 /projects/
 
+# Generated PWA service worker files
+/sw.js
+/workbox-*.js
+/public/sw.js
+/public/workbox-*.js
+
+# Legacy template icon assets
+/public/images/icon/
+
 # Local agent scratch space
 .superpowers/
 docs/superpowers/
