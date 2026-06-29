@@ -17,7 +17,7 @@ export const email = profileSummary.email
 export const githubUsername = profileSummary.githubUsername
 
 // about page
-export const aboutMeHeadline = "I'm Reese, a backend systems engineer based in Shenzhen, China."
+export const aboutMeHeadline = "I'm Reese, a backend systems engineer based in Beijing, China."
 export const aboutParagraphs = profileSummary.aboutParagraphs
 
 

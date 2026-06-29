@@ -59,8 +59,8 @@ export const profileSummary: ProfileSummary = {
   name: "Reese",
   headline: "Backend systems for LLM serving and cloud-native products.",
   introduction:
-    "I'm Reese, a Shenzhen-based systems engineer building Rust runtime infrastructure for SGLang, with production experience across distributed storage, Linux tooling, and CPU performance analysis.",
-  location: "Shenzhen, China",
+    "I'm Reese, a Beijing-based systems engineer building Rust runtime infrastructure for SGLang, with production experience across distributed storage, Linux tooling, and CPU performance analysis.",
+  location: "Beijing, China",
   email: "reese_duan@outlook.com",
   githubUsername: "imReese",
   focusAreas: [
