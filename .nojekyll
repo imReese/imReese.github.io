@@ -1,10 +1,13 @@
 # This file tells GitHub Pages to skip Jekyll processing
+
 # and serve the files as static assets directly
 
 # The presence of this file in the repository root
+
 # disables Jekyll processing on GitHub Pages
 
 # This is necessary for Next.js static export deployments
+
 # that don't require Jekyll's Ruby-based processing
 
 # Static files are served as-is without Jekyll transformation

@@ -97,8 +97,9 @@ out
 
 # Local agent scratch space
 .superpowers/
+docs/superpowers/
 
-# Accidental Next.js build artifacts under docs; keep docs/superpowers tracked
+# Accidental Next.js build artifacts under docs
 docs/app-build-manifest.json
 docs/build-manifest.json
 docs/cache/
