@@ -5,8 +5,6 @@ import { footerItems } from '@/config/siteConfig'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
 import { name } from '@/config/infoConfig'
 import SocialLinks from '@/components/home/SocialLinks'
-import VisitData from '@/components/layout/VisitData'
-import { TechVision } from './TechVision'
 
 
 function NavLink({
@@ -32,27 +30,21 @@ export function Footer() {
       <ContainerOuter>
         <div className="border-t border-muted pb-16 pt-10">
           <ContainerInner>
-            <div className="flex flex-col items-center justify-between gap-8 lg:flex-row lg:items-start">
-              {/* 技术愿景组件 - 放在nav旁边 */}
-              <div className="order-2 lg:order-1">
-                <TechVision />
-              </div>
-              
-              <div className="order-1 lg:order-2 flex flex-wrap justify-center gap-x-6 gap-y-1 text-sm font-medium">
+            <div className="flex flex-col items-center justify-between gap-6 sm:flex-row sm:items-start">
+              <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm font-medium sm:justify-start">
                 {footerItems.map((item) => (
                   <NavLink key={item.name} href={item.href}>{item.name}</NavLink>
                 ))}
               </div>
-              
-              <div className='order-3 flex flex-col justify-center items-start'>
-                <div className='flex flex-row justify-end items-center gap-2'>
+
+              <div className="flex flex-col items-center gap-2 sm:items-end">
+                <div className="flex flex-row items-center justify-end gap-2">
                   <p className="text-sm text-muted-foreground">
                     &copy; {new Date().getFullYear()} {name}. All rights reserved.
                   </p>
                   <ThemeToggle />
                 </div>
-                <SocialLinks className='mt-0'/>
-                <VisitData />
+                <SocialLinks className="mt-0" />
               </div>
             </div>
           </ContainerInner>
