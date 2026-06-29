@@ -1,105 +1,89 @@
+import Link from "next/link"
 import { Container } from "@/components/layout/Container"
 import { ElegantIntro } from "@/components/home/ElegantIntro"
 import AnimatedCareer from "@/components/home/AnimatedCareer"
 import AnimatedEducation from "@/components/home/AnimatedEducation"
-import { BlogCard } from "@/components/home/BlogCard"
-import { getAllBlogs, type BlogType } from "@/lib/blogs"
-import { techIcons } from "@/config/infoConfig"
-import GitHubSnake from "@/components/home/GitHubSnake"
+import { getAllBlogs } from "@/lib/blogs"
+import { stackGroups, techIcons } from "@/config/infoConfig"
 import IconCloud from "@/components/ui/icon-cloud"
+import { OpenSourcePulse } from "@/components/home/OpenSourcePulse"
+import { HomepageNotes } from "@/components/home/HomepageNotes"
 
 export default async function Home() {
-  let blogList = (await getAllBlogs()).slice(0, 3)
+  const blogList = (await getAllBlogs()).slice(0, 3)
 
   return (
     <div className="min-h-screen">
-      {/* 优雅的个人简介 */}
-      <section className="py-16 lg:py-24">
+      <section className="pb-6 pt-8 sm:pt-10 lg:pb-6 lg:pt-14">
         <Container>
           <ElegantIntro />
         </Container>
       </section>
 
-      {/* GitHub贡献图表 */}
-      <section className="py-16">
+      <section className="py-8 lg:py-10">
         <Container>
-          <div className="text-center mb-10">
-            <h2 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Development Activity</h2>
-            <p className="text-base text-gray-600 dark:text-gray-400 mt-2">Recent coding contributions and open-source work</p>
-          </div>
-          <div className="bg-white/50 dark:bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-200/50 dark:border-gray-700/30 p-6">
-            <GitHubSnake />
-          </div>
+          <OpenSourcePulse />
         </Container>
       </section>
 
-      {/* 专业经历和教育背景 */}
-      <section className="py-16 bg-gray-50/30 dark:bg-gray-900/10">
+      <section className="py-12 lg:py-16">
         <Container>
-          <div className="text-center mb-10">
-            <h2 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Professional Journey</h2>
-            <p className="text-base text-gray-600 dark:text-gray-400 mt-2">My career path and academic background</p>
-          </div>
-          <div className="grid lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
+          <div className="grid gap-6 lg:grid-cols-2">
             <AnimatedCareer />
             <AnimatedEducation />
           </div>
         </Container>
       </section>
 
-      {/* 最新博客文章 */}
-      <section className="py-16">
+      <section className="py-12 lg:py-16">
         <Container>
-          <div className="text-center mb-10">
-            <h2 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Latest Writings</h2>
-            <p className="text-base text-gray-600 dark:text-gray-400 mt-2">Recent insights, tutorials, and thoughts</p>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            {blogList.map((blog: BlogType) => (
-              <BlogCard key={blog.slug} blog={blog} />
-            ))}
-          </div>
-        </Container>
-      </section>
+          <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-stretch">
+            <HomepageNotes blogs={blogList} />
 
-      {/* 技术栈展示 */}
-      <section className="py-16 bg-gray-50/30 dark:bg-gray-900/10">
-        <Container>
-          <div className="text-center mb-10">
-            <h2 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Technologies & Tools</h2>
-            <p className="text-base text-gray-600 dark:text-gray-400 mt-2">Tools and technologies I work with daily</p>
-          </div>
-          <div className="flex justify-center">
-            <div className="w-full max-w-3xl">
-              <div className="bg-white/50 dark:bg-gray-900/30 backdrop-blur-sm rounded-2xl border border-gray-200/50 dark:border-gray-700/30 p-8">
+            <section className="rounded-2xl border border-border/70 bg-card/70 p-6 shadow-sm backdrop-blur">
+              <div className="max-w-xl">
+                <h2 className="text-2xl font-bold tracking-tight text-foreground">Engineering stack</h2>
+                <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                  The tools I reach for when building services, debugging systems, and keeping infrastructure observable.
+                </p>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
+                {stackGroups.map((group) => (
+                  <span key={group.title} className="rounded-full bg-secondary px-3 py-1">
+                    {group.title}: {group.items.slice(0, 3).join(" / ")}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-5 rounded-xl border border-border/50 bg-background/55">
                 <IconCloud iconSlugs={techIcons} />
               </div>
-            </div>
+            </section>
           </div>
         </Container>
       </section>
 
-      {/* 页脚CTA */}
-      <section className="py-20 bg-gradient-to-br from-primary/5 to-purple-500/5">
+      <section className="py-14 lg:py-20">
         <Container>
-          <div className="text-center max-w-3xl mx-auto">
-            <h2 className="text-4xl font-bold tracking-tight mb-4">Let&apos;s Build Something Amazing</h2>
-            <p className="text-lg text-muted-foreground mb-8">
-              Interested in working together? I&apos;m always open to discussing new opportunities and interesting projects.
+          <div className="rounded-2xl border border-primary/20 bg-primary/10 p-8 text-center shadow-xl shadow-primary/5">
+            <h2 className="text-3xl font-bold tracking-tight text-foreground">
+              Have a backend or infrastructure problem worth solving?
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-base leading-8 text-muted-foreground">
+              I like turning practical systems work into reliable products and useful notes.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <a 
-                href="mailto:reese_duan@outlook.com" 
-                className="inline-flex items-center justify-center px-8 py-3 bg-primary text-primary-foreground rounded-full font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
+            <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+              <a
+                href="mailto:reese_duan@outlook.com"
+                className="inline-flex items-center justify-center rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/15 transition hover:-translate-y-0.5"
               >
-                Get In Touch
+                Get in touch
               </a>
-              <a 
-                href="/projects" 
-                className="inline-flex items-center justify-center px-8 py-3 border border-primary text-primary rounded-full font-semibold hover:bg-primary hover:text-primary-foreground transition-all duration-300"
+              <Link
+                href="/projects"
+                className="inline-flex items-center justify-center rounded-full border border-primary/35 px-6 py-3 text-sm font-semibold text-primary transition hover:-translate-y-0.5 hover:bg-primary/10"
               >
-                View My Work
-              </a>
+                View projects
+              </Link>
             </div>
           </div>
         </Container>

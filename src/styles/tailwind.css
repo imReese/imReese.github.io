@@ -13,7 +13,7 @@
     font-kerning: normal;
     text-rendering: optimizeLegibility;
   }
-  
+
   /* 优化字体加载性能 */
   * {
     font-display: optional; /* 优化字体显示策略 */
@@ -27,7 +27,7 @@
     --card-foreground: 234 16% 35%;
     --popover: 0 0% 100%;
     --popover-foreground: 234 16% 35%;
-    --primary: 183 73% 35%; /* Latte teal #179299 */
+    --primary: 183 74% 26%; /* Accessible Latte teal, darkened from #179299 */
     --primary-foreground: 220 23% 95%;
     --secondary: 220 22% 92%; /* Latte mantle #e6e9ef */
     --secondary-foreground: 234 16% 35%;
@@ -39,9 +39,9 @@
     --destructive-foreground: 220 23% 95%;
     --border: 226 14% 80%; /* Latte surface0 #ccd0da */
     --input: 226 14% 80%;
-    --ring: 183 73% 35%;
+    --ring: 183 74% 26%;
     --radius: 0.75rem;
-    --chart-1: 183 73% 35%;
+    --chart-1: 183 74% 26%;
     --chart-2: 109 44% 40%;
     --chart-3: 220 91% 54%;
     --chart-4: 231 97% 72%;
@@ -75,7 +75,7 @@
     --chart-5: 343 81% 75%;
   }
 }
-  
+
 @layer base {
   * {
     @apply border-border;

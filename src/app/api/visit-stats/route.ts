@@ -4,8 +4,18 @@ const OPENPANEL_API_URL = 'https://api.openpanel.dev';
 const OPENPANEL_CLIENT_ID = process.env.NEXT_PUBLIC_OPENPANEL_CLIENT_ID;
 const OPENPANEL_SECRET_ID = process.env.OPENPANEL_API_SECRET_ID;
 const OPENPANEL_PROJECT_ID = process.env.OPENPANEL_PROJECT_ID;
+
+const fallbackStats = {
+  totalUV: '-',
+  dailyUV: '-',
+};
+
 export async function GET() {
   try {
+    if (!OPENPANEL_CLIENT_ID || !OPENPANEL_SECRET_ID || !OPENPANEL_PROJECT_ID) {
+      return NextResponse.json(fallbackStats);
+    }
+
     // 获取总访问数据
     const response = await fetch(`${OPENPANEL_API_URL}/export/events?projectId=${OPENPANEL_PROJECT_ID}&event=screen_view`, {
       headers: {
@@ -57,9 +67,6 @@ export async function GET() {
     });
   } catch (error) {
     // console.error('Error fetching visit stats:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch visit stats' },
-      { status: 500 }
-    );
+    return NextResponse.json(fallbackStats);
   }
 }

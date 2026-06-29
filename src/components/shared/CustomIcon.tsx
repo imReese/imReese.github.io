@@ -2,6 +2,8 @@
 
 import {
   Bank,
+  Cpu,
+  Database,
   GithubLogo,
   XLogo,
   InstagramLogo,
@@ -18,6 +20,10 @@ export function CustomIcon({ name, size = 20 }: { name: string; size?: number })
   switch (name) {
     case 'bank':
       return <Bank size={size} weight="duotone" />;
+    case 'cpu':
+      return <Cpu size={size} weight="duotone" />;
+    case 'database':
+      return <Database size={size} weight="duotone" />;
     case 'github':
       return <GithubLogo size={size} weight="duotone" />;
     case 'x':
