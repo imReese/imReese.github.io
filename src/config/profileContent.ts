@@ -23,6 +23,14 @@ export type ImpactStat = {
   detail: string
 }
 
+export type ResearchArea = {
+  title: string
+  label: string
+  description: string
+  points: string[]
+  tags: string[]
+}
+
 export type ExperienceHighlight = {
   company: string
   team: string
@@ -57,38 +65,38 @@ export type StackGroup = {
 
 export const profileSummary: ProfileSummary = {
   name: "Reese",
-  headline: "Inference engines for LLM serving and backend systems.",
+  headline: "Inference engines, cache systems, and backend paths for LLM serving.",
   introduction:
-    "I'm Reese, a Beijing-based systems engineer working on inference engine performance for large-model serving, with experience across SGLang runtime infrastructure, heterogeneous accelerator optimization, distributed storage, and Linux performance analysis.",
+    "I'm Reese, a Beijing-based systems engineer working on inference engine performance for large-model serving, with research across cache and KV paths, Mooncake TransferEngine, SGLang runtime infrastructure, and heterogeneous accelerator backends.",
   location: "Beijing, China",
   email: "reese_duan@outlook.com",
   githubUsername: "imReese",
   focusAreas: [
     "Inference Engine",
-    "LLM Serving",
-    "GPU Optimization",
+    "Cache / KV Cache",
+    "Mooncake TE",
     "Kunlunxin P-series",
     "SGLang",
-    "Backend Systems",
+    "NVIDIA GPUs",
   ],
   aboutParagraphs: [
     "I build backend systems where reliability, performance, and operational clarity matter.",
-    "My current work focuses on inference engine performance for large-model serving, including runtime paths, backend execution, and heterogeneous accelerator optimization across NVIDIA GPUs and Kunlunxin P-series accelerators.",
-    "I also work on SGLang's Rust runtime direction: request lifecycle, scheduler/router boundaries, gRPC protocols, tokenization edges, and PD-style KV transfer planning.",
+    "My current work focuses on inference engine performance for large-model serving, including runtime paths, cache and KV-cache behavior, Mooncake TransferEngine integration, and heterogeneous accelerator optimization across NVIDIA GPUs and Kunlunxin P-series accelerators.",
+    "I also study SGLang's Rust runtime direction: request lifecycle, scheduler/router boundaries, gRPC protocols, tokenization edges, and PD-style KV transfer planning.",
     "Before that I worked on distributed storage cluster management and CPU microarchitecture performance analysis at Huawei, which shaped how I debug systems from product behavior down to instruction-level traces.",
   ],
 }
 
 export const currentFocus: CurrentFocus = {
   eyebrow: "Current focus",
-  title: "Inference engine performance",
+  title: "LLM serving systems research",
   summary:
-    "I work on inference engine optimization for large-model serving at Baidu AI Computing Department, focusing on runtime behavior and backend performance across NVIDIA GPUs and Kunlunxin P-series accelerators.",
+    "I work on inference engine optimization for large-model serving at Baidu AI Computing Department, with a focus on cache behavior, KV-transfer paths, Mooncake TransferEngine, and backend performance across NVIDIA GPUs and Kunlunxin P-series accelerators.",
   bullets: [
-    "Analyze throughput, latency, memory efficiency, and runtime bottlenecks in production-oriented inference workloads.",
-    "Tune execution paths around kernels, operators, scheduling, and backend dispatch for heterogeneous accelerators.",
-    "Work across NVIDIA GPU and Kunlunxin P-series accelerator paths while keeping device-specific details behind clear runtime boundaries.",
-    "Carry SGLang runtime experience into serving-system design: request lifecycle, scheduling, KV cache, and transfer boundaries.",
+    "Analyze throughput, latency, cache hit behavior, memory efficiency, and runtime bottlenecks in production-oriented inference workloads.",
+    "Study prefix cache, KV cache lifecycle, cache residency, and transfer readiness across prefill/decode serving paths.",
+    "Research Mooncake TransferEngine boundaries for KV transfer planning, descriptors, readiness checks, and backend integration.",
+    "Carry SGLang runtime experience into serving-system design: request lifecycle, scheduling, cache management, and transfer boundaries.",
   ],
   links: [
     { label: "sglang-rs", href: "https://github.com/imReese/sglang-rs" },
@@ -96,21 +104,72 @@ export const currentFocus: CurrentFocus = {
   ],
 }
 
+export const researchAreas: ResearchArea[] = [
+  {
+    title: "Inference Engine",
+    label: "runtime path",
+    description:
+      "Profiling and tuning the execution path that connects scheduling, operators, kernels, and backend dispatch.",
+    points: [
+      "throughput / latency",
+      "operator and kernel paths",
+      "prefill / decode behavior",
+    ],
+    tags: ["LLM Serving", "Runtime", "Scheduling"],
+  },
+  {
+    title: "Cache & KV Cache",
+    label: "memory behavior",
+    description:
+      "Studying prefix cache and KV-cache lifecycle behavior for reuse, residency, memory pressure, and serving stability.",
+    points: [
+      "prefix cache behavior",
+      "KV page lifecycle",
+      "cache hit and residency",
+    ],
+    tags: ["Cache", "KV Cache", "Memory"],
+  },
+  {
+    title: "Mooncake TE",
+    label: "transfer engine",
+    description:
+      "Researching Mooncake TransferEngine integration for KV transfer planning, descriptors, readiness checks, and runtime boundaries.",
+    points: [
+      "KV transfer planning",
+      "descriptor and checksum paths",
+      "KV-ready predicates",
+    ],
+    tags: ["Mooncake", "TransferEngine", "PD"],
+  },
+  {
+    title: "Heterogeneous Backends",
+    label: "accelerators",
+    description:
+      "Optimizing backend paths across NVIDIA GPUs and Kunlunxin P-series accelerators without leaking device-specific complexity into the serving layer.",
+    points: [
+      "NVIDIA GPU path",
+      "Kunlunxin P-series path",
+      "backend abstraction",
+    ],
+    tags: ["NVIDIA", "Kunlunxin", "Backend"],
+  },
+]
+
 export const impactStats: ImpactStat[] = [
+  {
+    value: "cache + KV",
+    label: "memory path",
+    detail: "Study prefix cache, KV-cache lifecycle, residency, and serving memory behavior.",
+  },
+  {
+    value: "Mooncake TE",
+    label: "transfer path",
+    detail: "Research KV transfer planning, descriptor boundaries, and readiness checks.",
+  },
   {
     value: "NVIDIA + P-series",
     label: "accelerators",
     detail: "Optimize inference paths across GPU and Kunlunxin accelerator backends.",
-  },
-  {
-    value: "latency / throughput",
-    label: "serving metrics",
-    detail: "Focus on practical performance signals for large-model serving systems.",
-  },
-  {
-    value: "runtime + kernels",
-    label: "engine layers",
-    detail: "Investigate bottlenecks across scheduling, operators, kernels, and memory paths.",
   },
   {
     value: "128 -> 256",
@@ -154,8 +213,9 @@ export const experienceHighlights: ExperienceHighlight[] = [
     end: "Present",
     highlights: [
       "Work on inference engine performance for large-model serving systems.",
+      "Research cache, KV-cache, and Mooncake TransferEngine paths for prefill/decode serving workloads.",
       "Optimize runtime and backend paths across NVIDIA GPUs and Kunlunxin P-series accelerators.",
-      "Investigate bottlenecks across kernels, operators, scheduling, memory behavior, and execution paths.",
+      "Investigate bottlenecks across kernels, operators, scheduling, memory behavior, transfer boundaries, and execution paths.",
     ],
   },
   {
@@ -204,10 +264,10 @@ export const projectHighlights: ProjectHighlight[] = [
   {
     name: "SGLang Rust Runtime",
     description:
-      "Rust runtime direction for SGLang covering request lifecycle, scheduler/router boundaries, gRPC contracts, tokenizer edges, cache management, and PD KV transfer planning.",
+      "Rust runtime direction for SGLang covering request lifecycle, scheduler/router boundaries, gRPC contracts, tokenizer edges, cache management, Mooncake TE, and PD KV-transfer planning.",
     href: "https://github.com/imReese/sglang-rs",
     label: "github.com/imReese/sglang-rs",
-    tags: ["Rust", "SGLang", "LLM Serving", "gRPC", "Scheduling"],
+    tags: ["Rust", "SGLang", "KV Cache", "Mooncake TE", "Scheduling"],
   },
   {
     name: "Lightweight C++ Web Server",
@@ -229,6 +289,7 @@ export const projectHighlights: ProjectHighlight[] = [
 
 export const stackGroups: StackGroup[] = [
   { title: "Languages", items: ["Rust", "C/C++", "Go", "Python", "Shell", "TypeScript"] },
-  { title: "Systems", items: ["Linux", "gRPC", "Paxos", "epoll", "perf", "Intel Pin", "gdb"] },
+  { title: "Serving", items: ["SGLang", "KV Cache", "Mooncake TE", "gRPC", "Scheduling", "Backend Dispatch"] },
+  { title: "Systems", items: ["Linux", "Paxos", "epoll", "perf", "Intel Pin", "gdb"] },
   { title: "Infrastructure", items: ["Docker", "Kubernetes", "Redis", "MySQL", "Prometheus", "Grafana"] },
 ]

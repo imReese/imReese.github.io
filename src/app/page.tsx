@@ -26,43 +26,44 @@ export default async function Home() {
         </Container>
       </section>
 
-      <section className="py-12 lg:py-16">
+      <section className="py-10 lg:py-14">
         <Container>
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-6 lg:grid-cols-[1.12fr_0.88fr] lg:items-start">
             <AnimatedCareer />
-            <AnimatedEducation />
+
+            <div className="grid gap-6">
+              <section className="rounded-2xl border border-border/70 bg-card/70 p-6 shadow-sm backdrop-blur">
+                <div className="max-w-xl">
+                  <h2 className="text-2xl font-bold tracking-tight text-foreground">Engineering stack</h2>
+                  <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                    Runtime, cache, transfer, backend, and observability tools I reach for when debugging serving systems.
+                  </p>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
+                  {stackGroups.map((group) => (
+                    <span key={group.title} className="rounded-full bg-secondary px-3 py-1">
+                      {group.title}: {group.items.slice(0, 3).join(" / ")}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-5 rounded-xl border border-border/50 bg-background/55">
+                  <IconCloud iconSlugs={techIcons} />
+                </div>
+              </section>
+
+              <AnimatedEducation />
+            </div>
           </div>
+        </Container>
+      </section>
+
+      <section className="py-10 lg:py-14">
+        <Container>
+          <HomepageNotes blogs={blogList} />
         </Container>
       </section>
 
       <section className="py-12 lg:py-16">
-        <Container>
-          <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-stretch">
-            <HomepageNotes blogs={blogList} />
-
-            <section className="rounded-2xl border border-border/70 bg-card/70 p-6 shadow-sm backdrop-blur">
-              <div className="max-w-xl">
-                <h2 className="text-2xl font-bold tracking-tight text-foreground">Engineering stack</h2>
-                <p className="mt-2 text-sm leading-7 text-muted-foreground">
-                  The tools I reach for when building services, debugging systems, and keeping infrastructure observable.
-                </p>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium text-muted-foreground">
-                {stackGroups.map((group) => (
-                  <span key={group.title} className="rounded-full bg-secondary px-3 py-1">
-                    {group.title}: {group.items.slice(0, 3).join(" / ")}
-                  </span>
-                ))}
-              </div>
-              <div className="mt-5 rounded-xl border border-border/50 bg-background/55">
-                <IconCloud iconSlugs={techIcons} />
-              </div>
-            </section>
-          </div>
-        </Container>
-      </section>
-
-      <section className="py-14 lg:py-20">
         <Container>
           <div className="rounded-2xl border border-primary/20 bg-primary/10 p-8 text-center shadow-xl shadow-primary/5">
             <h2 className="text-3xl font-bold tracking-tight text-foreground">
