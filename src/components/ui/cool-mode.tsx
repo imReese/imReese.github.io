@@ -98,7 +98,13 @@ const applyParticleEffect = (
 
       particle.appendChild(circleSVG);
     } else {
-      particle.innerHTML = `<img src="${particleType}" width="${size}" height="${size}" style="border-radius: 50%">`;
+      const particleImage = document.createElement("img");
+      particleImage.src = particleType;
+      particleImage.alt = "";
+      particleImage.width = size;
+      particleImage.height = size;
+      particleImage.style.borderRadius = "50%";
+      particle.appendChild(particleImage);
     }
 
     particle.style.position = "absolute";
