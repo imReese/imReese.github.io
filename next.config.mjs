@@ -7,6 +7,7 @@ import withPWA from 'next-pwa'
 const nextConfig = {
   output: 'export',
   trailingSlash: true,
+  transpilePackages: ['geist'],
   pageExtensions: ['js', 'jsx', 'ts', 'tsx', 'mdx'],
   images: {
     formats: ['image/webp', 'image/avif'], // 现代格式优先

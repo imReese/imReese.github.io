@@ -25,6 +25,30 @@ export default {
 		},
 		typography: 'typographyStyles',
 		extend: {
+			fontFamily: {
+				sans: [
+					'var(--font-geist-sans)',
+					'-apple-system',
+					'BlinkMacSystemFont',
+					'"Segoe UI"',
+					'"PingFang SC"',
+					'"Hiragino Sans GB"',
+					'"Microsoft YaHei"',
+					'"Noto Sans SC"',
+					'sans-serif',
+					'"Apple Color Emoji"',
+					'"Segoe UI Emoji"',
+					'"Segoe UI Symbol"',
+					'"Noto Color Emoji"',
+				],
+				mono: [
+					'var(--font-geist-mono)',
+					'"SFMono-Regular"',
+					'Consolas',
+					'"Liberation Mono"',
+					'monospace',
+				],
+			},
 			borderRadius: {
 				lg: 'var(--radius)',
 				md: 'calc(var(--radius) - 2px)',

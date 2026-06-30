@@ -1,4 +1,6 @@
 import { type Metadata } from "next"
+import { GeistMono } from "geist/font/mono"
+import { GeistSans } from "geist/font/sans"
 
 import { Providers } from "@/app/providers"
 import { Layout } from "@/components/layout/Layout"
@@ -39,7 +41,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
       <head>
         <link rel="manifest" href="/manifest.json?v=20260629" />
         <meta name="theme-color" content="#0f172a" />
