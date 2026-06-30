@@ -1,0 +1,125 @@
+---
+title: 'Attention Store 读论文：把 KV Cache 当成内存系统看'
+description: '一篇围绕 PagedAttention/vLLM 的学习笔记：从 attention 的计算走到 KV cache 的存储、分页、共享和 serving 吞吐。'
+author: 'Reese'
+date: '2025-07-20'
+---
+
+这篇笔记里的 “Attention Store”，我指的是一类问题：attention 计算产生的 K/V 状态，到了推理系统里应该怎么存、怎么复用、怎么调度。
+
+如果说 [Attention Is All You Need](https://arxiv.org/abs/1706.03762) 让我理解了 Transformer 为什么能成立，那么 [Efficient Memory Management for Large Language Model Serving with PagedAttention](https://arxiv.org/abs/2309.06180) 这类论文让我意识到：到了 LLM serving 阶段，attention 不只是算子，还是一个巨大的动态内存系统。
+
+我一开始容易把 KV cache 当成一个简单缓存：前面 token 的 key/value 算过了，存起来，下一个 token 直接复用。这个理解没有错，但太粗了。真正麻烦的地方在于，请求长度不同、生成长度不同、并发请求不断进出、beam search/parallel sampling 还可能共享前缀。这个时候，KV cache 不再像一个数组，而更像操作系统里的虚拟内存。
+
+## KV Cache 为什么会变成 serving 瓶颈
+
+自回归生成每吐一个新 token，都要拿当前 query 去看前面所有 token 的 key/value。为了不重复计算前文，系统会把每层的 K/V 存下来。
+
+直觉上这是省计算，但代价是占显存：
+
+```text
+KV cache size
+  ~= layers
+   * sequence length
+   * KV heads
+   * head dimension
+   * 2(K and V)
+   * dtype bytes
+```
+
+当 batch 变大、上下文变长、模型层数变多时，KV cache 很快会成为显存里的大头。更麻烦的是，它不是一次性固定分配完就不动的内存。一个请求可能很短，也可能一直生成；有的请求结束释放，有的新请求进来；不同请求的生命周期完全不齐。
+
+所以 serving 系统的问题不是“能不能存 KV”，而是“怎样让显存里尽量少浪费，同时还能保持高吞吐”。
+
+## PagedAttention 的核心类比：像分页一样管理 KV
+
+PagedAttention 最好懂的地方，是它借用了操作系统里的分页思想。
+
+普通做法很容易为每个请求预留一整段连续 KV cache。这样实现简单，但会带来两类浪费：
+
+- 预留太多：请求实际没生成那么长，尾部空间空着。
+- 连续要求太强：显存碎片化以后，明明总空闲空间够，却不好放进新的长请求。
+
+PagedAttention 把每个请求的 KV cache 切成固定大小的 block。请求看到的是逻辑 block 序列，底层实际映射到不连续的物理 block。
+
+```text
+request logical KV blocks
+  [0] [1] [2] [3]
+
+block table
+  logical 0 -> physical 8
+  logical 1 -> physical 2
+  logical 2 -> physical 15
+  logical 3 -> physical 4
+```
+
+这样一个请求不再需要连续显存。生成过程中需要更多 KV，就分配新的 block；请求结束，就释放这些 block。这个设计把 KV cache 从“一整块大数组”变成了“可分页管理的对象”。
+
+这就是我理解的 attention store：store 的不是最终文本，而是 attention 后续计算必须依赖的 K/V 状态；系统要管理它的分配、寻址、共享和释放。
+
+## 这个设计改的是内存布局，不是 attention 语义
+
+我读这类论文时最想避免的误解是：PagedAttention 不是在说“换一种注意力数学”。
+
+它想保持标准 attention 的语义，只是让 attention kernel 能从 block table 指向的物理块里取 K/V。也就是说，逻辑上当前 token 仍然 attend 到历史 token；物理上，历史 token 的 K/V 不要求连续摆放。
+
+这个区别很重要。
+
+如果改 attention 语义，就要讨论精度损失、近似误差、任务退化。如果只是改存储和寻址，就更像系统优化：目标是在不改变模型输出语义的前提下，提高显存利用率和 serving throughput。
+
+当然，代价也在这里。attention kernel 需要理解分页布局，调度器要维护 block table，内存管理也要处理引用计数、释放、复用。系统复杂度会上来。
+
+## 共享前缀是另一个关键点
+
+PagedAttention 还有一个很实用的点：KV block 可以共享。
+
+比如 parallel sampling 或 beam search，多个候选分支共享同一个 prompt 前缀。如果每个分支都复制一份完整 KV cache，就会浪费大量显存。更合理的做法是让这些分支引用同一组前缀 block，直到某个分支需要写入不同内容时再 copy-on-write。
+
+这个思路和操作系统里的进程 fork 很像：
+
+```text
+shared prompt blocks
+  -> branch A continues
+  -> branch B continues
+  -> branch C continues
+
+same prefix blocks are referenced,
+new generated blocks are allocated separately.
+```
+
+这让我重新理解了“cache reuse”。它不只是算法层面的前缀命中，也可以是内存对象层面的共享。真正成熟的 serving 系统，应该同时知道哪些 token 语义上共享、哪些 KV block 物理上可以共享、什么时候必须复制。
+
+## 和 Mooncake/Store 的关系
+
+我会把 PagedAttention 这一类工作放在更低一层理解：它主要解决单个 serving runtime 内部的 GPU KV cache 管理。
+
+Mooncake Store 或类似远端 KV cache 系统，问题会更往外扩一层：
+
+- KV cache 是否要跨 worker 复用。
+- cache 对象如何命名、切片、复制。
+- 远端 KV 值得传输，还是本地 recompute 更便宜。
+- scheduler 如何把 cache locality 纳入调度。
+
+所以两者可以放在一条线上看：
+
+```text
+Transformer attention
+  -> per-request KV cache
+  -> paged/block KV cache inside one runtime
+  -> shared/persistent/remote KV cache across runtimes
+  -> serving scheduler and cache policy
+```
+
+PagedAttention 让我看到的是“KV cache 在一个 runtime 里怎么被高效管理”。Mooncake 让我继续问的是“这些 KV cache 能不能变成跨节点、跨请求、可调度的系统资源”。
+
+## 我还没想清楚的问题
+
+这类 attention store 论文读完以后，我会继续追几个问题：
+
+- block size 怎么选，太小会增加元数据和 kernel 访问开销，太大又会带来内部碎片。
+- 分页布局对 attention kernel 的访存连续性有什么影响，收益是否总能覆盖寻址复杂度。
+- prefix sharing、beam search sharing、prompt cache sharing 在真实 workload 中分别占多大比例。
+- 如果引入远端 KV cache，分页结构和网络传输粒度应该怎么对齐。
+- vAttention 这类保持虚拟地址连续、物理按需分配的路线，和 PagedAttention 的工程取舍在哪里。
+
+我的阶段性理解是：attention 论文解决了“怎么让 token 互相看”，attention store 这一类系统论文解决的是“看过以后留下来的状态怎么管理”。前者打开了模型结构，后者决定了服务系统能不能在长上下文和高并发下跑得稳。

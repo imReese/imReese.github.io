@@ -1,0 +1,96 @@
+---
+title: 'Attention Is All You Need 读论文：先抓住 QKV 和并行化'
+description: '一篇重新读 Transformer 原论文的学习笔记：从为什么不要 RNN 开始，再看 QKV、多头注意力、位置编码和训练效率。'
+author: 'Reese'
+date: '2025-07-06'
+---
+
+这篇是我重新读 [Attention Is All You Need](https://arxiv.org/abs/1706.03762) 时给自己留的一份笔记。
+
+我以前看 Transformer，总会一上来就盯着公式：
+
+```text
+Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V
+```
+
+这个公式当然重要，但如果只记住它，很容易把 Transformer 看成“一个更复杂的相似度计算”。后来我觉得更好的入口不是公式，而是论文真正想替换掉什么：它想把序列建模里最难并行的 recurrence 拿掉。
+
+RNN 的直觉很自然：一句话从左往右读，每一步都带着前面的 hidden state。问题也在这里：训练时很多计算天然排成一条长队，长距离依赖还要经过很多步传播。Transformer 的切入点是：如果一个 token 想知道另一个 token 对它重不重要，为什么一定要靠中间状态一格一格传过去？
+
+## Q、K、V 是三种角色，不是三份神秘向量
+
+我现在会这样理解 QKV：
+
+- Query：我现在这个位置想找什么信息。
+- Key：每个位置对外暴露的可匹配特征。
+- Value：真正被聚合回来的内容。
+
+所以注意力不是“每个词看每个词”这么粗糙，而是每个位置用自己的 Query 去扫所有 Key，得到一组权重，再用这组权重加权所有 Value。
+
+这个拆分很关键。它让模型可以学会“匹配依据”和“取回内容”不是同一件事。比如一个 token 可以根据语法角色去找前文，也可以根据语义主题去找前文；多头注意力则把这种“多种找法”显式并行化。
+
+## Multi-head 不是堆复杂度，而是避免单一相似度太窄
+
+单头注意力的问题是，它只有一个投影空间。模型必须在同一个空间里同时处理指代、位置、搭配、句法、语义等各种关系。Multi-head attention 的意思是：让不同 head 在不同子空间里做注意力，再把结果拼回去。
+
+我觉得这比“多个头能看不同地方”更准确。它不是硬规定某个头负责主语、某个头负责宾语，而是给模型足够的结构自由度，让它自己把关系分解开。
+
+读这部分时，我会把它想成：
+
+```text
+same sequence
+  -> different learned projections
+  -> several attention patterns
+  -> concatenate
+  -> output projection
+```
+
+这也是为什么后来的很多工程优化会围绕 attention head 做文章，比如 MQA、GQA、KV cache 压缩。只要 attention 成为主干，head 的数量、KV 的组织方式、cache 的大小都会变成系统问题。
+
+## 位置编码是在补一个被拿掉的归纳偏置
+
+Transformer 去掉了 recurrence 和 convolution，也就失去了天然的顺序感。Self-attention 本身看一组 token 时，并不知道谁在前谁在后；如果打乱输入，裸 attention 的计算结构并不会自动理解“先后”。
+
+所以 positional encoding 不是一个装饰项，它是在补回序列顺序这个归纳偏置。
+
+原论文用的是正弦/余弦位置编码。这个设计的好处是不用学习固定长度表，也给相对位置关系留了一点可泛化的结构。今天很多模型会换成 RoPE、ALiBi 或其他位置方案，但问题还是同一个：当 attention 给了任意 token 之间直接通信的能力，模型还必须知道这些 token 在序列里的相对位置。
+
+## Encoder/Decoder 里有三种 attention
+
+原论文做的是机器翻译，所以完整结构有 encoder 和 decoder。读这部分时，我会先区分三种 attention：
+
+- Encoder self-attention：源句子内部每个 token 互相看。
+- Decoder masked self-attention：目标句子生成到当前位置，只能看已经生成的 token。
+- Encoder-decoder attention：decoder 当前状态去看 encoder 的输出。
+
+这三种 attention 其实在回答不同问题。
+
+Encoder self-attention 是“源句子内部关系是什么”。Decoder masked self-attention 是“已经生成的目标前缀里，哪些东西影响下一个 token”。Encoder-decoder attention 是“生成当前目标 token 时，源句子哪些位置最相关”。
+
+如果把这个结构挪到今天的 decoder-only LLM，最常见的是保留 masked self-attention，把所有上下文都放在同一个自回归序列里。也就是说，论文里的核心思想被保留下来了，但工程形态变了。
+
+## 我最想记住的是并行化
+
+这篇论文的标题很有名，但我觉得它真正厉害的地方不是一句“attention 足够了”，而是它把模型结构改成了更适合硬件扩展的形状。
+
+RNN 时代，长序列意味着更深的时间依赖链。Transformer 时代，一个 layer 里 token 间的关系可以被组织成矩阵乘法和批量并行计算。训练速度、模型规模、数据规模就都被打开了。
+
+这也是为什么读这篇论文不能只停在算法层。它其实同时在讲三件事：
+
+1. 模型层：用 self-attention 建模 token 之间的依赖。
+2. 训练层：去掉 recurrence，让序列内部计算更并行。
+3. 系统层：把核心计算变成大规模矩阵乘法，贴合 GPU。
+
+后来的 LLM、KV cache、PagedAttention、FlashAttention，都可以看成这条线继续往下走。Transformer 让 attention 成为主干，而一旦 attention 成为主干，attention 的计算、存储和调度就都会变成核心工程问题。
+
+## 读完后的几个问题
+
+我还会继续带着这些问题回看后续论文：
+
+- 为什么 scaled dot-product attention 在大维度下需要除以 `sqrt(d_k)`，它和 softmax 饱和之间的关系到底有多强。
+- Multi-head attention 里不同 head 的分工，哪些是稳定可解释的，哪些只是训练后的现象。
+- 位置编码改变以后，长上下文能力到底来自模型结构、训练数据，还是推理时的位置外推技巧。
+- Decoder-only 架构为什么在大规模语言建模里变得如此主流。
+- 当 attention 成为系统瓶颈时，哪些优化是在改数学，哪些只是改内存访问。
+
+对我来说，`Attention Is All You Need` 现在不是一篇“背公式”的论文，而是一篇把模型结构、并行训练和硬件友好性连在一起的论文。它真正打开的门，是让 token 之间的关系可以被直接、批量、可扩展地计算。
