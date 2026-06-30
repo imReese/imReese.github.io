@@ -15,6 +15,7 @@ import { GithubRepo } from '@/components/shared/GithubRepo'
 import { LanguageToggle } from '@/components/shared/LanguageToggle'
 import { useLanguage } from '@/components/shared/LanguageProvider'
 import { name } from '@/config/infoConfig'
+import { isNavItemActive } from '@/lib/navigation'
 import { ChevronDownIcon, XIcon } from 'lucide-react'
 
 function MobileNavItem({
@@ -105,7 +106,7 @@ function NavItem({
   href: string
   children: React.ReactNode
 }) {
-  let isActive = usePathname() === href
+  let isActive = isNavItemActive(usePathname(), href)
 
   return (
     <li>
