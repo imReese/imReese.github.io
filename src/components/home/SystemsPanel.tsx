@@ -12,7 +12,7 @@ const experiences = [
     details: [
       "Serving runtime: SGLang scheduler boundaries and prefill/decode paths",
       "Memory and transfer: cache/KV residency and Mooncake TE readiness",
-      "Backend tuning across NVIDIA GPUs and Kunlunxin P-series",
+      "Backend tuning across heterogeneous accelerator paths",
     ],
   },
   {

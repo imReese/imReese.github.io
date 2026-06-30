@@ -5,7 +5,7 @@ site:
     I'm a Beijing-based software engineer in Baidu AI Computing, focused on
     large-model inference engines. My work sits around runtime paths, cache and
     KV-cache behavior, Mooncake TransferEngine, and heterogeneous backends across
-    NVIDIA GPUs and Kunlunxin P-series accelerators.
+    accelerator serving environments.
   location: Beijing, China
   email: reese_duan@outlook.com
   githubUsername: imReese

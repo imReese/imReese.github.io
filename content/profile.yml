@@ -4,11 +4,11 @@ focusAreas:
   - KV Cache Systems
   - Mooncake TransferEngine
   - SGLang Runtime
-  - NVIDIA / Kunlunxin
+  - Heterogeneous Backends
 
 aboutParagraphs:
   - I build backend systems where reliability, performance, and operational clarity matter.
-  - My current work focuses on inference engine performance for large-model serving, including runtime paths, cache and KV-cache behavior, Mooncake TransferEngine integration, and heterogeneous accelerator optimization across NVIDIA GPUs and Kunlunxin P-series accelerators.
+  - My current work focuses on inference engine performance for large-model serving, including runtime paths, cache and KV-cache behavior, Mooncake TransferEngine integration, and heterogeneous accelerator backend optimization.
   - "I also study SGLang's Rust runtime direction: request lifecycle, scheduler/router boundaries, gRPC protocols, tokenization edges, and PD-style KV transfer planning."
   - Before that I worked on distributed storage cluster management and CPU microarchitecture performance analysis at Huawei, which shaped how I debug systems from product behavior down to instruction-level traces.
 
@@ -18,8 +18,8 @@ currentFocus:
   summary: >
     I work on inference engine optimization for large-model serving at Baidu AI
     Computing Department, with a focus on cache behavior, KV-transfer paths,
-    Mooncake TransferEngine, and backend performance across NVIDIA GPUs and
-    Kunlunxin P-series accelerators.
+    Mooncake TransferEngine, and backend performance across heterogeneous
+    accelerator runtimes.
   bullets:
     - Analyze throughput, latency, cache hit behavior, memory efficiency, and runtime bottlenecks in production-oriented inference workloads.
     - Trace prefix cache, KV cache lifecycle, cache residency, and transfer readiness across prefill/decode serving paths.
@@ -67,14 +67,14 @@ researchAreas:
       - PD
   - title: Heterogeneous Backends
     label: accelerators
-    description: Optimizing backend paths across NVIDIA GPUs and Kunlunxin P-series accelerators without leaking device-specific complexity into the serving layer.
+    description: Optimizing accelerator backend paths without leaking device-specific complexity into the serving layer.
     points:
-      - NVIDIA GPU path
-      - Kunlunxin P-series path
+      - accelerator backend paths
+      - device-specific runtime paths
       - backend abstraction
     tags:
-      - NVIDIA
-      - Kunlunxin
+      - Accelerators
+      - Runtime
       - Backend
 
 impactStats:
@@ -84,9 +84,9 @@ impactStats:
   - value: Mooncake TE
     label: transfer path
     detail: Validate KV transfer planning, descriptor boundaries, and readiness checks.
-  - value: NVIDIA + P-series
-    label: accelerators
-    detail: Optimize inference paths across GPU and Kunlunxin accelerator backends.
+  - value: heterogeneous
+    label: backends
+    detail: Optimize inference paths across accelerator backend abstractions.
   - value: 128 -> 256
     label: cluster scale
     detail: Expanded distributed storage cluster initialization capacity.
@@ -116,7 +116,7 @@ experience:
     highlights:
       - Work on inference engine performance for large-model serving systems.
       - Trace cache, KV-cache, and Mooncake TransferEngine paths for prefill/decode serving workloads.
-      - Optimize runtime and backend paths across NVIDIA GPUs and Kunlunxin P-series accelerators.
+      - Optimize runtime and backend paths across heterogeneous accelerator environments.
       - Investigate bottlenecks across kernels, operators, scheduling, memory behavior, transfer boundaries, and execution paths.
   - company: Huawei Cloud Computing
     team: Shuhai Lab
