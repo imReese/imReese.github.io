@@ -1,6 +1,7 @@
 import { parse } from 'yaml'
 
 import friendsYaml from '../../content/friends.yml'
+import pagesZhYaml from '../../content/pages.zh.yml'
 import profileYaml from '../../content/profile.yml'
 import projectsYaml from '../../content/projects.yml'
 import siteYaml from '../../content/site.yml'
@@ -138,3 +139,4 @@ export const siteContent = loadYamlContent<SiteContent>(siteYaml, 'content/site.
 export const profileContent = loadYamlContent<ProfileContent>(profileYaml, 'content/profile.yml')
 export const projectsContent = loadYamlContent<ProjectsContent>(projectsYaml, 'content/projects.yml')
 export const friendsContent = loadYamlContent<FriendsContent>(friendsYaml, 'content/friends.yml')
+export const pagesZhContent = loadYamlContent<Record<string, unknown>>(pagesZhYaml, 'content/pages.zh.yml')

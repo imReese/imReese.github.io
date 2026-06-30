@@ -1,20 +1,26 @@
+"use client"
+
 import Link from "next/link"
 import { ArrowRight, FileText } from "lucide-react"
 import { formatDate } from "@/lib/formatDate"
 import { type BlogType } from "@/lib/blogs"
+import { useLocalizedContent } from "@/components/shared/useLocalizedContent"
 
 export function HomepageNotes({ blogs }: { blogs: BlogType[] }) {
+  const { home } = useLocalizedContent()
+  const copy = home.notes
+
   return (
     <section className="rounded-2xl border border-border/70 bg-card/70 p-6 shadow-sm backdrop-blur">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Engineering notes</h2>
+          <h2 className="text-2xl font-bold text-foreground">{copy.title}</h2>
           <p className="mt-2 text-sm leading-7 text-muted-foreground">
-            Short notes on backend systems, cloud-native tools, and the occasional life log.
+            {copy.intro}
           </p>
         </div>
         <Link href="/blogs" className="inline-flex items-center gap-1 text-sm font-semibold text-primary">
-          All notes
+          {copy.allNotes}
           <ArrowRight className="h-4 w-4" />
         </Link>
       </div>
@@ -45,7 +51,7 @@ export function HomepageNotes({ blogs }: { blogs: BlogType[] }) {
           ))
         ) : (
           <div className="rounded-xl border border-dashed border-border bg-background/55 p-4 text-sm text-muted-foreground">
-            Notes are warming up. The archive is ready when the first field log lands.
+            {copy.empty}
           </div>
         )}
       </div>

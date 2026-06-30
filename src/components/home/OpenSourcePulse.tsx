@@ -1,9 +1,14 @@
-import { currentFocus, impactStats, researchAreas } from "@/config/infoConfig"
+"use client"
+
 import { Activity, Cpu, Database, Network } from "lucide-react"
+import { useLocalizedContent } from "@/components/shared/useLocalizedContent"
 
 const researchIcons = [Activity, Database, Network, Cpu]
 
 export function OpenSourcePulse() {
+  const { profile } = useLocalizedContent()
+  const { currentFocus, impactStats, researchAreas } = profile
+
   return (
     <section className="overflow-hidden rounded-2xl border border-border/70 bg-card/75 shadow-xl shadow-primary/5 backdrop-blur">
       <div className="grid gap-7 p-5 sm:p-7 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">

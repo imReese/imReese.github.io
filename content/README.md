@@ -9,6 +9,7 @@ edit files here instead of changing files under `src/`.
 - `profile.yml`: homepage/about copy, focus areas, work history, education, stack
 - `projects.yml`: project cards and GitHub activity settings
 - `friends.yml`: friend links
+- `pages.zh.yml`: Chinese overrides for page-level content
 - `blogs/*.mdx`: blog posts
 
 ## Blog Posts

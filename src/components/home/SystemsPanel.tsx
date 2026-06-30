@@ -2,32 +2,12 @@
 
 import { motion } from "framer-motion"
 import { BriefcaseBusiness, MapPin, Sparkles } from "lucide-react"
-
-const experiences = [
-  {
-    period: "2025.06 - Now",
-    organization: "Baidu AI Computing",
-    summary: "Inference engine performance for large-model serving.",
-    current: true,
-    details: [
-      "Serving runtime: SGLang scheduler boundaries and prefill/decode paths",
-      "Memory and transfer: cache/KV residency and Mooncake TE readiness",
-      "Backend tuning across heterogeneous accelerator paths",
-    ],
-  },
-  {
-    period: "2023",
-    organization: "Huawei Cloud",
-    summary: "CPU architecture performance analysis.",
-  },
-  {
-    period: "2022",
-    organization: "Huawei Data Storage",
-    summary: "Distributed systems engineering.",
-  },
-]
+import { useLocalizedContent } from "@/components/shared/useLocalizedContent"
 
 export function SystemsPanel() {
+  const { home } = useLocalizedContent()
+  const panel = home.systemsPanel
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20, scale: 0.98 }}
@@ -43,23 +23,23 @@ export function SystemsPanel() {
               <Sparkles className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground">{"Reese's workspace"}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Inference systems and backend performance</p>
+              <p className="text-sm font-semibold text-foreground">{panel.workspaceTitle}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{panel.workspaceSubtitle}</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-3 py-1 text-xs text-muted-foreground">
             <MapPin className="h-3.5 w-3.5 text-primary" />
-            <span>Beijing</span>
+            <span>{panel.location}</span>
           </div>
         </div>
 
         <div className="rounded-xl border border-border/70 bg-background/70 p-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <BriefcaseBusiness className="h-4 w-4 text-primary" />
-            <span>Experience</span>
+            <span>{panel.sectionTitle}</span>
           </div>
           <div className="mt-5 space-y-5">
-            {experiences.map((experience) => (
+            {panel.experiences.map((experience) => (
               <div
                 key={`${experience.period}-${experience.organization}`}
                 className="grid gap-3 sm:grid-cols-[6.5rem_1fr]"
@@ -70,7 +50,7 @@ export function SystemsPanel() {
                   </span>
                   {experience.current ? (
                     <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[0.68rem] font-semibold text-primary sm:mt-2 sm:inline-block">
-                      Current
+                      {panel.current}
                     </span>
                   ) : null}
                 </div>

@@ -1,3 +1,5 @@
+"use client"
+
 import Link from 'next/link'
 import {
   ArrowRight,
@@ -5,14 +7,16 @@ import {
   GraduationCap,
   Layers3,
 } from 'lucide-react'
-import { careerList, educationList, stackGroups } from '@/config/infoConfig'
+import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 
 const visibleHighlights = (highlights: string[], count: number) =>
   highlights.slice(0, count)
 
 export function ExperienceStack() {
-  const [currentRole, ...pastRoles] = careerList
-  const education = educationList[0]
+  const { profile, home } = useLocalizedContent()
+  const [currentRole, ...pastRoles] = profile.experience
+  const education = profile.education[0]
+  const copy = home.experienceStack
 
   if (!currentRole) {
     return null
@@ -25,17 +29,17 @@ export function ExperienceStack() {
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-primary">
               <BriefcaseBusiness className="h-4 w-4" />
-              <span>Experience & education</span>
+              <span>{copy.eyebrow}</span>
             </div>
             <h2 className="mt-2 text-2xl font-bold text-foreground">
-              Systems work from storage to LLM serving
+              {copy.title}
             </h2>
           </div>
           <Link
             href="/about"
             className="hidden items-center gap-1 rounded-full border border-primary/30 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/10 sm:inline-flex"
           >
-            About
+            {copy.aboutLink}
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
@@ -102,8 +106,7 @@ export function ExperienceStack() {
                   </span>
                 </div>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {education.major}. Relevant coursework: systems, architecture,
-                  data structures, networks, probability, and algorithms.
+                  {education.major}. {copy.educationPrefix}: {education.details.join(' ')}
                 </p>
               </div>
             </div>
@@ -114,18 +117,17 @@ export function ExperienceStack() {
       <section className="rounded-2xl border border-border/70 bg-card/75 p-5 shadow-sm backdrop-blur sm:p-6">
         <div className="flex items-center gap-2 text-sm font-semibold text-primary">
           <Layers3 className="h-4 w-4" />
-          <span>Technical stack</span>
+          <span>{copy.technicalEyebrow}</span>
         </div>
         <h2 className="mt-2 text-2xl font-bold text-foreground">
-          Tools around inference and systems debugging
+          {copy.technicalTitle}
         </h2>
         <p className="mt-3 text-sm leading-7 text-muted-foreground">
-          A compact view of the runtime, memory, backend, and infrastructure
-          tools I use when tracing serving systems.
+          {copy.technicalIntro}
         </p>
 
         <div className="mt-5 divide-y divide-border/70 border-y border-border/70">
-          {stackGroups.map((group) => (
+          {profile.stackGroups.map((group) => (
             <div
               key={group.title}
               className="grid min-w-0 gap-2 py-3 xl:grid-cols-[8.25rem_minmax(0,1fr)]"
@@ -150,17 +152,15 @@ export function ExperienceStack() {
         <div className="mt-5 grid gap-3 text-xs leading-5 text-muted-foreground">
           <div>
             <span className="font-semibold text-foreground">
-              Current emphasis:
+              {copy.currentEmphasisLabel}:
             </span>{' '}
-            SGLang runtime paths, KV-cache behavior, Mooncake TE boundaries, and
-            accelerator backend tuning.
+            {copy.currentEmphasis}
           </div>
           <div>
             <span className="font-semibold text-foreground">
-              Engineering habit:
+              {copy.engineeringHabitLabel}:
             </span>{' '}
-            measure the path, reduce hidden state, and keep production behavior
-            observable.
+            {copy.engineeringHabit}
           </div>
         </div>
       </section>

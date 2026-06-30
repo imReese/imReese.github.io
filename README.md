@@ -17,6 +17,7 @@ content/
   profile.yml
   projects.yml
   friends.yml
+  pages.zh.yml
   blogs/
 ```
 
@@ -26,6 +27,8 @@ content/
   history, education, and stack.
 - `content/projects.yml`: project cards and pinned GitHub repositories.
 - `content/friends.yml`: friend links.
+- `content/pages.zh.yml`: Chinese overrides for page-level content. Blog post
+  bodies stay in `content/blogs/` and do not need a separate Chinese copy.
 - `content/blogs/*.mdx`: blog posts.
 
 The `src/` directory is the reusable template implementation. Change it when
