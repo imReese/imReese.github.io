@@ -19,25 +19,25 @@ export function ProjectCard({ project, titleAs }: { project: ProjectItemType, ti
             <div className="relative z-10 flex h-12 w-12 items-center justify-center rounded-full">
               <OptimizedFavicon url={project.link.href} size={36} />
             </div>
-            <Component className="text-base font-semibold">
+            <Component className="break-words text-base font-semibold">
               {project.name}
             </Component>
           </div>
-          <p className="relative z-10 mt-2 text-sm text-muted-foreground ml-2">
+          <p className="relative z-10 ml-2 mt-2 break-words text-sm text-muted-foreground">
             {project.description}
           </p>
         </div>
 
         <div className="relative z-10 mt-auto pt-4 ml-1">
           {project.tags && project.tags.length > 0 && (
-            <div className="flex flex-wrap gap-x-2 items-center">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2">
               {project.tags.map((tag, index) => (
                 <div
                   key={index}
                   className="flex items-center justify-center space-x-0.5 group"
                 >
                   <HashIcon className="w-3 h-3 text-muted-foreground icon-scale" />
-                  <span className="text-xs text-muted-foreground tracking-tighter">
+                  <span className="break-words text-xs tracking-tighter text-muted-foreground">
                     {tag}
                   </span>
                 </div>

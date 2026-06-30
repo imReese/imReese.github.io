@@ -3,7 +3,7 @@ import Image from 'next/image'
 
 export default function GitHubSnake() {
   return (
-    <div className="w-full overflow-hidden">
+    <div className="w-full overflow-x-auto overflow-y-hidden">
       <div className='dark:hidden'>
         <Image 
           src="/github-contribution-snake/github-contribution-grid-snake.svg" 
@@ -12,7 +12,7 @@ export default function GitHubSnake() {
           height={200}
           priority={false}
           loading="lazy"
-          className="w-full h-auto"
+          className="h-auto w-[640px] max-w-none sm:w-full"
         />
       </div>
       <div className='hidden dark:block'>
@@ -23,7 +23,7 @@ export default function GitHubSnake() {
           height={200}
           priority={false}
           loading="lazy"
-          className="w-full h-auto"
+          className="h-auto w-[640px] max-w-none sm:w-full"
         />
       </div>
     </div>
