@@ -60,12 +60,19 @@ export type ProjectsPageContent = {
   githubProfileLink: string
 }
 
+export type BlogPageContent = {
+  headline: string
+  intro: string
+  readBlog: string
+}
+
 export type LocalizedPageContent = {
   site: SiteContent['site']
   about: SiteContent['about']
   profile: ProfileContent
   projects: ProjectsContent
   projectsPage: ProjectsPageContent
+  blogPage: BlogPageContent
   friends: FriendsContent
   home: HomePageContent
 }
@@ -138,12 +145,19 @@ const projectsPageContentEn: ProjectsPageContent = {
   githubProfileLink: 'View GitHub profile',
 }
 
+const blogPageContentEn: BlogPageContent = {
+  headline: siteContent.blog.headline,
+  intro: siteContent.blog.intro,
+  readBlog: 'Read blog',
+}
+
 const pageContentEn: LocalizedPageContent = {
   site: siteContent.site,
   about: siteContent.about,
   profile: profileContent,
   projects: projectsContent,
   projectsPage: projectsPageContentEn,
+  blogPage: blogPageContentEn,
   friends: friendsContent,
   home: homeContentEn,
 }
@@ -156,6 +170,7 @@ const pageContentZh: LocalizedPageContent = {
   profile: { ...pageContentEn.profile, ...zh.profile },
   projects: { ...pageContentEn.projects, ...zh.projects },
   projectsPage: { ...pageContentEn.projectsPage, ...zh.projectsPage },
+  blogPage: { ...pageContentEn.blogPage, ...zh.blogPage },
   friends: { ...pageContentEn.friends, ...zh.friends },
   home: {
     hero: { ...pageContentEn.home.hero, ...zh.home?.hero },

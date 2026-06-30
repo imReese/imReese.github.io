@@ -1,39 +1,39 @@
 site:
-  headline: "你好，我是 Reese。我专注于可靠的后端系统。"
+  headline: "你好，我是 Reese，主要做后端系统和大模型推理服务。"
   introduction: >
-    我在北京，当前在百度 AI 计算团队做大模型推理引擎相关工作。我的关注点包括运行时路径、
-    Cache 与 KV Cache 行为、Mooncake TransferEngine，以及异构加速后端的服务性能。
+    我现在在北京，在百度 AI 计算团队做大模型推理引擎相关工作。平时更多是在看
+    runtime 路径、Cache/KV Cache 行为、Mooncake TransferEngine，以及不同加速后端上的性能问题。
   location: 北京，中国
 
 about:
-  headline: "我是 Reese，一名在北京工作的后端系统工程师。"
+  headline: "我是 Reese，一个在北京写系统、看性能、和大模型推理打交道的后端工程师。"
 
 profile:
   focusAreas:
     - 后端系统
-    - 推理运行时
-    - KV Cache 系统
+    - 推理 Runtime
+    - KV Cache
     - Mooncake TransferEngine
-    - SGLang Runtime
+    - SGLang
     - 异构后端
 
   aboutParagraphs:
-    - 我主要做后端系统相关工作，关注可靠性、性能以及系统在真实运行时是否足够可观测。
-    - 我当前的工作聚焦在大模型服务的推理引擎性能，包括运行时路径、Cache 与 KV Cache 行为、Mooncake TransferEngine 集成，以及异构加速后端优化。
-    - "我也在持续阅读和整理 SGLang 的 Rust runtime 方向：请求生命周期、scheduler/router 边界、gRPC 协议、tokenization 边界，以及 PD 风格的 KV 传输规划。"
-    - 在此之前，我在华为做过分布式存储集群管理和 CPU 微架构性能分析，这段经历让我习惯从产品行为一路追到指令级细节来调试系统。
+    - 我主要做后端系统相关工作，关心可靠性、性能，也关心线上行为能不能被看清楚。
+    - 现在的日常大多围绕大模型推理服务：runtime 路径、Cache/KV Cache、Mooncake TransferEngine 接入，以及不同加速后端上的性能优化。
+    - "我也在持续读 SGLang 的 Rust runtime：请求怎么走完生命周期，scheduler/router 边界在哪里，gRPC 和 tokenization 怎么接起来，以及 PD 风格的 KV 传输应该怎么规划。"
+    - 更早之前，我在华为做过分布式存储集群管理和 CPU 微架构性能分析。这些经历让我习惯从用户能感知的系统行为，一直追到线程、内存和指令级细节。
 
   currentFocus:
     eyebrow: 当前重点
-    title: 大模型推理服务系统工程
+    title: 大模型推理服务的系统工程
     summary: >
-      我在百度 AI 计算团队做大模型服务的推理引擎优化，重点关注 Cache 行为、KV 传输路径、
-      Mooncake TransferEngine，以及异构加速运行时上的后端性能。
+      我现在主要做大模型推理引擎优化，平时会顺着 Cache 行为、KV 传输路径、
+      Mooncake TransferEngine 和后端 runtime 一路往下看。
     bullets:
-      - 分析面向生产的大模型推理负载中的吞吐、延迟、cache hit、内存效率和运行时瓶颈。
-      - 跟踪 prefix cache、KV cache 生命周期、cache residency，以及 prefill/decode 服务路径上的传输就绪状态。
-      - 验证 Mooncake TransferEngine 在 KV 传输规划、descriptor、readiness check 和后端集成上的边界。
-      - "把 SGLang runtime 的阅读经验带回服务系统设计：请求生命周期、调度、cache 管理和传输边界。"
+      - 看生产推理负载里的吞吐、延迟、cache hit、内存效率和 runtime 瓶颈。
+      - 跟踪 prefix cache、KV cache 生命周期、cache residency，以及 prefill/decode 路径上的传输就绪状态。
+      - 验证 Mooncake TransferEngine 在 KV 传输规划、descriptor、readiness check 和后端接入上的边界。
+      - "把读 SGLang runtime 的经验带回服务系统设计：请求生命周期、调度、cache 管理和传输边界。"
     links:
       - label: sglang-rs
         href: https://github.com/imReese/sglang-rs
@@ -43,7 +43,7 @@ profile:
   researchAreas:
     - title: 推理引擎
       label: runtime path
-      description: 分析和优化连接调度、算子、kernel 与后端 dispatch 的执行路径。
+      description: 顺着请求链路看调度、算子、kernel 和后端 dispatch，找出真正拖慢推理服务的路径。
       points:
         - 吞吐 / 延迟
         - 算子与 kernel 路径
@@ -54,7 +54,7 @@ profile:
         - Scheduling
     - title: Cache 与 KV Cache
       label: memory behavior
-      description: 跟踪 prefix cache 和 KV cache 的生命周期，理解复用、驻留、内存压力和服务稳定性。
+      description: 关注 prefix cache 和 KV cache 在真实服务里的生命周期、复用、驻留和内存压力。
       points:
         - prefix cache 行为
         - KV page 生命周期
@@ -65,7 +65,7 @@ profile:
         - Memory
     - title: Mooncake TE
       label: transfer engine
-      description: 验证 Mooncake TransferEngine 在 KV 传输规划、descriptor、readiness check 和运行时边界上的集成。
+      description: 看 Mooncake TransferEngine 怎么接入 KV 传输，哪些状态算 ready，哪些边界需要 runtime 自己兜住。
       points:
         - KV 传输规划
         - descriptor 与 checksum 路径
@@ -76,10 +76,10 @@ profile:
         - PD
     - title: 异构后端
       label: accelerators
-      description: 优化加速器后端路径，同时避免把设备特定复杂度泄漏到 serving 层。
+      description: 优化不同加速后端的执行路径，同时尽量不把设备细节泄漏到 serving 层。
       points:
         - 加速器后端路径
-        - 设备相关运行时路径
+        - 设备相关 runtime
         - 后端抽象
       tags:
         - Accelerators
@@ -88,31 +88,31 @@ profile:
 
   impactStats:
     - value: cache + KV
-      label: memory path
+      label: 内存路径
       detail: 跟踪 prefix cache、KV cache 生命周期、residency 和服务内存行为。
     - value: Mooncake TE
-      label: transfer path
+      label: 传输路径
       detail: 验证 KV 传输规划、descriptor 边界和 readiness check。
     - value: heterogeneous
-      label: backends
-      detail: 围绕加速器后端抽象优化推理执行路径。
-    - value: 128 -> 256
-      label: cluster scale
+      label: 后端路径
+      detail: 围绕加速器后端抽象优化推理执行链路。
+    - value: "128 -> 256"
+      label: 集群规模
       detail: 扩展分布式存储集群初始化能力。
-    - value: +40%
-      label: init efficiency
+    - value: "+40%"
+      label: 初始化效率
       detail: 通过异步队列和模块解耦优化集群启动路径。
-    - value: 90%+
-      label: branch coverage
-      detail: 构建 DTFuzz 接口测试，阻断高风险存储缺陷。
-    - value: +30%
-      label: TLB hit rate
-      detail: 在 ChampSim 中验证动态 TLB 调度思路。
-    - value: +6%
+    - value: "90%+"
+      label: 分支覆盖率
+      detail: 构建 DTFuzz 接口测试，提前挡住高风险存储缺陷。
+    - value: "+30%"
+      label: TLB 命中率
+      detail: 在 ChampSim 里验证动态 TLB 调度思路。
+    - value: "+6%"
       label: IPC
       detail: 在 CPU 仿真中度量指令级架构收益。
-    - value: +8%
-      label: throughput
+    - value: "+8%"
+      label: 吞吐
       detail: 参与 Kunpeng CPU 工作负载的 SMT 策略调优。
 
   experience:
@@ -123,10 +123,10 @@ profile:
       start: '2025.06.30'
       end: 至今
       highlights:
-        - 负责大模型服务系统中的推理引擎性能工作。
-        - 跟踪 prefill/decode 服务负载中的 cache、KV cache 和 Mooncake TransferEngine 路径。
-        - 优化异构加速环境中的运行时和后端路径。
-        - 分析 kernel、算子、调度、内存行为、传输边界和执行路径上的瓶颈。
+        - 负责大模型服务系统里的推理引擎性能工作。
+        - 跟踪 prefill/decode 负载中的 Cache、KV Cache 和 Mooncake TransferEngine 路径。
+        - 优化不同加速后端环境中的 runtime 和 backend 路径。
+        - 分析 kernel、算子、调度、内存行为、传输边界和执行链路里的瓶颈。
     - company: 华为云计算
       team: 数海实验室
       title: 计算机体系结构研究工程师
@@ -134,9 +134,9 @@ profile:
       start: '2023.07'
       end: '2024.07'
       highlights:
-        - 使用 perf 和 Intel Pin 为 MySQL、Redis 类负载构建低开销指令流分析能力。
-        - 在 ChampSim 中验证动态 TLB 调度算法，提升模拟环境下的 TLB 命中率和 IPC。
-        - 与海思、openEuler 团队协作，参与 Kunpeng CPU SMT 调优和微码级性能改进。
+        - 用 perf 和 Intel Pin 给 MySQL、Redis 这类负载做低开销指令流分析。
+        - 在 ChampSim 里验证动态 TLB 调度算法，提升模拟环境下的 TLB 命中率和 IPC。
+        - 和海思、openEuler 团队一起做 Kunpeng CPU SMT 策略调优和微码级性能改进。
     - company: 华为数据存储
       team: 基础设施开发
       title: 软件开发工程师
@@ -144,8 +144,8 @@ profile:
       start: '2022.05'
       end: '2023.07'
       highlights:
-        - 围绕 leader election 和 Paxos 协调构建分布式高可用与集群管理路径。
-        - 通过异步队列解耦初始化模块，将支持节点规模从 128 扩展到 256。
+        - 围绕 leader election 和 Paxos 协调做分布式高可用与集群管理。
+        - 通过异步队列解耦初始化模块，把支持节点规模从 128 扩展到 256。
         - 为 200+ 接口补充 DTFuzz 覆盖，并通过输入过滤和沙箱加固命令执行路径。
 
   education:
@@ -159,7 +159,7 @@ profile:
         - 修读计算机组成原理、数据结构、操作系统、计算机网络、计算机体系结构、线性代数、概率统计和算法设计等课程。
 
   stackGroups:
-    - title: 编程语言
+    - title: 语言
       items:
         - Rust
         - C/C++
@@ -175,7 +175,7 @@ profile:
         - gRPC
         - Scheduling
         - Backend Dispatch
-    - title: 系统
+    - title: 系统调试
       items:
         - Linux
         - Paxos
@@ -198,7 +198,7 @@ home:
     readNotes: 阅读笔记
   systemsPanel:
     workspaceTitle: "Reese 的工作台"
-    workspaceSubtitle: 推理系统与后端性能
+    workspaceSubtitle: 推理系统 / 后端性能
     location: 北京
     sectionTitle: 经历
     current: 当前
@@ -208,9 +208,9 @@ home:
         summary: 大模型服务的推理引擎性能优化。
         current: true
         details:
-          - "Serving runtime：SGLang scheduler 边界与 prefill/decode 路径"
-          - "Memory / transfer：cache、KV residency 与 Mooncake TE readiness"
-          - 异构加速后端路径调优
+          - "Serving runtime：SGLang scheduler 边界、prefill/decode 路径"
+          - "Memory / transfer：Cache、KV residency 与 Mooncake TE readiness"
+          - 不同加速后端上的执行路径调优
       - period: "2023"
         organization: 华为云
         summary: CPU 体系结构性能分析。
@@ -218,29 +218,29 @@ home:
         organization: 华为数据存储
         summary: 分布式系统工程。
   experienceStack:
-    eyebrow: 工作经历与教育
-    title: 从存储系统到 LLM Serving 的系统工作
+    eyebrow: 经历 / 教育
+    title: 从存储系统做到 LLM Serving
     aboutLink: 关于
     educationPrefix: 补充信息
     technicalEyebrow: 技术栈
-    technicalTitle: 推理系统与系统调试中的常用工具
-    technicalIntro: 一个紧凑视图，展示我在追踪服务系统时常用的 runtime、memory、backend 和 infrastructure 工具。
+    technicalTitle: 推理系统和系统调试里常用的工具
+    technicalIntro: 这是我平时排查服务系统时会用到的一些 runtime、memory、backend 和 infrastructure 工具。
     currentEmphasisLabel: 当前重点
-    currentEmphasis: SGLang runtime 路径、KV-cache 行为、Mooncake TE 边界，以及加速器后端调优。
+    currentEmphasis: SGLang runtime 路径、KV Cache 行为、Mooncake TE 边界，以及加速器后端调优。
     engineeringHabitLabel: 工程习惯
-    engineeringHabit: 度量路径，减少隐藏状态，并让生产行为可观测。
+    engineeringHabit: 先量清楚路径，少留隐式状态，让线上行为尽量可观察。
   notes:
-    title: 工程笔记
-    intro: 关于后端系统、云原生工具、AI、编程，以及偶尔的生活记录。
+    title: 技术笔记
+    intro: 后端系统、云原生工具、AI 编程，以及偶尔一点生活记录。
     allNotes: 全部笔记
-    empty: 笔记正在准备中，第一篇 field log 来了之后归档就会出现。
+    empty: 还没放笔记，第一篇写完后这里会自动出现。
 
 projects:
-  headline: 系统项目
-  intro: SGLang runtime、后端系统和实用工具。
+  headline: 项目
+  intro: 一些和 SGLang runtime、后端系统、自动化工具有关的项目。
   items:
     - name: SGLang Rust Runtime
-      description: 面向 SGLang 的 Rust runtime 方向，覆盖请求生命周期、scheduler/router 边界、gRPC 协议、tokenizer 边界、cache 管理、Mooncake TE 和 PD KV 传输规划。
+      description: 为 SGLang 梳理 Rust runtime 方向，覆盖请求生命周期、scheduler/router 边界、gRPC 协议、tokenizer 边界、cache 管理、Mooncake TE 和 PD KV 传输规划。
       href: https://github.com/imReese/sglang-rs
       label: github.com/imReese/sglang-rs
       tags:
@@ -250,7 +250,7 @@ projects:
         - Mooncake TE
         - Scheduling
     - name: 轻量级 C++ Web Server
-      description: 基于线程池、非阻塞 socket、epoll、HTTP 状态机、数据库登录注册流程，以及同步/异步日志的 C++ Web Server。
+      description: 一个用 C++ 写的 Web Server 练习项目，包含线程池、非阻塞 socket、epoll、HTTP 状态机、数据库登录注册流程，以及同步/异步日志。
       href: https://github.com/imReese
       label: github.com/imReese
       tags:
@@ -260,7 +260,7 @@ projects:
         - HTTP
         - MySQL
     - name: LeetCode Automation Manager
-      description: 用于算法练习的自动化工具，可解析题目描述，生成说明、代码模板、测试和 GitHub Actions 工作流。
+      description: 算法练习用的自动化工具，会解析题目描述，生成说明、代码模板、测试和 GitHub Actions 工作流。
       href: https://github.com/imReese
       label: github.com/imReese
       tags:
@@ -271,12 +271,17 @@ projects:
 
 projectsPage:
   githubActivityTitle: GitHub 动态
-  githubActivityIntro: 一个持续更新的贡献节奏快照，覆盖后端系统、runtime 实验和开源笔记。
+  githubActivityIntro: 这里展示的是 GitHub contribution 的自动更新快照，主要记录一些 runtime 实验、源码阅读和个人项目的节奏。
   githubProfileLink: 查看 GitHub 主页
+
+blogPage:
+  headline: 技术笔记
+  intro: 一些读代码、看论文和折腾系统时留下的记录。正文先保持原样，不维护两套语言。
+  readBlog: 阅读全文
 
 friends:
   headline: 友情链接
-  intro: 一些有趣的朋友和站点。
+  intro: 一些朋友的站点。
   items:
     - name: Corey Chiu
       link:
