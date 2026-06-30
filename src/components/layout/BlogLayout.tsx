@@ -34,46 +34,38 @@ export function BlogLayout({
 
   return (
     <Container className="mt-16 lg:mt-32">
-      <div>
-        <div
-          className={
-            previousPathname
-              ? 'mx-auto max-w-[1504px] lg:grid lg:grid-cols-[2.5rem_minmax(0,1fr)] lg:gap-x-6'
-              : 'mx-auto max-w-[1440px]'
-          }
-        >
-          {previousPathname && (
-            <div className="mb-8 lg:mb-0 lg:pt-0.5">
-              <button
-                type="button"
-                onClick={() => router.back()}
-                aria-label="Go back to blogs"
-                className="group flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md shadow-zinc-800/5 ring-1 ring-zinc-900/5 transition dark:border dark:border-zinc-700/50 dark:bg-zinc-800 dark:ring-0 dark:ring-white/10 dark:hover:border-zinc-700 dark:hover:ring-white/20"
-              >
-                <ArrowLeftIcon className="h-4 w-4 stroke-zinc-500 transition group-hover:stroke-zinc-700 dark:stroke-zinc-500 dark:group-hover:stroke-zinc-400" />
-              </button>
-            </div>
-          )}
-          <article className="min-w-0">
-            <header className="flex flex-col">
-              <h1 className="mt-6 break-words text-4xl font-bold tracking-tight text-zinc-800 sm:text-5xl dark:text-zinc-100">
-                {blog.title}
-              </h1>
+      <div className="mx-auto max-w-[1440px]">
+        <article className="min-w-0">
+          <header className="flex flex-col">
+            <div className="flex items-center justify-between gap-4">
+              {previousPathname && (
+                <button
+                  type="button"
+                  onClick={() => router.back()}
+                  aria-label="Go back to blogs"
+                  className="group flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-md shadow-zinc-800/5 ring-1 ring-zinc-900/5 transition dark:border dark:border-zinc-700/50 dark:bg-zinc-800 dark:ring-0 dark:ring-white/10 dark:hover:border-zinc-700 dark:hover:ring-white/20"
+                >
+                  <ArrowLeftIcon className="h-4 w-4 stroke-zinc-500 transition group-hover:stroke-zinc-700 dark:stroke-zinc-500 dark:group-hover:stroke-zinc-400" />
+                </button>
+              )}
               <time
                 dateTime={blog.date}
-                className="order-first flex items-center text-base text-zinc-400 dark:text-zinc-500"
+                className="ml-auto flex shrink-0 items-center text-base text-zinc-400 dark:text-zinc-500"
               >
                 <span className="h-4 w-0.5 rounded-full bg-zinc-200 dark:bg-zinc-500" />
                 <span className="ml-3">{formatDate(blog.date)}</span>
                 <span className="mx-2">·</span>
                 <span>{blog.author}</span>
               </time>
-            </header>
-            <Prose className="mt-10 max-w-none text-[1.0625rem] leading-8" data-mdx-content>
-              {children}
-            </Prose>
-          </article>
-        </div>
+            </div>
+            <h1 className="mt-6 break-words text-4xl font-bold tracking-tight text-zinc-800 sm:text-5xl dark:text-zinc-100">
+              {blog.title}
+            </h1>
+          </header>
+          <Prose className="mt-10 max-w-none text-[1.0625rem] leading-8" data-mdx-content>
+            {children}
+          </Prose>
+        </article>
       </div>
     </Container>
   )
