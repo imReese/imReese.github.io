@@ -26,7 +26,7 @@ export default function SocialLinks() {
             <div className="mt-8 border-t pt-8 ">
                 <Link
                     href={`mailto:${email}`}
-                    className="group flex flex-row ml-3 justify-start items-center text-md font-medium transition hover:text-teal-500 dark:text-zinc-200 dark:hover:text-teal-500"
+                    className="group flex flex-row ml-3 justify-start items-center text-base font-medium transition hover:text-teal-500 dark:text-zinc-200 dark:hover:text-teal-500"
                 >
                     <CustomIcon name="email" size={22}/>
                     <span className="ml-4">{email}</span>
@@ -36,4 +36,3 @@ export default function SocialLinks() {
 
     )
 }
-

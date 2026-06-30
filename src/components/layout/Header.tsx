@@ -172,7 +172,7 @@ function AvatarContainer({
           aria-label="Home"
           className='pointer-events-auto'
         >
-          <div className="text-md font-semibold capitalize">{name}</div>
+          <div className="text-base font-semibold capitalize">{name}</div>
         </Link>
       )}
     </div>

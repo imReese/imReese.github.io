@@ -35,7 +35,7 @@ export function FriendCard({ friend, titleAs }: { friend: FriendItemType, titleA
               {friend.name}
             </Component>
           </div>
-          { friend.description && (
+          {friend.description && (
             <p className="relative z-10 mt-2 text-sm text-muted-foreground ml-2">
               {friend.description}
             </p>

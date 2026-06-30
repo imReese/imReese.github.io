@@ -1,0 +1,71 @@
+:root {
+  --background: 220 23% 95%;
+  /* Catppuccin Latte base #eff1f5 */
+  --foreground: 234 16% 35%;
+  /* Latte text #4c4f69 */
+  --card: 0 0% 100%;
+  --card-foreground: 234 16% 35%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 234 16% 35%;
+  --primary: 183 74% 26%;
+  /* Accessible Latte teal, darkened from #179299 */
+  --primary-foreground: 220 23% 95%;
+  --secondary: 220 22% 92%;
+  /* Latte mantle #e6e9ef */
+  --secondary-foreground: 234 16% 35%;
+  --muted: 223 16% 83%;
+  /* Latte crust/surface mix */
+  --muted-foreground: 233 10% 47%;
+  /* Latte subtext #6c6f85 */
+  --accent: 220 22% 92%;
+  --accent-foreground: 234 16% 35%;
+  --destructive: 347 87% 44%;
+  /* Latte red #d20f39 */
+  --destructive-foreground: 220 23% 95%;
+  --border: 226 14% 80%;
+  /* Latte surface0 #ccd0da */
+  --input: 226 14% 80%;
+  --ring: 183 74% 26%;
+  --radius: 0.75rem;
+  --chart-1: 183 74% 26%;
+  --chart-2: 109 44% 40%;
+  --chart-3: 220 91% 54%;
+  --chart-4: 231 97% 72%;
+  --chart-5: 347 87% 44%;
+}
+
+.dark {
+  --background: 240 21% 12%;
+  /* Catppuccin Mocha base #1e1e2e */
+  --foreground: 226 64% 88%;
+  /* Mocha text #cdd6f4 */
+  --card: 240 21% 15%;
+  /* Mocha surface base */
+  --card-foreground: 226 64% 88%;
+  --popover: 240 21% 15%;
+  --popover-foreground: 226 64% 88%;
+  --primary: 171 50% 73%;
+  /* Mocha teal #94e2d5 */
+  --primary-foreground: 240 23% 9%;
+  --secondary: 237 16% 23%;
+  /* Mocha surface0 #313244 */
+  --secondary-foreground: 226 64% 88%;
+  --muted: 237 16% 23%;
+  --muted-foreground: 227 35% 80%;
+  /* Mocha subtext #a6adc8 */
+  --accent: 232 97% 85%;
+  /* Mocha lavender #b4befe */
+  --accent-foreground: 240 23% 9%;
+  --destructive: 343 81% 75%;
+  /* Mocha red #f38ba8 */
+  --destructive-foreground: 240 23% 9%;
+  --border: 234 13% 31%;
+  /* Mocha surface1 #45475a */
+  --input: 234 13% 31%;
+  --ring: 171 50% 73%;
+  --chart-1: 171 50% 73%;
+  --chart-2: 115 54% 76%;
+  --chart-3: 217 92% 76%;
+  --chart-4: 232 97% 85%;
+  --chart-5: 343 81% 75%;
+}

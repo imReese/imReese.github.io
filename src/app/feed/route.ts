@@ -29,7 +29,6 @@ export async function GET(req: Request) {
     },
   })
 
-  // 直接读取博客文件
   const blogFiles = await fs.readdir(path.join(process.cwd(), 'src/content/blog'))
   const mdxFiles = blogFiles.filter(file => file.endsWith('.mdx'))
 
@@ -54,7 +53,7 @@ export async function GET(req: Request) {
     status: 200,
     headers: {
       'Content-Type': 'application/xml',
-      'cache-control': 's-maxage=86400', // one day cache
+      'cache-control': 's-maxage=86400',
     },
   })
 }

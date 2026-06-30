@@ -3,7 +3,7 @@
 
 import { Briefcase } from '@phosphor-icons/react'
 import { CareerItemType, careerList } from '@/config/infoConfig'
-import { CustomIcon} from '@/components/shared/CustomIcon'
+import { CustomIcon } from '@/components/shared/CustomIcon'
 
 
 
