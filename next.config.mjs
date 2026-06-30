@@ -1,6 +1,3 @@
-import rehypePrism from '@mapbox/rehype-prism'
-import nextMDX from '@next/mdx'
-import remarkGfm from 'remark-gfm'
 import withPWA from 'next-pwa'
 
 /** @type {import('next').NextConfig} */
@@ -8,7 +5,6 @@ const nextConfig = {
   output: 'export',
   trailingSlash: true,
   transpilePackages: ['geist'],
-  pageExtensions: ['js', 'jsx', 'ts', 'tsx', 'mdx'],
   images: {
     formats: ['image/webp', 'image/avif'], // 现代格式优先
     unoptimized: true,
@@ -51,14 +47,6 @@ const nextConfig = {
   },
 }
 
-const withMDX = nextMDX({
-  extension: /\.mdx?$/,
-  options: {
-    remarkPlugins: [remarkGfm],
-    rehypePlugins: [rehypePrism],
-  },
-})
-
 // PWA配置
 const pwaConfig = withPWA({
   dest: 'public',
@@ -67,4 +55,4 @@ const pwaConfig = withPWA({
   disable: process.env.NODE_ENV === 'development', // 开发环境禁用PWA
 })
 
-export default pwaConfig(withMDX(nextConfig))
+export default pwaConfig(nextConfig)
