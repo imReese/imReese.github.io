@@ -1,0 +1,111 @@
+---
+title: 'Mooncake 读码：先分清 Store 和 Transfer Engine'
+description: '一篇从源码入口出发的 Mooncake 学习笔记：先建立 Store 和 Transfer Engine 的边界，再沿 Put/Get 和传输路径读下去。'
+author: 'Reese'
+date: '2026-06-29'
+---
+
+# Mooncake 读码：先分清 Store 和 Transfer Engine
+
+这篇不是 Mooncake 的完整介绍，更像是我给自己整理的一条读码路线。
+
+我一开始读 Mooncake 时，最容易被 README 里的系统级叙述带着走：KVCache-centric、disaggregated serving、prefill/decode 分离、KVCache pool、Transfer Engine、Store。每个词都对，但如果只停在这些词上，下一步很容易不知道该从哪个目录、哪个 API、哪条调用链继续读。
+
+后来我觉得更稳的切入点是先回答一个问题：**一份 KVCache 从上层框架进来以后，谁管对象语义，谁真正搬数据？**
+
+我的当前理解是：
+
+```text
+SGLang / vLLM / LMCache / 应用层
+  -> Python bindings / Store client
+  -> Mooncake Store: key, slice, replica, metadata, lease
+  -> TransferSubmitter
+  -> Transfer Engine: segment, registered memory, batch transfer
+  -> TCP / RDMA / EFA / NVLink / HIP / Sunrise Link / other backend
+```
+
+Store 更像对象和副本语义层，Transfer Engine 更像数据搬运层。这个边界一旦分清，很多函数名就不容易误解了。
+
+## 不要把 master 当成数据面
+
+我读 Store Put/Get 时，第一个想强行记住的点是：master 主要在控制面。
+
+Put 的大致路径是：
+
+```text
+Client::Put
+  -> MasterClient::PutStart
+  -> master returns allocated replicas
+  -> client TransferWrite
+  -> Transfer Engine WRITE
+  -> PutEnd / PutRevoke
+```
+
+Get 的大致路径是：
+
+```text
+Client::Get
+  -> Query
+  -> MasterClient::GetReplicaList
+  -> choose complete replica
+  -> maybe hot-cache redirect
+  -> TransferRead
+  -> Transfer Engine READ
+```
+
+所以 `PutStart` 不是“数据已经写进去了”，`GetReplicaList` 也不是“数据已经读回来了”。它们更像是在问 master：这个对象的副本在哪里、状态能不能读、lease 边界是什么。真正的数据搬运发生在 client 侧，通过 `TransferSubmitter` 再进入 Transfer Engine。
+
+这条线对我很有帮助，因为它把 Store 代码里几个容易混在一起的概念拆开了：metadata、replica state、lease、hot cache、transfer request。读 `client_service.cpp` 时，我会先沿 Put/Get 主路径走一遍，而不是一上来钻某个 backend。
+
+## Transfer Engine 不是对象存储
+
+Transfer Engine 这一层我也尽量不把它想成“缓存库”。它不负责理解 key 是什么，也不关心上层对象是不是 KVCache。它面对的是更低一层的问题：本地地址、远端 Segment offset、一组 READ/WRITE 请求，以及到底该交给哪个 transport。
+
+更适合先看的 API 是：
+
+- `TransferEngine::init`
+- `openSegment`
+- `registerLocalMemory`
+- `allocateBatchID`
+- `submitTransfer`
+- `getTransferStatus`
+
+这几个 API 串起来之后，classic path 的主线就比较清楚：外观类 `TransferEngine` 大多转到 `TransferEngineImpl`，初始化时准备 metadata 和 `MultiTransport`，提交时再由 `MultiTransport` 根据目标 Segment 和 protocol 选择 TCP、RDMA、NVLink、HIP、Sunrise Link 等 backend。
+
+我觉得这里最容易误判的是 `openSegment` 和 `registerLocalMemory`。前者不是打开文件或 socket，而是拿到远端 Segment 的描述并在本地建立可寻址上下文；后者也不是只登记一张本地表，它通常还要把 buffer 注册给已经安装的 transports。到了 RDMA/GPU 相关路径，这个动作会直接影响后面的传输是否能成立。
+
+## 我会按这条路线读
+
+如果只给自己排一条短路线，我会这样读：
+
+1. 先看 README 和架构设计文档，只为建立词汇表，不急着相信所有系统级结论都在当前仓库里完整实现。
+2. 看 `docs/source/design/mooncake-store.md`，确认 Store 讲的是 object、slice、replica、metadata 和 lease。
+3. 沿 `Client::Put` / `Client::Get` 读 `mooncake-store/src/client_service.cpp`。
+4. 在 `TransferRead` / `TransferWrite` 附近切到 `mooncake-store/src/transfer_task.cpp`，看 `TransferSubmitter` 怎样选择 local memcpy、Transfer Engine、file 或 NoF 路径。
+5. 再进入 `mooncake-transfer-engine/include/transfer_engine.h` 和 `transfer_engine_impl.cpp`，把 init、open segment、register memory、submit transfer 串起来。
+6. 最后看 `multi_transport.cpp`，理解一个请求是怎么落到具体 transport 的。
+
+这条路线的好处是，它先把系统边界建立起来，再进入平台细节。否则太早从 RDMA、NVLink、Sunrise Link 这种 backend 开始，很容易读得很兴奋，但忘了自己最初要解释的是“KVCache 在系统里怎么移动”。
+
+## 和上层框架的关系不要脑补
+
+Mooncake 的 README 会把 SGLang、vLLM、LMCache 这些框架放到系统语境里讲。这个方向是对的，但读代码时我会把证据分成两类：
+
+- Mooncake 仓库内部：它提供了哪些 Store / Transfer Engine / Python binding / benchmark / test 入口。
+- 上游框架仓库：实际 adapter 或 runtime 是怎样调用 Mooncake 的。
+
+也就是说，不要看到“支持 SGLang/vLLM/LMCache”就默认所有集成逻辑都在 Mooncake 仓库里。对 SGLang 来说，我更关心的是 disaggregated prefill-decode 场景下，远端 KVCache 什么时候值得等、什么时候应该回退重算；对 LMCache/vLLM 来说，Store 更像 KVCache reuse 的后端基础之一。
+
+这些问题最终都会回到 serving 系统里更实际的取舍：scheduler、cache policy、KV movement、backend 约束，哪一个才是当前性能瓶颈。
+
+## 我还没完全确认的点
+
+这也是我想保留在公开笔记里的部分。不是所有东西都要写成已经盖棺定论的结论。
+
+- README 和论文语境里的 KVCache-centric scheduler，和当前开源仓库里的组件边界之间，哪些是已经落在主路径里的实现，哪些还是系统设计语境。
+- TENT backend 和 classic Transfer Engine 的 API 兼容边界。
+- Sunrise Link 在 classic path 和 TENT path 里的位置，以及 benchmark 显式安装 transport 时的实际路径。
+- 不同设备 backend 下，registered memory、IPC handle、fallback path 的错误处理和性能代价。
+- SGLang 侧如何把 prefix cache、remote KVCache 和 recompute cost 统一进请求调度决策。
+
+对我来说，Mooncake 值得读的地方不只是“它支持很多 transport”，而是它把 KVCache 从单个 worker 进程里的局部状态，提升成可以被查询、复制、传输和调度的系统资源。Store 和 Transfer Engine 的边界，是我继续读下去时最重要的锚点。

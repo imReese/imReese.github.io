@@ -2,6 +2,7 @@ import glob from 'fast-glob'
 import { promises as fs } from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
+import { blogContentDir } from './contentPaths'
 
 export type BlogType = {
   title: string
@@ -15,7 +16,7 @@ async function importBlog(
   blogFilename: string,
 ): Promise<BlogType> {
   const source = await fs.readFile(
-    path.join(process.cwd(), 'src/content/blog', blogFilename),
+    path.join(blogContentDir, blogFilename),
     'utf-8'
   )
   
@@ -30,7 +31,7 @@ async function importBlog(
 
 export async function getAllBlogs() {
   let blogFileNames = await glob('*.mdx', {
-    cwd: './src/content/blog',
+    cwd: blogContentDir,
   })
 
   let blogs = await Promise.all(blogFileNames.map(importBlog))

@@ -1,11 +1,9 @@
-import assert from 'assert'
-import * as cheerio from 'cheerio'
 import { Feed } from 'feed'
 import { name, email } from '@/config/infoConfig'
-import { getBlogBySlug } from '@/lib/blogs'
 import { promises as fs } from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
+import { blogContentDir } from '@/lib/contentPaths'
 
 export async function GET(req: Request) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://imreese.github.io'
@@ -29,12 +27,12 @@ export async function GET(req: Request) {
     },
   })
 
-  const blogFiles = await fs.readdir(path.join(process.cwd(), 'src/content/blog'))
+  const blogFiles = await fs.readdir(blogContentDir)
   const mdxFiles = blogFiles.filter(file => file.endsWith('.mdx'))
 
   for (let file of mdxFiles) {
     const slug = file.replace(/\.mdx$/, '')
-    const filePath = path.join(process.cwd(), 'src/content/blog', file)
+    const filePath = path.join(blogContentDir, file)
     const source = await fs.readFile(filePath, 'utf-8')
     const { data, content } = matter(source)
 

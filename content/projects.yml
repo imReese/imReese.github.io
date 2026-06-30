@@ -1,0 +1,35 @@
+headline: Systems Projects
+intro: SGLang runtime work, backend systems, and practical tooling.
+
+items:
+  - name: SGLang Rust Runtime
+    description: Rust runtime direction for SGLang covering request lifecycle, scheduler/router boundaries, gRPC contracts, tokenizer edges, cache management, Mooncake TE, and PD KV-transfer planning.
+    href: https://github.com/imReese/sglang-rs
+    label: github.com/imReese/sglang-rs
+    tags:
+      - Rust
+      - SGLang
+      - KV Cache
+      - Mooncake TE
+      - Scheduling
+  - name: Lightweight C++ Web Server
+    description: C++ web server using thread pools, non-blocking sockets, epoll, HTTP state machines, database-backed login/register flow, and sync/async logging.
+    href: https://github.com/imReese
+    label: github.com/imReese
+    tags:
+      - C++
+      - Linux
+      - epoll
+      - HTTP
+      - MySQL
+  - name: LeetCode Automation Manager
+    description: Automation that parses problem statements, generates descriptions, code templates, tests, and GitHub Actions workflows for algorithm practice.
+    href: https://github.com/imReese
+    label: github.com/imReese
+    tags:
+      - Python
+      - C++
+      - Automation
+      - GitHub Actions
+
+githubItems: []

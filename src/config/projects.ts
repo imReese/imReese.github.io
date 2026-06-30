@@ -1,7 +1,7 @@
-import { projectHighlights } from "./profileContent"
+import { projectsContent } from "./content"
 
-export const projectHeadLine = "Systems Projects"
-export const projectIntro = "SGLang runtime work, backend systems, and practical tooling."
+export const projectHeadLine = projectsContent.headline
+export const projectIntro = projectsContent.intro
 
 export type ProjectItemType = {
   name: string
@@ -17,11 +17,11 @@ export type ProjectItemType = {
   gitForks?: number
 }
 
-export const projects: Array<ProjectItemType> = projectHighlights.map((project) => ({
+export const projects: Array<ProjectItemType> = projectsContent.items.map((project) => ({
   name: project.name,
   description: project.description,
   link: { href: project.href.replace(/^https?:\/\//, ""), label: project.label },
   tags: project.tags,
 }))
 
-export const githubProjects: Array<ProjectItemType> = []
+export const githubProjects: Array<ProjectItemType> = projectsContent.githubItems

@@ -1,47 +1,12 @@
-// site config
+import { siteContent } from './content'
+
 export const utm_source = process.env.NEXT_PUBLIC_UTM_SOURCE
 
-
-// navigation config
 type NavItemType = {
   name: string
   href: string
 }
 
-export const footerItems: Array<NavItemType> = [
-  {
-    name: 'Home',
-    href: '/'
-  },
-  {
-    name: 'About',
-    href: '/about'
-  },
-  {
-    name: 'Projects',
-    href: '/projects'
-  },
-  {
-    name: 'Blogs',
-    href: '/blogs'
-  }
-]
+export const footerItems: Array<NavItemType> = siteContent.navigation.footer
 
-export const navItems: Array<NavItemType> = [
-  {
-    name: 'Home',
-    href: '/'
-  },
-  {
-    name: 'About',
-    href: '/about'
-  },
-  {
-    name: 'Projects',
-    href: '/projects'
-  },
-  {
-    name: 'Blogs',
-    href: '/blogs'
-  }
-]
+export const navItems: Array<NavItemType> = siteContent.navigation.header

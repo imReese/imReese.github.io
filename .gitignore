@@ -87,6 +87,7 @@ web_modules/
 .next
 out
 /_next/
+/blogs/
 /404.html
 /404/
 /indexer.html

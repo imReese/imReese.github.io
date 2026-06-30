@@ -41,6 +41,14 @@ const nextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production', // 生产环境移除console
   },
+  webpack(config) {
+    config.module.rules.push({
+      test: /\.ya?ml$/,
+      type: 'asset/source',
+    })
+
+    return config
+  },
 }
 
 const withMDX = nextMDX({

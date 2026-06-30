@@ -1,9 +1,8 @@
-// friends
-export const friendsHeadLine = "Corey' friends"
-export const friendsIntro = "Meet some interesting friends."
+import { friendsContent } from './content'
 
+export const friendsHeadLine = friendsContent.headline
+export const friendsIntro = friendsContent.intro
 
-// friends
 export type FriendItemType = {
   name: string
   description?: string
@@ -11,9 +10,4 @@ export type FriendItemType = {
   logo?: string
 }
 
-export const friends: Array<FriendItemType> = [
-  {
-    name: 'Corey Chiu',
-    link: { href: 'https://coreychiu.com' },
-  },
-]
+export const friends: Array<FriendItemType> = friendsContent.items
