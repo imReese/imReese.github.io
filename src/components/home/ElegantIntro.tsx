@@ -17,7 +17,7 @@ export function ElegantIntro() {
         transition={{ duration: 0.7, ease: "easeOut" }}
         className="min-w-0 max-w-2xl"
       >
-        <h1 className="break-words text-3xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl">
+        <h1 className="break-words text-3xl font-bold text-foreground sm:text-5xl lg:text-6xl">
           {headline}
         </h1>
         <p className="mt-6 max-w-full text-base leading-8 text-muted-foreground sm:text-lg">

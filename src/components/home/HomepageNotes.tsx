@@ -8,7 +8,7 @@ export function HomepageNotes({ blogs }: { blogs: BlogType[] }) {
     <section className="rounded-2xl border border-border/70 bg-card/70 p-6 shadow-sm backdrop-blur">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Engineering notes</h2>
+          <h2 className="text-2xl font-bold text-foreground">Engineering notes</h2>
           <p className="mt-2 text-sm leading-7 text-muted-foreground">
             Short notes on backend systems, cloud-native tools, and the occasional life log.
           </p>
@@ -35,7 +35,7 @@ export function HomepageNotes({ blogs }: { blogs: BlogType[] }) {
                   <time dateTime={blog.date} className="text-xs text-muted-foreground">
                     {formatDate(blog.date)}
                   </time>
-                  <h3 className="mt-1 text-base font-semibold tracking-tight text-foreground group-hover:text-primary">
+                  <h3 className="mt-1 text-base font-semibold text-foreground group-hover:text-primary">
                     {blog.title}
                   </h3>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">{blog.description}</p>

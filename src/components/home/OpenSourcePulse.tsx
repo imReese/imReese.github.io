@@ -8,10 +8,10 @@ export function OpenSourcePulse() {
     <section className="overflow-hidden rounded-2xl border border-border/70 bg-card/75 shadow-xl shadow-primary/5 backdrop-blur">
       <div className="grid gap-7 p-5 sm:p-7 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
         <div className="lg:sticky lg:top-24">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+          <p className="text-sm font-semibold text-primary">
             {currentFocus.eyebrow}
           </p>
-          <h2 className="mt-2 text-2xl font-bold tracking-tight text-foreground">
+          <h2 className="mt-2 text-2xl font-bold text-foreground">
             {currentFocus.title}
           </h2>
           <p className="mt-3 text-sm leading-7 text-muted-foreground">
@@ -58,10 +58,10 @@ export function OpenSourcePulse() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+                    <div className="text-xs font-semibold text-primary">
                       {area.label}
                     </div>
-                    <h3 className="mt-2 text-lg font-semibold tracking-tight text-foreground">
+                    <h3 className="mt-2 text-lg font-semibold text-foreground">
                       {area.title}
                     </h3>
                   </div>
@@ -95,8 +95,8 @@ export function OpenSourcePulse() {
       <div className="grid gap-4 border-t border-border/70 px-5 pb-5 pt-4 sm:px-7 sm:pb-7 lg:grid-cols-3">
         {impactStats.slice(0, 3).map((stat) => (
           <div key={stat.label} className="min-w-0">
-            <div className="text-xl font-bold tracking-tight text-foreground">{stat.value}</div>
-            <div className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+            <div className="text-xl font-bold text-foreground">{stat.value}</div>
+            <div className="mt-1 text-xs font-semibold text-primary">
               {stat.label}
             </div>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">{stat.detail}</p>

@@ -69,7 +69,7 @@ export function SystemsPanel() {
                     {experience.period}
                   </span>
                   {experience.current ? (
-                    <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-primary sm:mt-2 sm:inline-block">
+                    <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[0.68rem] font-semibold text-primary sm:mt-2 sm:inline-block">
                       Current
                     </span>
                   ) : null}

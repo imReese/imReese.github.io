@@ -27,7 +27,7 @@ export function ExperienceStack() {
               <BriefcaseBusiness className="h-4 w-4" />
               <span>Experience & education</span>
             </div>
-            <h2 className="mt-2 text-2xl font-bold tracking-tight text-foreground">
+            <h2 className="mt-2 text-2xl font-bold text-foreground">
               Systems work from storage to LLM serving
             </h2>
           </div>
@@ -116,7 +116,7 @@ export function ExperienceStack() {
           <Layers3 className="h-4 w-4" />
           <span>Technical stack</span>
         </div>
-        <h2 className="mt-2 text-2xl font-bold tracking-tight text-foreground">
+        <h2 className="mt-2 text-2xl font-bold text-foreground">
           Tools around inference and systems debugging
         </h2>
         <p className="mt-3 text-sm leading-7 text-muted-foreground">
@@ -128,16 +128,16 @@ export function ExperienceStack() {
           {stackGroups.map((group) => (
             <div
               key={group.title}
-              className="grid gap-2 py-3 sm:grid-cols-[6rem_1fr]"
+              className="grid min-w-0 gap-2 py-3 xl:grid-cols-[8.25rem_minmax(0,1fr)]"
             >
-              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+              <div className="whitespace-nowrap text-sm font-semibold text-primary">
                 {group.title}
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex min-w-0 flex-wrap gap-1.5">
                 {group.items.map((item) => (
                   <span
                     key={item}
-                    className="rounded-md bg-secondary px-2 py-1 text-[0.72rem] font-medium text-muted-foreground"
+                    className="max-w-full rounded-md bg-secondary px-2 py-1 text-[0.72rem] font-medium text-muted-foreground"
                   >
                     {item}
                   </span>
