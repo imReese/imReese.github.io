@@ -9,12 +9,17 @@ on:
     types: [completed]
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   build-and-deploy:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     env:
       NEXT_PUBLIC_SITE_URL: https://imreese.github.io
     steps:
@@ -29,15 +34,20 @@ jobs:
           node-version-file: ".nvmrc"
           cache: "npm"
 
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
       - name: Install dependencies
         run: npm ci
 
       - name: Build
         run: npm run build
 
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./out
-          publish_branch: gh-pages
+          path: ./out
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5
