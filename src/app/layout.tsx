@@ -1,5 +1,5 @@
 import { type Metadata } from "next"
-import { GeistMono } from "geist/font/mono"
+import { JetBrains_Mono } from "next/font/google"
 import { GeistSans } from "geist/font/sans"
 
 import { Providers } from "@/app/providers"
@@ -7,6 +7,12 @@ import { Layout } from "@/components/layout/Layout"
 import { Analytics } from "@/components/analytics/analytics"
 import { name, headline, introduction } from "@/config/infoConfig"
 import "@/styles/globals.css"
+
+const jetBrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-jetbrains-mono",
+})
 
 export const metadata: Metadata = {
   title: {
@@ -43,7 +49,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
+      className={`${GeistSans.variable} ${jetBrainsMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>

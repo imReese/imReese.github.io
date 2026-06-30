@@ -37,7 +37,7 @@
   pre,
   kbd,
   samp {
-    font-family: var(--font-geist-mono), 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+    font-family: var(--font-jetbrains-mono), 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   }
 
   ::selection {

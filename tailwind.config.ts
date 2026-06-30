@@ -42,7 +42,7 @@ export default {
 					'"Noto Color Emoji"',
 				],
 				mono: [
-					'var(--font-geist-mono)',
+					'var(--font-jetbrains-mono)',
 					'"SFMono-Regular"',
 					'Consolas',
 					'"Liberation Mono"',
