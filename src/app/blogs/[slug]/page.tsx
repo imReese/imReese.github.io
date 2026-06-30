@@ -43,15 +43,11 @@ export default async function BlogPage({ params }: Props) {
     notFound()
   }
 
-  const content = await getMDXContent(params.slug)
+  const content = await getMDXContent(params.slug, blog.title)
 
   return (
-    <BlogLayout
-        blog={blog}
-    >
-      <div className="mt-8 prose dark:prose-invert">
-        {content}
-      </div>
+    <BlogLayout blog={blog}>
+      {content}
     </BlogLayout>
   )
 }

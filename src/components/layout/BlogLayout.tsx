@@ -35,7 +35,7 @@ export function BlogLayout({
   return (
     <Container className="mt-16 lg:mt-32">
       <div className="xl:relative">
-        <div className="mx-auto max-w-2xl">
+        <div className="mx-auto max-w-[1440px]">
           {previousPathname && (
             <button
               type="button"
@@ -46,9 +46,9 @@ export function BlogLayout({
               <ArrowLeftIcon className="h-4 w-4 stroke-zinc-500 transition group-hover:stroke-zinc-700 dark:stroke-zinc-500 dark:group-hover:stroke-zinc-400" />
             </button>
           )}
-          <article>
+          <article className="min-w-0">
             <header className="flex flex-col">
-              <h1 className="mt-6 text-4xl font-bold tracking-tight text-zinc-800 sm:text-5xl dark:text-zinc-100 break-words">
+              <h1 className="mt-6 break-words text-4xl font-bold tracking-tight text-zinc-800 sm:text-5xl dark:text-zinc-100">
                 {blog.title}
               </h1>
               <time
@@ -61,7 +61,7 @@ export function BlogLayout({
                 <span>{blog.author}</span>
               </time>
             </header>
-            <Prose className="mt-8" data-mdx-content>
+            <Prose className="mt-10 max-w-none text-[1.0625rem] leading-8" data-mdx-content>
               {children}
             </Prose>
           </article>

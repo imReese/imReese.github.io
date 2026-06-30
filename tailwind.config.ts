@@ -4,7 +4,7 @@ import { type Config } from 'tailwindcss'
 import typographyStyles from './typography'
 
 export default {
-	content: ['./src/**/*.{js,jsx,ts,tsx}'],
+	content: ['./src/**/*.{js,jsx,ts,tsx,mdx}', './content/**/*.{md,mdx}'],
 	darkMode: ['class'],
 	plugins: [typographyPlugin, require("tailwindcss-animate")],
 	theme: {
@@ -23,7 +23,7 @@ export default {
 			'8xl': ['6rem', { lineHeight: '1' }],
 			'9xl': ['8rem', { lineHeight: '1' }]
 		},
-		typography: 'typographyStyles',
+		typography: typographyStyles,
 		extend: {
 			fontFamily: {
 				sans: [
