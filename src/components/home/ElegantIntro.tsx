@@ -1,23 +1,46 @@
-"use client"
+'use client'
 
-import { motion } from "framer-motion"
-import { ArrowRight, BookOpen, Github } from "lucide-react"
-import { SystemsPanel } from "@/components/home/SystemsPanel"
-import { useLocalizedContent } from "@/components/shared/useLocalizedContent"
+import { motion } from 'framer-motion'
+import { ArrowRight, BookOpen, Github } from 'lucide-react'
+import { SystemsPanel } from '@/components/home/SystemsPanel'
+import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
+
+function getHeadlineLines(headline: string) {
+  const leadPatterns = ["Hi, I'm Reese.", 'Hi，我是 Reese']
+  const lead = leadPatterns.find((pattern) => headline.startsWith(pattern))
+
+  if (!lead) {
+    return [headline]
+  }
+
+  const rest = headline
+    .slice(lead.length)
+    .replace(/^，\s*/, '')
+    .trim()
+  return rest ? [lead, rest] : [lead]
+}
 
 export function ElegantIntro() {
   const { site, profile, home } = useLocalizedContent()
+  const headlineLines = getHeadlineLines(site.headline)
 
   return (
     <section className="grid min-w-0 gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: "easeOut" }}
+        transition={{ duration: 0.7, ease: 'easeOut' }}
         className="min-w-0 max-w-2xl"
       >
         <h1 className="break-words text-3xl font-bold text-foreground sm:text-5xl lg:text-6xl">
-          {site.headline}
+          {headlineLines.map((line, index) => (
+            <span
+              key={line}
+              className={index === 0 ? 'block whitespace-nowrap' : 'block'}
+            >
+              {line}
+            </span>
+          ))}
         </h1>
         <p className="mt-6 max-w-full text-base leading-8 text-muted-foreground sm:text-lg">
           {site.introduction}
