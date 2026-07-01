@@ -1,5 +1,5 @@
 about:
-  headline: "Hi, I'm Reese — 一个在北京和大模型推理系统死磕的后端工程师。"
+  headline: "Hi，我是 Reese，一个在北京做大模型推理系统的后端工程师。"
 
 home:
   hero:
@@ -7,7 +7,7 @@ home:
     readNotes: 阅读笔记
   systemsPanel:
     workspaceTitle: "Reese 的工作台"
-    workspaceSubtitle: LLM Serving / Backend Performance
+    workspaceSubtitle: 大模型推理服务 / 后端性能
     location: 北京
     sectionTitle: 经历
     current: 当前
@@ -17,9 +17,9 @@ home:
         summary: 给大模型推理引擎做性能优化——让它跑得更快、更稳。
         current: true
         details:
-          - "Serving Runtime：拆解 SGLang Scheduler 边界和 Prefill/Decode 路径"
-          - "Memory & Transfer：跟踪 Cache 驻留行为和 Mooncake TE 传输就绪状态"
-          - "Heterogeneous Backends：在不同加速卡上适配并调优执行路径"
+          - "推理运行时：拆解 SGLang 调度边界和 Prefill/Decode 路径"
+          - "内存与传输：跟踪 Cache 驻留行为和 Mooncake TE 传输就绪状态"
+          - "异构后端：在不同加速卡上适配并调优执行路径"
       - period: "2023"
         organization: 华为云
         summary: CPU 体系结构性能分析。
@@ -28,28 +28,28 @@ home:
         summary: 分布式系统工程。
   experienceStack:
     eyebrow: 经历 / 教育
-    title: "From Distributed Storage to LLM Serving"
+    title: 从分布式存储到大模型推理服务
     aboutLink: 关于
     educationPrefix: 补充信息
     technicalEyebrow: 技术栈
-    technicalTitle: "Tools I Reach for When Debugging Systems"
-    technicalIntro: 排查服务系统时高频使用的工具集——覆盖 Runtime、内存、异构后端和基础设施。
+    technicalTitle: 排查系统问题时常用的工具
+    technicalIntro: 覆盖推理运行时、内存行为、异构后端和基础设施，主要用于把线上问题一路追到底。
     currentEmphasisLabel: 当前重点
     currentEmphasis: SGLang Runtime 调度路径、KV Cache 驻留行为、Mooncake TE 传输边界，以及异构后端调优。
     engineeringHabitLabel: 工程信条
     engineeringHabit: 把性能榨干到极致，让生产行为清晰透明。
   notes:
-    title: Engineering Notes
+    title: 技术笔记
     intro: 后端系统、推理优化、云原生工具，以及偶尔一点生活碎片。
     allNotes: 全部笔记
     empty: 还没放笔记，第一篇写完后这里会自动出现。
 
 projectsPage:
-  githubActivityTitle: GitHub Activity
-  githubActivityIntro: GitHub contribution 的自动更新快照，记录 Runtime 实验、源码阅读和个人项目的节奏。
+  githubActivityTitle: GitHub 动态
+  githubActivityIntro: 自动更新的 contribution 快照，记录源码阅读、Runtime 实验和个人项目的节奏。
   githubProfileLink: 查看 GitHub 主页
 
 blogPage:
-  headline: Engineering Notes
-  intro: 读代码、看论文、折腾系统时留下的记录。正文保持原样，不维护两套语言。
+  headline: 技术笔记
+  intro: 读代码、看论文、折腾系统时留下的一些记录。
   readBlog: 阅读全文

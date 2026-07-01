@@ -31,7 +31,7 @@ currentFocus:
 
 researchAreas:
   - title: 推理引擎
-    label: runtime path
+    label: 请求路径
     description: 顺着请求链路一路往下看——调度、算子、Kernel、后端 Dispatch，找出真正拖慢推理的那段路径。
     points:
       - 吞吐 / 延迟
@@ -42,7 +42,7 @@ researchAreas:
       - Runtime
       - Scheduling
   - title: Cache 与 KV Cache
-    label: memory behavior
+    label: 内存行为
     description: 关注 Prefix Cache 和 KV Cache 在真实服务里的生命周期、复用效率和内存压力，让每一块显存都花在刀刃上。
     points:
       - prefix cache 行为
@@ -53,7 +53,7 @@ researchAreas:
       - KV Cache
       - Memory
   - title: Mooncake TE
-    label: transfer engine
+    label: 传输链路
     description: 搞清楚 Mooncake TransferEngine 怎么接入 KV 传输——哪些状态算 ready，哪些边界需要 Runtime 自己兜住。
     points:
       - KV 传输规划
@@ -64,7 +64,7 @@ researchAreas:
       - TransferEngine
       - PD
   - title: 异构后端
-    label: accelerators
+    label: 异构加速
     description: 在不同加速卡上把执行路径跑顺，同时不让设备细节污染 Serving 层的设计。
     points:
       - 加速器后端路径

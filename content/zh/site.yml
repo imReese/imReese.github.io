@@ -1,6 +1,6 @@
 site:
   name: Reese
-  headline: "Hi, I'm Reese. LLM Serving / Systems Engineer."
+  headline: "Hi，我是 Reese，一个做大模型推理系统的后端工程师。"
   introduction: >
     我的工作是让大模型推理跑得更快、更稳。目前在百度 AI 计算团队，日常与
     SGLang 调度瓶颈、KV Cache 驻留特征和加速芯片后端调优打交道。
@@ -11,8 +11,8 @@ site:
   githubUsername: imReese
 
 activity:
-  headline: My Activity
-  intro: Snippets of My Coding & Life
+  headline: 最近动态
+  intro: 写代码，也记录一点生活
   tweetIds:
     - "1839130617658880251"
     - "1866794992322351439"

@@ -1,4 +1,4 @@
-"use client"
+'use client'
 
 import { Card } from '@/components/shared/Card'
 import { SimpleLayout } from '@/components/layout/SimpleLayout'
@@ -6,13 +6,7 @@ import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 import { type BlogType } from '@/lib/blogs'
 import { formatDate } from '@/lib/formatDate'
 
-function Blog({
-  blog,
-  readBlog,
-}: {
-  blog: BlogType
-  readBlog: string
-}) {
+function Blog({ blog, readBlog }: { blog: BlogType; readBlog: string }) {
   return (
     <article className="md:grid md:grid-cols-4 md:items-baseline">
       <Card className="md:col-span-3">
@@ -43,7 +37,11 @@ export function BlogsPageContent({ blogs }: { blogs: BlogType[] }) {
   const { blogPage } = useLocalizedContent()
 
   return (
-    <SimpleLayout title={blogPage.headline} intro={blogPage.intro}>
+    <SimpleLayout
+      title={blogPage.headline}
+      intro={blogPage.intro}
+      headerClassName="max-w-5xl"
+    >
       <div className="md:border-l md:border-zinc-100 md:pl-6 md:dark:border-zinc-700/40">
         <div className="flex max-w-3xl flex-col space-y-16">
           {blogs.map((blog) => (
