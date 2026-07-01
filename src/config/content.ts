@@ -164,17 +164,6 @@ export type ProjectsContent = {
   }>
 }
 
-export type FriendsContent = {
-  headline: string
-  intro: string
-  items: Array<{
-    name: string
-    description?: string
-    link: { href: string; label?: string }
-    logo?: string
-  }>
-}
-
 export type PagesContent = {
   about: {
     headline: string
@@ -182,7 +171,6 @@ export type PagesContent = {
   home: HomePageContent
   projectsPage: ProjectsPageContent
   blogPage: BlogPageContent
-  friends: FriendsContent
 }
 
 export type LocaleContent = {

@@ -53,11 +53,3 @@ blogPage:
   headline: Engineering Notes
   intro: 读代码、看论文、折腾系统时留下的记录。正文保持原样，不维护两套语言。
   readBlog: 阅读全文
-
-friends:
-  headline: 友情链接
-  intro: 一些朋友的站点。
-  items:
-    - name: Corey Chiu
-      link:
-        href: https://coreychiu.com

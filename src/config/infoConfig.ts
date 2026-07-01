@@ -2,7 +2,6 @@ import { pagesContent, siteContent } from "./content"
 import { profileSummary } from "./profileContent"
 
 export * from "./projects"
-export * from "./friends"
 export * from "./education"
 export * from "./career"
 export * from "./activity"

@@ -53,11 +53,3 @@ blogPage:
   headline: Engineering notes and field logs.
   intro: Notes about backend systems, SGLang runtime work, cloud-native tooling, AI, programming, and life.
   readBlog: Read blog
-
-friends:
-  headline: Friends
-  intro: A few personal sites from friends.
-  items:
-    - name: Corey Chiu
-      link:
-        href: https://coreychiu.com

@@ -1,7 +1,6 @@
 import {
   contentByLocale,
   type BlogPageContent,
-  type FriendsContent,
   type HomePageContent,
   type LocaleContent,
   type ProfileContent,
@@ -19,7 +18,6 @@ export type LocalizedPageContent = {
   projects: ProjectsContent
   projectsPage: ProjectsPageContent
   blogPage: BlogPageContent
-  friends: FriendsContent
   home: HomePageContent
 }
 
@@ -31,7 +29,6 @@ function toLocalizedPageContent(content: LocaleContent): LocalizedPageContent {
     projects: content.projects,
     projectsPage: content.pages.projectsPage,
     blogPage: content.pages.blogPage,
-    friends: content.pages.friends,
     home: content.pages.home,
   }
 }

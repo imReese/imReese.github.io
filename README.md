@@ -33,8 +33,7 @@ content/
 - `content/en/projects.yml` and `content/zh/projects.yml`: project cards and
   pinned GitHub repositories.
 - `content/en/pages.yml` and `content/zh/pages.yml`: page-level copy for the
-  home, about, projects, blogs, and friends pages. Friend links live here; there
-  is no separate `friends.yml`.
+  home, about, projects, and blogs pages.
 - `content/blogs/*.mdx`: blog posts.
 
 The `src/` directory is the reusable template implementation. Change it when
@@ -99,7 +98,7 @@ Do not edit generated build output directly:
 
 - `.next/`
 - `out/`
-- route export folders such as `blogs/`, `projects/`, `friends/`, `about/`
+- route export folders such as `blogs/`, `projects/`, `about/`
 - generated PWA files such as `public/sw.js`
 
 These are ignored by Git and recreated during build/deploy.

@@ -8,11 +8,8 @@ edit files here instead of changing files under `src/`.
 - `en/site.yml` and `zh/site.yml`: site identity, navigation, social links, and activity links
 - `en/profile.yml` and `zh/profile.yml`: focus areas, about copy, work history, education, stack
 - `en/projects.yml` and `zh/projects.yml`: project cards and GitHub activity settings
-- `en/pages.yml` and `zh/pages.yml`: page-level copy for home, about, projects, blogs, and friends
+- `en/pages.yml` and `zh/pages.yml`: page-level copy for home, about, projects, and blogs
 - `blogs/*.mdx`: blog posts
-
-Friend links are part of each locale's `pages.yml`; there is no separate
-`friends.yml`.
 
 ## Blog Posts
 
