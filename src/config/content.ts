@@ -1,10 +1,13 @@
 import { parse } from 'yaml'
 
-import friendsYaml from '../../content/friends.yml'
-import pagesZhYaml from '../../content/pages.zh.yml'
-import profileYaml from '../../content/profile.yml'
-import projectsYaml from '../../content/projects.yml'
-import siteYaml from '../../content/site.yml'
+import pagesEnYaml from '../../content/en/pages.yml'
+import profileEnYaml from '../../content/en/profile.yml'
+import projectsEnYaml from '../../content/en/projects.yml'
+import siteEnYaml from '../../content/en/site.yml'
+import pagesZhYaml from '../../content/zh/pages.yml'
+import profileZhYaml from '../../content/zh/profile.yml'
+import projectsZhYaml from '../../content/zh/projects.yml'
+import siteZhYaml from '../../content/zh/site.yml'
 
 export type NavItemContent = {
   name: string
@@ -19,13 +22,6 @@ export type SiteContent = {
     location: string
     email: string
     githubUsername: string
-  }
-  about: {
-    headline: string
-  }
-  blog: {
-    headline: string
-    intro: string
   }
   activity: {
     headline: string
@@ -42,6 +38,60 @@ export type SiteContent = {
     icon: string
     href: string
   }>
+}
+
+export type SystemsPanelExperience = {
+  period: string
+  organization: string
+  summary: string
+  current?: boolean
+  details?: string[]
+}
+
+export type HomePageContent = {
+  hero: {
+    viewProjects: string
+    readNotes: string
+  }
+  systemsPanel: {
+    workspaceTitle: string
+    workspaceSubtitle: string
+    location: string
+    sectionTitle: string
+    current: string
+    experiences: SystemsPanelExperience[]
+  }
+  experienceStack: {
+    eyebrow: string
+    title: string
+    aboutLink: string
+    educationPrefix: string
+    technicalEyebrow: string
+    technicalTitle: string
+    technicalIntro: string
+    currentEmphasisLabel: string
+    currentEmphasis: string
+    engineeringHabitLabel: string
+    engineeringHabit: string
+  }
+  notes: {
+    title: string
+    intro: string
+    allNotes: string
+    empty: string
+  }
+}
+
+export type ProjectsPageContent = {
+  githubActivityTitle: string
+  githubActivityIntro: string
+  githubProfileLink: string
+}
+
+export type BlogPageContent = {
+  headline: string
+  intro: string
+  readBlog: string
 }
 
 export type ProfileContent = {
@@ -125,6 +175,23 @@ export type FriendsContent = {
   }>
 }
 
+export type PagesContent = {
+  about: {
+    headline: string
+  }
+  home: HomePageContent
+  projectsPage: ProjectsPageContent
+  blogPage: BlogPageContent
+  friends: FriendsContent
+}
+
+export type LocaleContent = {
+  site: SiteContent
+  profile: ProfileContent
+  projects: ProjectsContent
+  pages: PagesContent
+}
+
 function loadYamlContent<T>(source: string, label: string): T {
   const content = parse(source)
 
@@ -135,8 +202,22 @@ function loadYamlContent<T>(source: string, label: string): T {
   return content as T
 }
 
-export const siteContent = loadYamlContent<SiteContent>(siteYaml, 'content/site.yml')
-export const profileContent = loadYamlContent<ProfileContent>(profileYaml, 'content/profile.yml')
-export const projectsContent = loadYamlContent<ProjectsContent>(projectsYaml, 'content/projects.yml')
-export const friendsContent = loadYamlContent<FriendsContent>(friendsYaml, 'content/friends.yml')
-export const pagesZhContent = loadYamlContent<Record<string, unknown>>(pagesZhYaml, 'content/pages.zh.yml')
+export const contentByLocale = {
+  en: {
+    site: loadYamlContent<SiteContent>(siteEnYaml, 'content/en/site.yml'),
+    profile: loadYamlContent<ProfileContent>(profileEnYaml, 'content/en/profile.yml'),
+    projects: loadYamlContent<ProjectsContent>(projectsEnYaml, 'content/en/projects.yml'),
+    pages: loadYamlContent<PagesContent>(pagesEnYaml, 'content/en/pages.yml'),
+  },
+  zh: {
+    site: loadYamlContent<SiteContent>(siteZhYaml, 'content/zh/site.yml'),
+    profile: loadYamlContent<ProfileContent>(profileZhYaml, 'content/zh/profile.yml'),
+    projects: loadYamlContent<ProjectsContent>(projectsZhYaml, 'content/zh/projects.yml'),
+    pages: loadYamlContent<PagesContent>(pagesZhYaml, 'content/zh/pages.yml'),
+  },
+} satisfies Record<string, LocaleContent>
+
+export const siteContent = contentByLocale.en.site
+export const profileContent = contentByLocale.en.profile
+export const projectsContent = contentByLocale.en.projects
+export const pagesContent = contentByLocale.en.pages

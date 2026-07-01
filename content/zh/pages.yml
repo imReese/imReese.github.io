@@ -1,0 +1,63 @@
+about:
+  headline: "Hi, I'm Reese — 一个在北京和大模型推理系统死磕的后端工程师。"
+
+home:
+  hero:
+    viewProjects: 查看项目
+    readNotes: 阅读笔记
+  systemsPanel:
+    workspaceTitle: "Reese 的工作台"
+    workspaceSubtitle: LLM Serving / Backend Performance
+    location: 北京
+    sectionTitle: 经历
+    current: 当前
+    experiences:
+      - period: "2025.06 - 至今"
+        organization: 百度 AI 计算
+        summary: 给大模型推理引擎做性能优化——让它跑得更快、更稳。
+        current: true
+        details:
+          - "Serving Runtime：拆解 SGLang Scheduler 边界和 Prefill/Decode 路径"
+          - "Memory & Transfer：跟踪 Cache 驻留行为和 Mooncake TE 传输就绪状态"
+          - "Heterogeneous Backends：在不同加速卡上适配并调优执行路径"
+      - period: "2023"
+        organization: 华为云
+        summary: CPU 体系结构性能分析。
+      - period: "2022"
+        organization: 华为数据存储
+        summary: 分布式系统工程。
+  experienceStack:
+    eyebrow: 经历 / 教育
+    title: "From Distributed Storage to LLM Serving"
+    aboutLink: 关于
+    educationPrefix: 补充信息
+    technicalEyebrow: 技术栈
+    technicalTitle: "Tools I Reach for When Debugging Systems"
+    technicalIntro: 排查服务系统时高频使用的工具集——覆盖 Runtime、内存、异构后端和基础设施。
+    currentEmphasisLabel: 当前重点
+    currentEmphasis: SGLang Runtime 调度路径、KV Cache 驻留行为、Mooncake TE 传输边界，以及异构后端调优。
+    engineeringHabitLabel: 工程信条
+    engineeringHabit: 把性能榨干到极致，让生产行为清晰透明。
+  notes:
+    title: Engineering Notes
+    intro: 后端系统、推理优化、云原生工具，以及偶尔一点生活碎片。
+    allNotes: 全部笔记
+    empty: 还没放笔记，第一篇写完后这里会自动出现。
+
+projectsPage:
+  githubActivityTitle: GitHub Activity
+  githubActivityIntro: GitHub contribution 的自动更新快照，记录 Runtime 实验、源码阅读和个人项目的节奏。
+  githubProfileLink: 查看 GitHub 主页
+
+blogPage:
+  headline: Engineering Notes
+  intro: 读代码、看论文、折腾系统时留下的记录。正文保持原样，不维护两套语言。
+  readBlog: 阅读全文
+
+friends:
+  headline: 友情链接
+  intro: 一些朋友的站点。
+  items:
+    - name: Corey Chiu
+      link:
+        href: https://coreychiu.com

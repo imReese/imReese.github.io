@@ -1,4 +1,4 @@
-import { siteContent } from "./content"
+import { pagesContent, siteContent } from "./content"
 import { profileSummary } from "./profileContent"
 
 export * from "./projects"
@@ -17,13 +17,13 @@ export const email = profileSummary.email
 export const githubUsername = profileSummary.githubUsername
 
 // about page
-export const aboutMeHeadline = siteContent.about.headline
+export const aboutMeHeadline = pagesContent.about.headline
 export const aboutParagraphs = profileSummary.aboutParagraphs
 
 
 // blog
-export const blogHeadLine = siteContent.blog.headline
-export const blogIntro = siteContent.blog.intro
+export const blogHeadLine = pagesContent.blogPage.headline
+export const blogIntro = pagesContent.blogPage.intro
 
 
 // social links

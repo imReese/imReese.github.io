@@ -13,22 +13,28 @@ Author-facing content lives here:
 
 ```text
 content/
-  site.yml
-  profile.yml
-  projects.yml
-  friends.yml
-  pages.zh.yml
+  en/
+    site.yml
+    profile.yml
+    projects.yml
+    pages.yml
+  zh/
+    site.yml
+    profile.yml
+    projects.yml
+    pages.yml
   blogs/
 ```
 
-- `content/site.yml`: site identity, navigation labels, footer links, social
-  links, blog copy, and GitHub activity settings.
-- `content/profile.yml`: homepage copy, about page copy, focus areas, work
-  history, education, and stack.
-- `content/projects.yml`: project cards and pinned GitHub repositories.
-- `content/friends.yml`: friend links.
-- `content/pages.zh.yml`: Chinese overrides for page-level content. Blog post
-  bodies stay in `content/blogs/` and do not need a separate Chinese copy.
+- `content/en/site.yml` and `content/zh/site.yml`: site identity, navigation,
+  footer links, social links, and GitHub activity settings.
+- `content/en/profile.yml` and `content/zh/profile.yml`: focus areas, about
+  copy, work history, education, and stack.
+- `content/en/projects.yml` and `content/zh/projects.yml`: project cards and
+  pinned GitHub repositories.
+- `content/en/pages.yml` and `content/zh/pages.yml`: page-level copy for the
+  home, about, projects, blogs, and friends pages. Friend links live here; there
+  is no separate `friends.yml`.
 - `content/blogs/*.mdx`: blog posts.
 
 The `src/` directory is the reusable template implementation. Change it when

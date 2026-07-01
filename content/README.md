@@ -5,12 +5,14 @@ edit files here instead of changing files under `src/`.
 
 ## Files
 
-- `site.yml`: site identity, navigation, social links, blog labels, activity links
-- `profile.yml`: homepage/about copy, focus areas, work history, education, stack
-- `projects.yml`: project cards and GitHub activity settings
-- `friends.yml`: friend links
-- `pages.zh.yml`: Chinese overrides for page-level content
+- `en/site.yml` and `zh/site.yml`: site identity, navigation, social links, and activity links
+- `en/profile.yml` and `zh/profile.yml`: focus areas, about copy, work history, education, stack
+- `en/projects.yml` and `zh/projects.yml`: project cards and GitHub activity settings
+- `en/pages.yml` and `zh/pages.yml`: page-level copy for home, about, projects, blogs, and friends
 - `blogs/*.mdx`: blog posts
+
+Friend links are part of each locale's `pages.yml`; there is no separate
+`friends.yml`.
 
 ## Blog Posts
 

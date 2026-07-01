@@ -1,7 +1,7 @@
-import { friendsContent } from './content'
+import { pagesContent } from './content'
 
-export const friendsHeadLine = friendsContent.headline
-export const friendsIntro = friendsContent.intro
+export const friendsHeadLine = pagesContent.friends.headline
+export const friendsIntro = pagesContent.friends.intro
 
 export type FriendItemType = {
   name: string
@@ -10,4 +10,4 @@ export type FriendItemType = {
   logo?: string
 }
 
-export const friends: Array<FriendItemType> = friendsContent.items
+export const friends: Array<FriendItemType> = pagesContent.friends.items

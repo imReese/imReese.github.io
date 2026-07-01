@@ -1,0 +1,35 @@
+headline: Projects
+intro: 一些和 SGLang Runtime、后端系统、自动化工具相关的项目——能跑的代码比 PPT 更有说服力。
+
+items:
+  - name: SGLang Rust Runtime
+    description: "探索 SGLang 的 Rust Runtime 方向：请求怎么走完一生、Scheduler/Router 边界在哪、Cache 怎么管理、Mooncake TE 怎么接入、PD 架构下 KV 传输怎么规划。"
+    href: https://github.com/imReese/sglang-rs
+    label: github.com/imReese/sglang-rs
+    tags:
+      - Rust
+      - SGLang
+      - KV Cache
+      - Mooncake TE
+      - Scheduling
+  - name: 轻量级 C++ Web Server
+    description: 用 C++ 手搓的 Web Server——线程池、非阻塞 Socket + Epoll、HTTP 状态机解析、数据库登录注册，以及同步/异步日志。麻雀虽小，五脏俱全。
+    href: https://github.com/imReese
+    label: github.com/imReese
+    tags:
+      - C++
+      - Linux
+      - epoll
+      - HTTP
+      - MySQL
+  - name: LeetCode Automation Manager
+    description: 算法刷题的自动化管家——自动解析题目、生成代码模板和测试用例、跑 GitHub Actions 工作流，省掉重复劳动。
+    href: https://github.com/imReese
+    label: github.com/imReese
+    tags:
+      - Python
+      - C++
+      - Automation
+      - GitHub Actions
+
+githubItems: []
