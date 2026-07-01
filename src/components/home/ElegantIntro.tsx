@@ -32,11 +32,15 @@ export function ElegantIntro() {
         transition={{ duration: 0.7, ease: 'easeOut' }}
         className="min-w-0 max-w-2xl"
       >
-        <h1 className="break-words text-3xl font-bold text-foreground sm:text-5xl lg:text-6xl">
+        <h1 className="break-words font-bold text-foreground">
           {headlineLines.map((line, index) => (
             <span
               key={line}
-              className={index === 0 ? 'block whitespace-nowrap' : 'block'}
+              className={
+                index === 0
+                  ? 'block whitespace-nowrap text-3xl sm:text-5xl lg:text-6xl'
+                  : 'mt-2 block text-2xl leading-tight sm:text-4xl lg:text-5xl'
+              }
             >
               {line}
             </span>
