@@ -53,3 +53,17 @@ blogPage:
   headline: Engineering notes and field logs.
   intro: Notes about backend systems, SGLang runtime work, cloud-native tooling, AI, programming, and life.
   readBlog: Read blog
+  readingMap:
+    title: Reading map
+    intro: Follow the notes by recency, year, or recurring systems themes.
+    latestLabel: Latest note
+    archiveLabel: Archive
+    topicsLabel: Topics
+    noteSingular: note
+    notePlural: notes
+    topics:
+      - LLM serving
+      - KV cache
+      - Mooncake
+      - Attention
+      - Systems reading

@@ -92,6 +92,16 @@ export type BlogPageContent = {
   headline: string
   intro: string
   readBlog: string
+  readingMap: {
+    title: string
+    intro: string
+    latestLabel: string
+    archiveLabel: string
+    topicsLabel: string
+    noteSingular: string
+    notePlural: string
+    topics: string[]
+  }
 }
 
 export type ProfileContent = {

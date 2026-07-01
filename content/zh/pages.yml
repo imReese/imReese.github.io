@@ -53,3 +53,17 @@ blogPage:
   headline: 技术笔记
   intro: 读代码、看论文、折腾系统时留下的一些记录。
   readBlog: 阅读全文
+  readingMap:
+    title: 阅读索引
+    intro: 按时间和主题快速扫一遍这些笔记。
+    latestLabel: 最新一篇
+    archiveLabel: 归档
+    topicsLabel: 主题
+    noteSingular: 篇
+    notePlural: 篇
+    topics:
+      - 大模型推理
+      - KV Cache
+      - Mooncake
+      - Attention
+      - 系统读码
