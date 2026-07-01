@@ -42,7 +42,7 @@ function MobileNavigation(
   return (
     <Popover {...props}>
       <Popover.Button className="group flex items-center rounded-full bg-card/80 px-4 py-2 text-sm font-medium shadow-lg ring-1 ring-border/70 backdrop-blur">
-        {t("common.menu")}
+        {t('common.menu')}
         <ChevronDownIcon className="ml-3 h-auto w-2" />
       </Popover.Button>
       <Transition.Root>
@@ -68,10 +68,13 @@ function MobileNavigation(
         >
           <Popover.Panel
             focus
-            className="fixed inset-x-4 top-8 z-50 origin-top rounded-3xl p-8 ring-1 ring-muted bg-card"
+            className="fixed inset-x-4 top-8 z-50 origin-top rounded-3xl bg-card p-8 ring-1 ring-muted"
           >
             <div className="flex flex-row-reverse items-center justify-between">
-              <Popover.Button aria-label={t("common.closeMenu")} className="-m-1 p-1">
+              <Popover.Button
+                aria-label={t('common.closeMenu')}
+                className="-m-1 p-1"
+              >
                 <XIcon className="h-6 w-6 text-muted-foreground" />
               </Popover.Button>
               <h2 className="text-sm font-medium text-muted-foreground">
@@ -116,7 +119,7 @@ function NavItem({
           'relative block px-3 py-2 transition',
           isActive
             ? 'text-primary'
-            : 'opacity-80 hover:opacity-100 hover:text-primary',
+            : 'opacity-80 hover:text-primary hover:opacity-100',
         )}
       >
         {children}
@@ -159,7 +162,7 @@ function AvatarContainer({
   showName?: boolean
 }) {
   return (
-    <div className='flex flex-row items-center gap-2'>
+    <div className="pointer-events-auto flex flex-row items-center gap-2 rounded-full bg-card/85 px-2.5 py-1.5 shadow-md shadow-zinc-900/5 ring-1 ring-border/70 backdrop-blur-xl dark:bg-card/70">
       <div
         className={clsx(
           className,
@@ -168,11 +171,7 @@ function AvatarContainer({
         {...props}
       />
       {showName && (
-        <Link
-          href="/"
-          aria-label="Home"
-          className='pointer-events-auto'
-        >
+        <Link href="/" aria-label="Home">
           <div className="text-base font-semibold capitalize">{name}</div>
         </Link>
       )}
@@ -218,24 +217,24 @@ export function Header() {
         style={{ position: 'sticky', top: 0 }}
       >
         <Container className="w-full">
-            <div className="relative flex min-w-0 items-center gap-4">
-              <div className="flex min-w-0 flex-1">
-                <AvatarContainer showName={true}>
-                  <Avatar />
-                </AvatarContainer>
-              </div>
-              <div className="flex flex-none justify-end md:flex-1 md:justify-start">
-                <MobileNavigation className="pointer-events-auto md:hidden" />
-                <DesktopNavigation className="pointer-events-auto hidden md:block" />
-              </div>
-              <div className="hidden justify-end md:flex md:flex-1">
-                <div className="pointer-events-auto flex flex-row items-center gap-2 md:mr-2">
-                  <LanguageToggle />
-                  <ThemeToggle />
-                  <GithubRepo />
-                </div>
+          <div className="relative flex min-w-0 items-center gap-4">
+            <div className="flex min-w-0 flex-1">
+              <AvatarContainer showName={true}>
+                <Avatar />
+              </AvatarContainer>
+            </div>
+            <div className="flex flex-none justify-end md:flex-1 md:justify-start">
+              <MobileNavigation className="pointer-events-auto md:hidden" />
+              <DesktopNavigation className="pointer-events-auto hidden md:block" />
+            </div>
+            <div className="hidden justify-end md:flex md:flex-1">
+              <div className="pointer-events-auto flex flex-row items-center gap-2 rounded-full bg-card/85 px-2 py-1.5 shadow-md shadow-zinc-900/5 ring-1 ring-border/70 backdrop-blur-xl dark:bg-card/70 md:mr-2">
+                <LanguageToggle />
+                <ThemeToggle />
+                <GithubRepo />
               </div>
             </div>
+          </div>
         </Container>
       </header>
     </>
