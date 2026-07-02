@@ -5,7 +5,7 @@
       <stop offset="0.58" stop-color="#e9eef3"/>
       <stop offset="1" stop-color="#f4f7fa"/>
     </linearGradient>
-    <linearGradient id="accent" x1="92" x2="420" y1="397" y2="397" gradientUnits="userSpaceOnUse">
+    <linearGradient id="accent" x1="78" x2="434" y1="407" y2="407" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#0f766e" stop-opacity="0"/>
       <stop offset="0.22" stop-color="#0f766e" stop-opacity="0.58"/>
       <stop offset="0.5" stop-color="#0f766e"/>
@@ -21,7 +21,9 @@
   </defs>
   <rect width="512" height="512" rx="118" fill="url(#bg)"/>
   <rect x="32" y="32" width="448" height="448" rx="98" fill="none" stroke="#c8d2dd" stroke-width="10" opacity="0.72"/>
-  <path d="M159 361V151h108c32 0 57 8 75 23 18 16 27 37 27 64 0 19-5 35-15 49-9 13-23 24-40 31l59 43h-67l-50-39h-45v39h-52Zm52-84h51c17 0 30-3 39-10 9-7 13-17 13-30s-4-23-13-30c-9-7-22-10-39-10h-51v80Z" fill="#4b5168" filter="url(#markShadow)"/>
-  <rect x="96" y="390" width="320" height="16" rx="8" fill="url(#accent)"/>
-  <rect x="136" y="394" width="240" height="22" rx="11" fill="#99f6e4" opacity="0.18" filter="url(#lineGlow)"/>
+  <g transform="translate(15 24) scale(0.94)">
+    <path d="M159 361V151h108c32 0 57 8 75 23 18 16 27 37 27 64 0 19-5 35-15 49-9 13-23 24-40 31l59 43h-67l-50-39h-45v39h-52Zm52-84h51c17 0 30-3 39-10 9-7 13-17 13-30s-4-23-13-30c-9-7-22-10-39-10h-51v80Z" fill="#4b5168" filter="url(#markShadow)"/>
+  </g>
+  <rect x="78" y="398" width="356" height="18" rx="9" fill="url(#accent)"/>
+  <rect x="104" y="400" width="304" height="30" rx="15" fill="#99f6e4" opacity="0.2" filter="url(#lineGlow)"/>
 </svg>
