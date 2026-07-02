@@ -115,16 +115,20 @@ function NavItem({
     <li>
       <Link
         href={href}
+        aria-current={isActive ? 'page' : undefined}
         className={clsx(
-          'relative block px-3 py-2 transition',
+          'group relative block px-3 py-2 transition-colors duration-200',
           isActive
-            ? 'text-primary'
-            : 'opacity-80 hover:text-primary hover:opacity-100',
+            ? 'font-semibold text-primary'
+            : 'text-muted-foreground hover:text-primary',
         )}
       >
         {children}
         {isActive && (
-          <span className="absolute inset-x-1 -bottom-px h-[1.5px] bg-gradient-to-r from-primary/0 via-primary/40 to-primary/0 dark:from-primary/0 dark:via-primary/40 dark:to-primary/0" />
+          <>
+            <span className="absolute inset-x-2 -bottom-0.5 z-10 h-0.5 rounded-full bg-current" />
+            <span className="absolute inset-x-1 -bottom-1 h-2 rounded-full bg-current opacity-20 blur-md" />
+          </>
         )}
       </Link>
     </li>
@@ -136,7 +140,7 @@ function DesktopNavigation(props: React.ComponentPropsWithoutRef<'nav'>) {
 
   return (
     <nav {...props}>
-      <ul className="flex px-2 text-sm font-medium">
+      <ul className="relative flex px-2 text-sm font-medium before:absolute before:inset-x-2 before:-bottom-0.5 before:h-0.5 before:rounded-full before:bg-muted-foreground/30 before:content-['']">
         {navItems.map((item, index) => (
           <Fragment key={item.name}>
             {index > 0 && (
