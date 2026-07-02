@@ -126,8 +126,8 @@ function NavItem({
         {children}
         {isActive && (
           <>
-            <span className="absolute inset-x-2 -bottom-0.5 z-10 h-0.5 rounded-full bg-current" />
-            <span className="absolute inset-x-1 -bottom-1 h-2 rounded-full bg-current opacity-20 blur-md" />
+            <span className="absolute inset-x-0 -bottom-0.5 z-10 h-0.5 bg-gradient-to-r from-primary/0 via-current to-primary/0" />
+            <span className="absolute inset-x-0 -bottom-1 h-2 rounded-full bg-current opacity-20 blur-md" />
           </>
         )}
       </Link>
@@ -140,7 +140,7 @@ function DesktopNavigation(props: React.ComponentPropsWithoutRef<'nav'>) {
 
   return (
     <nav {...props}>
-      <ul className="relative flex px-2 text-sm font-medium before:absolute before:inset-x-2 before:-bottom-0.5 before:h-0.5 before:rounded-full before:bg-muted-foreground/30 before:content-['']">
+      <ul className="relative flex px-2 text-sm font-medium before:absolute before:-inset-x-4 before:-bottom-0.5 before:h-0.5 before:bg-gradient-to-r before:from-transparent before:via-muted-foreground/30 before:to-transparent before:content-['']">
         {navItems.map((item, index) => (
           <Fragment key={item.name}>
             {index > 0 && (
