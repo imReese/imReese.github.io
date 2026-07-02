@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Reese">
+  <defs>
+    <linearGradient id="bg" x1="82" x2="430" y1="44" y2="468" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1a1d2a"/>
+      <stop offset="0.58" stop-color="#0f111b"/>
+      <stop offset="1" stop-color="#171925"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="92" x2="420" y1="397" y2="397" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#94e2d5" stop-opacity="0"/>
+      <stop offset="0.22" stop-color="#94e2d5" stop-opacity="0.58"/>
+      <stop offset="0.5" stop-color="#94e2d5"/>
+      <stop offset="0.78" stop-color="#94e2d5" stop-opacity="0.58"/>
+      <stop offset="1" stop-color="#94e2d5" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="markShadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000000" flood-opacity="0.14"/>
+    </filter>
+    <filter id="lineGlow" x="-20%" y="-200%" width="140%" height="500%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="118" fill="url(#bg)"/>
+  <rect x="32" y="32" width="448" height="448" rx="98" fill="none" stroke="#34384d" stroke-width="10" opacity="0.72"/>
+  <path d="M159 361V151h108c32 0 57 8 75 23 18 16 27 37 27 64 0 19-5 35-15 49-9 13-23 24-40 31l59 43h-67l-50-39h-45v39h-52Zm52-84h51c17 0 30-3 39-10 9-7 13-17 13-30s-4-23-13-30c-9-7-22-10-39-10h-51v80Z" fill="#e8ebf5" filter="url(#markShadow)"/>
+  <rect x="96" y="390" width="320" height="16" rx="8" fill="url(#accent)"/>
+  <rect x="136" y="394" width="240" height="22" rx="11" fill="#0f766e" opacity="0.18" filter="url(#lineGlow)"/>
+</svg>
