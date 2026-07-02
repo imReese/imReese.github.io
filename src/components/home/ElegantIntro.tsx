@@ -9,15 +9,18 @@ function getHeadlineLines(headline: string) {
   const leadPatterns = ["Hi, I'm Reese.", 'Hi，我是 Reese']
   const lead = leadPatterns.find((pattern) => headline.startsWith(pattern))
 
-  if (!lead) {
+  const zhLead = headline.match(/^Hi[，,]\s*我是[^，,。.!?]+[，,]?/)
+
+  if (!lead && !zhLead) {
     return [headline]
   }
 
+  const headlineLead = lead ?? zhLead?.[0] ?? ''
   const rest = headline
-    .slice(lead.length)
-    .replace(/^，\s*/, '')
+    .slice(headlineLead.length)
+    .replace(/^[，,]\s*/, '')
     .trim()
-  return rest ? [lead, rest] : [lead]
+  return rest ? [headlineLead, rest] : [headlineLead]
 }
 
 export function ElegantIntro() {
@@ -35,10 +38,12 @@ export function ElegantIntro() {
         <h1 className="break-words font-bold text-foreground">
           {headlineLines.map((line, index) => (
             <span
-              key={line}
+              key={`${index}-${line}`}
               className={
                 index === 0
-                  ? 'block whitespace-nowrap text-3xl sm:text-5xl lg:text-6xl'
+                  ? `block text-3xl sm:text-5xl lg:text-6xl ${
+                      headlineLines.length > 1 ? 'whitespace-nowrap' : ''
+                    }`
                   : 'mt-2 block text-2xl leading-tight sm:text-4xl lg:text-5xl'
               }
             >
