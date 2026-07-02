@@ -1,0 +1,941 @@
+---
+title: 'Docker 使用：镜像、容器、日志、exec 和 volume'
+description: '一份 Docker 工具介绍和常用命令手册：覆盖 image、container、run、logs、exec、volume、network、compose 和常见排障。'
+author: 'Reese'
+date: '2024-08-18'
+topics:
+  - cloud-tooling
+---
+
+`Docker` 是容器工具。它解决的是：把应用和运行依赖打包成镜像，再用相对一致的方式在本机、测试环境或服务器上启动。
+
+先把几个对象分清楚：
+
+```text
+image       镜像，应用和依赖的只读模板
+container   容器，由镜像启动出来的运行实例
+registry    镜像仓库，例如 Docker Hub、GHCR、私有 registry
+volume      持久化数据卷
+network     容器之间通信的网络
+Dockerfile  构建镜像的配方
+Compose     用一个 YAML 编排多个容器
+```
+
+镜像像“安装包”，容器像“跑起来的进程”。同一个镜像可以启动多个容器，每个容器有自己的文件系统、进程空间和网络配置。
+
+## 什么时候用 Docker
+
+适合用 Docker 的场景：
+
+```text
+本机快速启动 MySQL、Redis、Postgres、Prometheus 等依赖
+把应用和运行时依赖打包成镜像
+复现线上环境
+跑一次性工具或构建任务
+在 CI 里启动服务做集成测试
+用 docker compose 拉起一组开发环境
+```
+
+不适合把 Docker 当成：
+
+```text
+虚拟机完整替代品
+长期保存容器内临时文件的地方
+解决所有部署问题
+完整的安全隔离方案
+```
+
+常用占位符：
+
+```text
+<image-name>
+<container-name>
+<container-id>
+<tag>
+<host-port>
+<container-port>
+<volume-name>
+<network-name>
+```
+
+## 基本检查
+
+查看版本：
+
+```bash
+docker version
+docker --version
+```
+
+查看 Docker daemon 状态：
+
+```bash
+docker info
+```
+
+如果 `docker version` 只有 client 没有 server，通常是 Docker Desktop 没启动，或者当前用户没有权限访问 Docker daemon。
+
+查看磁盘占用：
+
+```bash
+docker system df
+```
+
+## image：镜像管理
+
+拉取镜像：
+
+```bash
+docker pull redis:7
+docker pull postgres:16
+```
+
+查看本地镜像：
+
+```bash
+docker images
+docker image ls
+```
+
+删除镜像：
+
+```bash
+docker rmi <image-name>:<tag>
+docker image rm <image-id>
+```
+
+给镜像打 tag：
+
+```bash
+docker tag local-image:latest registry.example.com/team/app:v1
+```
+
+推送镜像：
+
+```bash
+docker push registry.example.com/team/app:v1
+```
+
+查看镜像详情：
+
+```bash
+docker image inspect <image-name>:<tag>
+```
+
+查看镜像构建层：
+
+```bash
+docker history <image-name>:<tag>
+```
+
+清理悬空镜像：
+
+```bash
+docker image prune
+```
+
+清理所有未使用镜像：
+
+```bash
+docker image prune -a
+```
+
+`prune -a` 会删掉所有当前没有容器引用的镜像，动手前先 `docker images` 和 `docker system df`。
+
+## container：容器管理
+
+查看运行中的容器：
+
+```bash
+docker ps
+```
+
+查看所有容器，包括已经退出的：
+
+```bash
+docker ps -a
+```
+
+启动容器：
+
+```bash
+docker start <container-name>
+```
+
+停止容器：
+
+```bash
+docker stop <container-name>
+```
+
+重启容器：
+
+```bash
+docker restart <container-name>
+```
+
+删除已停止容器：
+
+```bash
+docker rm <container-name>
+```
+
+强制删除运行中的容器：
+
+```bash
+docker rm -f <container-name>
+```
+
+查看容器详情：
+
+```bash
+docker inspect <container-name>
+```
+
+查看容器资源占用：
+
+```bash
+docker stats
+docker stats <container-name>
+```
+
+查看容器内进程：
+
+```bash
+docker top <container-name>
+```
+
+## run：启动一个容器
+
+最小启动：
+
+```bash
+docker run redis:7
+```
+
+后台运行：
+
+```bash
+docker run -d redis:7
+```
+
+指定名称：
+
+```bash
+docker run -d --name redis-dev redis:7
+```
+
+端口映射：
+
+```bash
+docker run -d --name nginx-dev -p 8080:80 nginx:alpine
+```
+
+含义：
+
+```text
+-p 8080:80
+   宿主机 8080 端口 -> 容器 80 端口
+```
+
+环境变量：
+
+```bash
+docker run -d --name postgres-dev \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=app \
+  -p 5432:5432 \
+  postgres:16
+```
+
+启动后自动删除，适合一次性命令：
+
+```bash
+docker run --rm alpine:3.20 echo hello
+```
+
+交互式 shell：
+
+```bash
+docker run --rm -it ubuntu:24.04 bash
+```
+
+设置工作目录：
+
+```bash
+docker run --rm -it -w /work -v "$PWD:/work" node:22 bash
+```
+
+指定 entrypoint：
+
+```bash
+docker run --rm --entrypoint sh nginx:alpine
+```
+
+限制资源：
+
+```bash
+docker run -d --name app \
+  --cpus="2" \
+  --memory="2g" \
+  app:latest
+```
+
+常用参数：
+
+```text
+-d                  后台运行
+--name              容器名
+-p host:container   端口映射
+-e KEY=value        环境变量
+-v host:container   挂载目录或 volume
+--rm                容器退出后自动删除
+-it                 交互式终端
+--network           指定网络
+--restart           重启策略
+```
+
+## logs：看日志
+
+查看日志：
+
+```bash
+docker logs <container-name>
+```
+
+持续跟随：
+
+```bash
+docker logs -f <container-name>
+```
+
+最近 100 行：
+
+```bash
+docker logs --tail 100 <container-name>
+```
+
+带时间戳：
+
+```bash
+docker logs -t <container-name>
+```
+
+从最近 10 分钟开始：
+
+```bash
+docker logs --since 10m <container-name>
+```
+
+看崩溃容器的第一步通常是：
+
+```bash
+docker ps -a
+docker logs --tail 200 <container-name>
+docker inspect <container-name>
+```
+
+`docker logs` 只能看到容器标准输出和标准错误。如果应用把日志写到文件里，就需要 `exec` 进去看文件，或者把日志目录挂出来。
+
+## exec 和 cp：进入容器、拷贝文件
+
+进入运行中的容器：
+
+```bash
+docker exec -it <container-name> bash
+```
+
+如果没有 bash：
+
+```bash
+docker exec -it <container-name> sh
+```
+
+执行单条命令：
+
+```bash
+docker exec <container-name> env
+docker exec <container-name> ps aux
+```
+
+从容器拷贝到本机：
+
+```bash
+docker cp <container-name>:/path/in/container ./local-path
+```
+
+从本机拷贝到容器：
+
+```bash
+docker cp ./local-file <container-name>:/path/in/container
+```
+
+查看容器里的文件变更：
+
+```bash
+docker diff <container-name>
+```
+
+## volume：持久化数据
+
+容器删除后，容器层里的数据也会消失。数据库、缓存、构建产物等需要持久化时，用 volume 或 bind mount。
+
+创建 volume：
+
+```bash
+docker volume create postgres-data
+```
+
+查看 volume：
+
+```bash
+docker volume ls
+```
+
+查看详情：
+
+```bash
+docker volume inspect postgres-data
+```
+
+使用 volume：
+
+```bash
+docker run -d --name postgres-dev \
+  -e POSTGRES_PASSWORD=postgres \
+  -v postgres-data:/var/lib/postgresql/data \
+  -p 5432:5432 \
+  postgres:16
+```
+
+使用本机目录 bind mount：
+
+```bash
+docker run --rm -it \
+  -v "$PWD:/work" \
+  -w /work \
+  node:22 bash
+```
+
+区别：
+
+```text
+volume      Docker 管理存储位置，适合数据库数据
+bind mount  显式挂载宿主机目录，适合开发时代码目录
+```
+
+删除 volume：
+
+```bash
+docker volume rm postgres-data
+```
+
+清理未使用 volume：
+
+```bash
+docker volume prune
+```
+
+删除 volume 前确认没有重要数据。数据库数据一旦删掉，通常不能靠 Docker 恢复。
+
+## network：容器通信
+
+查看网络：
+
+```bash
+docker network ls
+```
+
+创建网络：
+
+```bash
+docker network create dev-net
+```
+
+让两个容器在同一个网络里：
+
+```bash
+docker run -d --name redis-dev --network dev-net redis:7
+docker run --rm -it --network dev-net alpine:3.20 sh
+```
+
+在同一个 user-defined bridge network 里，容器可以通过容器名访问：
+
+```bash
+redis-cli -h redis-dev -p 6379
+```
+
+查看网络详情：
+
+```bash
+docker network inspect dev-net
+```
+
+把已运行容器接入网络：
+
+```bash
+docker network connect dev-net <container-name>
+```
+
+断开：
+
+```bash
+docker network disconnect dev-net <container-name>
+```
+
+删除网络：
+
+```bash
+docker network rm dev-net
+```
+
+## build：用 Dockerfile 构建镜像
+
+一个简单 Dockerfile：
+
+```dockerfile
+FROM node:22-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+CMD ["npm", "start"]
+```
+
+构建：
+
+```bash
+docker build -t my-app:dev .
+```
+
+指定 Dockerfile：
+
+```bash
+docker build -f Dockerfile.prod -t my-app:prod .
+```
+
+构建时传参数：
+
+```bash
+docker build \
+  --build-arg APP_VERSION=1.2.3 \
+  -t my-app:1.2.3 .
+```
+
+不使用缓存：
+
+```bash
+docker build --no-cache -t my-app:debug .
+```
+
+多平台构建常用 `buildx`：
+
+```bash
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t registry.example.com/team/app:v1 \
+  --push .
+```
+
+## Dockerfile 常见写法
+
+`.dockerignore` 很重要，避免把依赖、构建产物、密钥上下文传进镜像构建：
+
+```gitignore
+node_modules/
+dist/
+.git/
+.env
+*.log
+```
+
+利用缓存，把依赖安装放在源码复制前：
+
+```dockerfile
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+```
+
+多阶段构建，减少最终镜像体积：
+
+```dockerfile
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+```
+
+运行非 root 用户：
+
+```dockerfile
+RUN addgroup -S app && adduser -S app -G app
+USER app
+```
+
+设置健康检查：
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD wget -qO- http://127.0.0.1:3000/health || exit 1
+```
+
+## compose：一组服务一起跑
+
+`docker compose` 适合本地开发环境：应用、数据库、缓存、消息队列一起启动。
+
+示例 `compose.yml`：
+
+```yaml
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/app
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+
+volumes:
+  postgres-data:
+```
+
+启动：
+
+```bash
+docker compose up
+docker compose up -d
+```
+
+查看服务：
+
+```bash
+docker compose ps
+```
+
+看日志：
+
+```bash
+docker compose logs
+docker compose logs -f app
+```
+
+进入服务容器：
+
+```bash
+docker compose exec app sh
+```
+
+重建：
+
+```bash
+docker compose build
+docker compose up -d --build
+```
+
+停止：
+
+```bash
+docker compose down
+```
+
+停止并删除 volume：
+
+```bash
+docker compose down -v
+```
+
+`down -v` 会删除 Compose 管理的数据卷，数据库数据也会被清掉。开发环境可以用，真实数据不要随手执行。
+
+## 常见服务启动例子
+
+Redis：
+
+```bash
+docker run -d --name redis-dev -p 6379:6379 redis:7
+```
+
+MySQL：
+
+```bash
+docker run -d --name mysql-dev \
+  -e MYSQL_ROOT_PASSWORD=mysql \
+  -e MYSQL_DATABASE=app \
+  -p 3306:3306 \
+  -v mysql-data:/var/lib/mysql \
+  mysql:8
+```
+
+Postgres：
+
+```bash
+docker run -d --name postgres-dev \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=app \
+  -p 5432:5432 \
+  -v postgres-data:/var/lib/postgresql/data \
+  postgres:16
+```
+
+Prometheus：
+
+```bash
+docker run -d --name prometheus-dev \
+  -p 9090:9090 \
+  -v "$PWD/prometheus.yml:/etc/prometheus/prometheus.yml" \
+  prom/prometheus
+```
+
+一次性跑命令：
+
+```bash
+docker run --rm -it -v "$PWD:/work" -w /work alpine:3.20 sh
+```
+
+## 清理
+
+清理停止的容器：
+
+```bash
+docker container prune
+```
+
+清理未使用镜像：
+
+```bash
+docker image prune
+```
+
+清理未使用网络：
+
+```bash
+docker network prune
+```
+
+清理未使用 volume：
+
+```bash
+docker volume prune
+```
+
+清理所有未使用对象：
+
+```bash
+docker system prune
+```
+
+包括未使用镜像：
+
+```bash
+docker system prune -a
+```
+
+清理前先看空间：
+
+```bash
+docker system df
+```
+
+如果你不确定 volume 里有没有数据库数据，不要执行 `volume prune`。
+
+## 常见问题
+
+### 端口被占用
+
+报错类似 `port is already allocated`。
+
+先看哪个容器占了端口：
+
+```bash
+docker ps
+```
+
+也可以查本机端口：
+
+```bash
+lsof -i :8080
+```
+
+解决方式：
+
+```bash
+docker stop <container-name>
+```
+
+或者换宿主机端口：
+
+```bash
+docker run -p 8081:80 nginx:alpine
+```
+
+### 容器启动后马上退出
+
+查看退出状态：
+
+```bash
+docker ps -a
+docker logs --tail 200 <container-name>
+docker inspect <container-name>
+```
+
+常见原因：
+
+```text
+启动命令执行完了
+环境变量缺失
+配置文件路径不对
+端口或权限问题
+应用启动时报错
+```
+
+可以覆盖 entrypoint 进去检查镜像：
+
+```bash
+docker run --rm -it --entrypoint sh <image-name>:<tag>
+```
+
+### 容器里访问不了宿主机服务
+
+macOS / Docker Desktop 常用：
+
+```text
+host.docker.internal
+```
+
+例如：
+
+```bash
+curl http://host.docker.internal:3000
+```
+
+Linux 上可能需要使用 host network：
+
+```bash
+docker run --network host <image-name>
+```
+
+或者显式配置网络和路由。
+
+### bind mount 后文件权限不对
+
+容器内用户和宿主机用户 uid/gid 不一致时容易出现。可以查看：
+
+```bash
+id
+docker exec <container-name> id
+```
+
+临时用当前用户启动：
+
+```bash
+docker run --rm -it \
+  -u "$(id -u):$(id -g)" \
+  -v "$PWD:/work" \
+  -w /work \
+  node:22 bash
+```
+
+生产镜像里更推荐明确创建非 root 用户，并让目录权限匹配。
+
+### 镜像太大
+
+常见处理：
+
+```text
+使用更小 base image，例如 alpine、distroless
+使用多阶段构建
+清理 package manager cache
+.dockerignore 排除无关文件
+不要把测试数据、源码历史、node_modules 整包复制进去
+```
+
+查看层大小：
+
+```bash
+docker history <image-name>:<tag>
+```
+
+### 需要看容器真实启动命令
+
+```bash
+docker inspect <container-name> \
+  --format '{{json .Config.Entrypoint}} {{json .Config.Cmd}}'
+```
+
+也可以直接：
+
+```bash
+docker inspect <container-name>
+```
+
+重点看：
+
+```text
+Config.Env
+Config.Entrypoint
+Config.Cmd
+HostConfig.Binds
+HostConfig.PortBindings
+NetworkSettings
+State
+```
+
+## 一套本地开发模板
+
+第一次启动依赖：
+
+```bash
+docker compose up -d db redis
+docker compose ps
+docker compose logs -f db
+```
+
+调试应用容器：
+
+```bash
+docker compose build app
+docker compose up app
+docker compose exec app sh
+```
+
+重置开发数据库：
+
+```bash
+docker compose down -v
+docker compose up -d db
+```
+
+清理无用对象：
+
+```bash
+docker system df
+docker container prune
+docker image prune
+```
+
+Docker 的关键是分清“镜像”和“容器”：镜像负责交付一致性，容器负责运行状态。排障时先看 `ps -a`、`logs`、`inspect`，数据持久化先确认 volume，清理命令动手前先确认不会删掉重要状态。

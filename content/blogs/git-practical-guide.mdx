@@ -1,0 +1,951 @@
+---
+title: 'Git 使用：分支、提交、rebase 和常见救场'
+description: '一份 Git 工具介绍和常用命令手册：覆盖 clone、branch、commit、diff、stash、rebase、cherry-pick、reflog 和团队协作。'
+author: 'Reese'
+date: '2024-05-12'
+topics:
+  - cloud-tooling
+---
+
+`git` 是分布式版本控制工具。它解决的是：代码怎么保存历史、怎么多人协作、怎么从错误修改里回退，以及怎么把一组改动整理成可以被 review 和发布的版本。
+
+日常操作里先分清三层：
+
+```text
+working tree  当前目录里真实的文件
+index         暂存区，下一次 commit 会记录的内容
+repository   .git 里的历史提交、分支、tag 和远端信息
+```
+
+日常用 Git，重点不是背所有子命令，而是知道自己正在改哪一层：工作区、暂存区、本地提交，还是远端分支。
+
+## 什么时候用 Git
+
+常见场景：
+
+```text
+保存一个稳定改动:
+  add / commit
+
+查看自己改了什么:
+  status / diff / log
+
+临时切走:
+  stash / switch
+
+同步远端:
+  fetch / rebase / push
+
+整理提交历史:
+  commit --amend / rebase -i
+
+救回误删或误改:
+  restore / reflog / revert
+```
+
+常用占位符：
+
+```text
+<branch-name>
+<remote-name>
+<commit-sha>
+<file-path>
+<tag-name>
+```
+
+## 初始化和身份配置
+
+查看版本：
+
+```bash
+git --version
+```
+
+设置提交身份：
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
+
+查看配置来源：
+
+```bash
+git config --list --show-origin
+```
+
+常用默认行为：
+
+```bash
+git config --global init.defaultBranch main
+git config --global pull.rebase true
+git config --global fetch.prune true
+```
+
+如果你希望提交历史保持线性，推荐把 `pull` 默认设置成 rebase。也可以更保守一点，平时不用 `git pull`，而是显式执行：
+
+```bash
+git fetch origin
+git rebase origin/main
+```
+
+## clone：拿到仓库
+
+克隆仓库：
+
+```bash
+git clone git@github.com:owner/repo.git
+cd repo
+```
+
+克隆到指定目录：
+
+```bash
+git clone git@github.com:owner/repo.git my-repo
+```
+
+只克隆最近历史，适合大仓库临时查看：
+
+```bash
+git clone --depth 1 git@github.com:owner/repo.git
+```
+
+查看远端：
+
+```bash
+git remote -v
+```
+
+添加远端：
+
+```bash
+git remote add origin git@github.com:owner/repo.git
+```
+
+修改远端地址：
+
+```bash
+git remote set-url origin git@github.com:owner/repo.git
+```
+
+## status：先看现场
+
+每次操作前先看状态：
+
+```bash
+git status
+git status --short
+git status -sb
+```
+
+常见状态：
+
+```text
+?? file      未被 Git 跟踪的新文件
+ M file      工作区修改了，但没暂存
+M  file      已暂存，下一次 commit 会记录
+MM file      暂存后又继续修改
+D  file      删除已暂存
+```
+
+如果不确定下一步该做什么，先看 `git status`，它通常会给出可用命令提示。
+
+## diff：看改动
+
+看工作区尚未暂存的改动：
+
+```bash
+git diff
+```
+
+看已经暂存、下一次 commit 会提交的改动：
+
+```bash
+git diff --cached
+git diff --staged
+```
+
+看某个文件：
+
+```bash
+git diff -- <file-path>
+git diff --cached -- <file-path>
+```
+
+看两个提交之间差异：
+
+```bash
+git diff <commit-a> <commit-b>
+```
+
+只看文件列表：
+
+```bash
+git diff --name-only
+git diff --cached --name-status
+```
+
+看某个函数附近的改动：
+
+```bash
+git diff -W -- <file-path>
+```
+
+提交前推荐至少跑一次：
+
+```bash
+git diff --cached
+```
+
+它能避免把临时调试、错误格式化或无关文件一起提交。
+
+## add 和 commit：保存一组改动
+
+暂存文件：
+
+```bash
+git add <file-path>
+git add path/to/dir
+```
+
+交互式选择部分 hunks：
+
+```bash
+git add -p
+```
+
+提交：
+
+```bash
+git commit -m "Describe the change"
+```
+
+修改上一次提交信息：
+
+```bash
+git commit --amend
+```
+
+把新改动补进上一次提交：
+
+```bash
+git add <file-path>
+git commit --amend --no-edit
+```
+
+如果这次提交已经推到共享分支，改历史前要谨慎。个人分支可以配合 `--force-with-lease` 推送，公共主干不要随便改。
+
+## branch 和 switch：管理分支
+
+查看分支：
+
+```bash
+git branch
+git branch -a
+```
+
+新建并切换分支：
+
+```bash
+git switch -c <branch-name>
+```
+
+切换已有分支：
+
+```bash
+git switch <branch-name>
+```
+
+从远端分支创建本地分支：
+
+```bash
+git switch -c <branch-name> origin/<branch-name>
+```
+
+删除本地分支：
+
+```bash
+git branch -d <branch-name>
+```
+
+如果分支没有被合并，`-d` 会拒绝删除。确认不要了再用：
+
+```bash
+git branch -D <branch-name>
+```
+
+查看当前分支和上游：
+
+```bash
+git branch -vv
+```
+
+设置 upstream：
+
+```bash
+git push -u origin <branch-name>
+```
+
+## log：看历史
+
+简洁历史：
+
+```bash
+git log --oneline
+git log --oneline --decorate --graph --all
+```
+
+看最近几条：
+
+```bash
+git log -5 --oneline
+```
+
+看某个文件历史：
+
+```bash
+git log -- <file-path>
+git log --follow -- <file-path>
+```
+
+看每个提交改了哪些文件：
+
+```bash
+git log --stat
+```
+
+看某个作者：
+
+```bash
+git log --author="name"
+```
+
+搜索提交信息：
+
+```bash
+git log --grep="keyword"
+```
+
+搜索改动内容，也就是哪个提交引入或删除了某段代码：
+
+```bash
+git log -S "function_name"
+git log -G "regex-pattern"
+```
+
+看单个提交：
+
+```bash
+git show <commit-sha>
+git show --stat <commit-sha>
+```
+
+## fetch、rebase 和 push：同步远端
+
+拉取远端引用，但不改工作区：
+
+```bash
+git fetch origin
+```
+
+把当前分支变基到远端主分支：
+
+```bash
+git rebase origin/main
+```
+
+推送当前分支：
+
+```bash
+git push
+```
+
+第一次推送新分支：
+
+```bash
+git push -u origin <branch-name>
+```
+
+如果你改写了个人分支历史，比如 amend 或 interactive rebase 后，需要强推：
+
+```bash
+git push --force-with-lease
+```
+
+`--force-with-lease` 会先确认远端没有别人新推的提交，比裸 `--force` 安全。
+
+常见的个人分支同步流程：
+
+```bash
+git fetch origin
+git rebase origin/main
+git push --force-with-lease
+```
+
+如果团队使用 merge commit，也可以用 merge。但如果目标是保持历史线性，使用 `fetch + rebase` 更清楚。
+
+## stash：临时收起改动
+
+临时保存工作区改动：
+
+```bash
+git stash push -m "work in progress"
+```
+
+包含未跟踪文件：
+
+```bash
+git stash push -u -m "work in progress"
+```
+
+查看 stash：
+
+```bash
+git stash list
+```
+
+恢复最近一次 stash 并从列表删除：
+
+```bash
+git stash pop
+```
+
+恢复但保留 stash：
+
+```bash
+git stash apply stash@{0}
+```
+
+删除某个 stash：
+
+```bash
+git stash drop stash@{0}
+```
+
+看 stash 内容：
+
+```bash
+git stash show -p stash@{0}
+```
+
+适合场景：
+
+```text
+手头改到一半，需要马上切分支看线上问题
+pull/rebase 前工作区不干净
+想临时试一个改动，但不确定要不要提交
+```
+
+## restore、reset 和 revert：三种回退
+
+丢弃工作区某个文件的未暂存修改：
+
+```bash
+git restore <file-path>
+```
+
+取消暂存，但保留文件内容：
+
+```bash
+git restore --staged <file-path>
+```
+
+恢复某个文件到指定提交版本：
+
+```bash
+git restore --source=<commit-sha> -- <file-path>
+```
+
+撤销已经提交到共享分支的改动，生成一个新的反向提交：
+
+```bash
+git revert <commit-sha>
+```
+
+把当前分支指针回退到某个提交，保留改动在工作区：
+
+```bash
+git reset --mixed <commit-sha>
+```
+
+把当前分支指针回退到某个提交，保留改动在暂存区：
+
+```bash
+git reset --soft <commit-sha>
+```
+
+强制把工作区、暂存区、分支都回到某个提交：
+
+```bash
+git reset --hard <commit-sha>
+```
+
+`reset --hard` 会丢工作区内容，除非你很确定，否则先 `git status`、`git diff`、必要时 `git stash -u`。
+
+简单区分：
+
+```text
+restore  改文件
+reset    改当前分支指向，常用于本地整理
+revert   新增反向提交，常用于已经共享的历史
+```
+
+## rebase：整理提交历史
+
+把当前分支接到 `origin/main` 后面：
+
+```bash
+git fetch origin
+git rebase origin/main
+```
+
+交互式整理最近 3 个提交：
+
+```bash
+git rebase -i HEAD~3
+```
+
+常见动作：
+
+```text
+pick    保留提交
+reword  修改提交信息
+squash  合并到前一个提交，并编辑提交信息
+fixup   合并到前一个提交，丢掉当前提交信息
+drop    删除提交
+```
+
+冲突时流程：
+
+```bash
+git status
+# 手动解决冲突文件
+git add <file-path>
+git rebase --continue
+```
+
+放弃本次 rebase：
+
+```bash
+git rebase --abort
+```
+
+跳过当前提交：
+
+```bash
+git rebase --skip
+```
+
+注意：不要随便 rebase 已经多人共享的公共分支。个人功能分支可以整理，主干分支以团队规则为准。
+
+## cherry-pick：摘一个提交
+
+把别的分支上的某个提交拿到当前分支：
+
+```bash
+git cherry-pick <commit-sha>
+```
+
+只应用改动，不自动提交：
+
+```bash
+git cherry-pick -n <commit-sha>
+```
+
+冲突时：
+
+```bash
+git status
+# 解决冲突
+git add <file-path>
+git cherry-pick --continue
+```
+
+放弃：
+
+```bash
+git cherry-pick --abort
+```
+
+适合场景：
+
+```text
+线上分支需要一个修复
+某个功能分支里只有一个提交值得拿过来
+想拆分一组提交到不同分支
+```
+
+## tag：标记版本
+
+创建轻量 tag：
+
+```bash
+git tag v1.0.0
+```
+
+创建带说明的 tag：
+
+```bash
+git tag -a v1.0.0 -m "Release v1.0.0"
+```
+
+查看 tag：
+
+```bash
+git tag
+git show v1.0.0
+```
+
+推送 tag：
+
+```bash
+git push origin v1.0.0
+```
+
+推送所有 tag：
+
+```bash
+git push origin --tags
+```
+
+删除本地 tag：
+
+```bash
+git tag -d v1.0.0
+```
+
+删除远端 tag：
+
+```bash
+git push origin :refs/tags/v1.0.0
+```
+
+## blame 和 bisect：定位问题
+
+看某行是谁改的：
+
+```bash
+git blame <file-path>
+git blame -L 20,80 <file-path>
+```
+
+二分定位哪个提交引入 bug：
+
+```bash
+git bisect start
+git bisect bad
+git bisect good <known-good-commit>
+```
+
+每次 Git 切到一个提交后，运行验证命令，然后标记：
+
+```bash
+git bisect good
+git bisect bad
+```
+
+结束：
+
+```bash
+git bisect reset
+```
+
+如果验证命令可以自动判断成功失败：
+
+```bash
+git bisect run npm test
+```
+
+## reflog：救回误操作
+
+`reflog` 记录本地 HEAD 和分支指针的移动历史。很多误操作，例如 reset、rebase、commit --amend 后找不到旧提交，都可以从这里救。
+
+查看：
+
+```bash
+git reflog
+```
+
+找到目标提交后，新建一个分支保住它：
+
+```bash
+git switch -c rescue-branch <commit-sha>
+```
+
+或者把当前分支回到那里：
+
+```bash
+git reset --hard <commit-sha>
+```
+
+更稳的救法是先新建分支，不要马上 hard reset：
+
+```bash
+git switch -c rescue-branch <commit-sha>
+git log --oneline -5
+```
+
+确认没问题后再决定怎么合并或 cherry-pick。
+
+## .gitignore：不提交生成物
+
+`.gitignore` 用来忽略不应该进入版本库的文件：
+
+```gitignore
+node_modules/
+dist/
+.env
+.DS_Store
+*.log
+```
+
+如果文件已经被 Git 跟踪，后来再加 ignore 不会自动生效。需要从索引移除，但保留本地文件：
+
+```bash
+git rm --cached <file-path>
+```
+
+目录：
+
+```bash
+git rm -r --cached <dir-path>
+```
+
+检查某个文件为什么被忽略：
+
+```bash
+git check-ignore -v <file-path>
+```
+
+## 子模块和大文件
+
+查看子模块：
+
+```bash
+git submodule status
+```
+
+初始化并更新：
+
+```bash
+git submodule update --init --recursive
+```
+
+更新到远端最新：
+
+```bash
+git submodule update --remote --recursive
+```
+
+大文件不适合直接进普通 Git 历史。常见选择是 Git LFS：
+
+```bash
+git lfs install
+git lfs track "*.bin"
+git add .gitattributes
+```
+
+如果仓库里已经误提交了大文件，删除当前文件不等于删除历史，需要额外清理历史。公共仓库清历史前要先和团队确认。
+
+## 常见工作流
+
+新功能分支：
+
+```bash
+git fetch origin
+git switch main
+git rebase origin/main
+git switch -c feature/my-change
+```
+
+提交前检查：
+
+```bash
+git status -sb
+git diff
+git diff --cached
+npm test
+git add <file-path>
+git commit -m "Implement my change"
+```
+
+同步主分支：
+
+```bash
+git fetch origin
+git rebase origin/main
+```
+
+推送：
+
+```bash
+git push -u origin feature/my-change
+```
+
+修改 review 后补进同一个提交：
+
+```bash
+git add <file-path>
+git commit --amend --no-edit
+git push --force-with-lease
+```
+
+把多个小提交整理成一个：
+
+```bash
+git rebase -i origin/main
+git push --force-with-lease
+```
+
+临时切去修 bug：
+
+```bash
+git stash push -u -m "wip before urgent fix"
+git switch main
+git fetch origin
+git rebase origin/main
+git switch -c fix/urgent
+```
+
+回来继续：
+
+```bash
+git switch feature/my-change
+git stash pop
+```
+
+## 常见问题
+
+### 工作区不干净，切不了分支
+
+先看：
+
+```bash
+git status
+```
+
+如果改动要保留：
+
+```bash
+git stash push -u -m "temporary changes"
+```
+
+如果改动不要了：
+
+```bash
+git restore <file-path>
+```
+
+### 提交错分支了
+
+假设当前分支上最后一个提交应该去新分支：
+
+```bash
+git switch -c correct-branch
+git switch old-branch
+git reset --hard HEAD~1
+```
+
+更稳一点的做法：
+
+```bash
+git branch correct-branch
+git reset --hard HEAD~1
+git switch correct-branch
+```
+
+动手前先 `git log --oneline -3`，确认目标提交就是最后一个。
+
+### 推送被拒绝
+
+通常是远端比本地新：
+
+```bash
+git fetch origin
+git rebase origin/<branch-name>
+git push
+```
+
+如果你刚刚 amend 或 rebase 了个人分支：
+
+```bash
+git push --force-with-lease
+```
+
+### rebase 冲突太乱
+
+先不要硬猜，查看当前状态：
+
+```bash
+git status
+```
+
+如果想回到 rebase 前：
+
+```bash
+git rebase --abort
+```
+
+如果已经解决一部分，继续：
+
+```bash
+git add <file-path>
+git rebase --continue
+```
+
+### 不知道一个文件为什么变了
+
+看当前改动：
+
+```bash
+git diff -- <file-path>
+```
+
+看最近历史：
+
+```bash
+git log --follow -- <file-path>
+git blame <file-path>
+```
+
+如果要找哪个提交引入某段文本：
+
+```bash
+git log -S "some text" -- <file-path>
+```
+
+## 一组日常别名
+
+可以按习惯加一些别名：
+
+```bash
+git config --global alias.st "status -sb"
+git config --global alias.co "switch"
+git config --global alias.br "branch"
+git config --global alias.cm "commit"
+git config --global alias.lg "log --oneline --decorate --graph --all"
+```
+
+之后可以这样用：
+
+```bash
+git st
+git lg
+```
+
+别名不要太多。Git 本身已经够复杂，常用的状态、分支、日志三个方向够用了。
+
+## 提交前检查清单
+
+提交前过一遍：
+
+```text
+git status 是否只有预期文件
+git diff 是否没有调试代码
+git diff --cached 是否就是本次提交内容
+测试或构建是否跑过
+提交信息是否描述了真实变化
+是否把本地配置、密钥、日志、生成物放进去了
+```
+
+Git 不只是“把代码传上去”。它更重要的作用是让每一次变更都能被理解、回放、定位和撤销。命令很多，但日常主线其实很稳定：看状态、看 diff、分组提交、同步远端、必要时用 reflog 救场。

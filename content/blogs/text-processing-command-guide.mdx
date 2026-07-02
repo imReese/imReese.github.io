@@ -1,0 +1,1159 @@
+---
+title: '文本处理命令：rg、find、xargs、sed、awk、jq 和 yq'
+description: '一份文本处理命令手册：按搜索、批量处理、替换、列处理、JSON/YAML 查询和管道组合整理常见用法。'
+author: 'Reese'
+date: '2024-09-07'
+topics:
+  - cloud-tooling
+---
+
+命令行文本处理靠的是一组可以组合的小工具。搜索、过滤、替换、统计、批量执行、解析 JSON/YAML，都是在把输入变成更有用的输出。
+
+这篇把常用工具按职责拆开：
+
+```text
+rg      在文件内容里快速搜索
+find    按文件名、类型、时间、大小寻找文件
+xargs   把标准输入变成后续命令的参数
+sed     按行做流式替换、删除、截取
+awk     按行和列做过滤、计算、格式化
+jq      查询和转换 JSON
+yq      查询和转换 YAML
+```
+
+日常使用时，先把要处理的数据缩小，再对结果执行更危险的操作。比如先 `rg` 或 `find -print` 预览，再接 `xargs`、`sed -i` 或 `rm`。
+
+## 管道和标准输入
+
+Shell 里很多命令都能从标准输入读数据，再把结果写到标准输出：
+
+```bash
+command_a | command_b | command_c
+```
+
+例子：
+
+```bash
+rg "ERROR" app.log | rg "timeout" | head
+```
+
+含义：
+
+```text
+先找 ERROR
+再从这些行里找 timeout
+最后只看前几行
+```
+
+常见组合：
+
+```bash
+rg "pattern" | wc -l
+rg "pattern" | sort | uniq -c | sort -nr
+find . -type f -name "*.log" | xargs wc -l
+cat data.json | jq '.items[] | .name'
+```
+
+文件名里可能有空格、换行或特殊字符时，优先使用 NUL 分隔：
+
+```bash
+find . -type f -name "*.log" -print0 | xargs -0 rm
+```
+
+这比普通换行分隔安全。
+
+## rg：搜索文件内容
+
+`rg` 是 ripgrep，比传统 `grep -R` 更适合在代码库里搜索。它默认尊重 `.gitignore`，速度快，输出清楚。
+
+基础搜索：
+
+```bash
+rg "Mooncake"
+```
+
+显示行号：
+
+```bash
+rg -n "Mooncake"
+```
+
+忽略大小写：
+
+```bash
+rg -i "mooncake"
+```
+
+只匹配完整单词：
+
+```bash
+rg -w "Store"
+```
+
+把 pattern 当普通字符串，不当正则：
+
+```bash
+rg -F "a.b[c]"
+```
+
+多个 pattern：
+
+```bash
+rg -e "ERROR" -e "WARN" app.log
+```
+
+只在某类文件里搜：
+
+```bash
+rg "useEffect" -g "*.tsx"
+rg "DATABASE_URL" -g "*.env*" -g "!node_modules"
+```
+
+排除目录：
+
+```bash
+rg "TODO" -g "!dist" -g "!node_modules"
+```
+
+包含隐藏文件：
+
+```bash
+rg --hidden "token"
+```
+
+包含被 ignore 的文件：
+
+```bash
+rg --no-ignore "generated"
+```
+
+只输出匹配文件名：
+
+```bash
+rg -l "TODO"
+```
+
+输出不匹配的文件：
+
+```bash
+rg -L "license"
+```
+
+统计每个文件匹配次数：
+
+```bash
+rg -c "ERROR" logs/
+```
+
+只统计总数：
+
+```bash
+rg "ERROR" logs/ | wc -l
+```
+
+看上下文：
+
+```bash
+rg -C 3 "panic"
+rg -A 5 "Exception"
+rg -B 5 "Exception"
+```
+
+只输出匹配文本：
+
+```bash
+rg -o "user_id=[0-9]+"
+```
+
+搜索文件列表，而不是内容：
+
+```bash
+rg --files
+rg --files | rg "Dockerfile|compose.yml"
+```
+
+按类型搜索：
+
+```bash
+rg -t ts "interface"
+rg -t py "async def"
+rg -T md "TODO"
+```
+
+查看支持的类型：
+
+```bash
+rg --type-list
+```
+
+常见场景：
+
+```bash
+# 找所有 TODO
+rg -n "TODO|FIXME|HACK"
+
+# 找某个 API 的调用方
+rg -n "createClient\\("
+
+# 找用了某个环境变量的地方
+rg -n "process\\.env\\.[A-Z0-9_]+"
+
+# 找大概率写死的 IP
+rg -n "\\b([0-9]{1,3}\\.){3}[0-9]{1,3}\\b"
+```
+
+`rg` 默认使用正则。遇到点号、括号、方括号这种正则特殊字符，如果只是想搜字面量，直接加 `-F`。
+
+## find：查找文件
+
+`find` 按文件元数据找文件：路径、类型、名称、大小、修改时间、权限等。它不是搜文件内容的工具，搜内容优先用 `rg`。
+
+列出当前目录下所有文件：
+
+```bash
+find . -type f
+```
+
+列出目录：
+
+```bash
+find . -type d
+```
+
+按文件名：
+
+```bash
+find . -name "*.log"
+find . -name "Dockerfile"
+```
+
+忽略大小写：
+
+```bash
+find . -iname "readme.md"
+```
+
+限制深度：
+
+```bash
+find . -maxdepth 2 -type f
+find . -mindepth 2 -maxdepth 4 -type d
+```
+
+按大小：
+
+```bash
+find . -type f -size +100M
+find . -type f -size -10k
+```
+
+按修改时间：
+
+```bash
+find . -type f -mtime +7
+find . -type f -mtime -1
+find . -type f -mmin -30
+```
+
+含义：
+
+```text
+-mtime +7    7 天以前修改
+-mtime -1    过去 1 天内修改
+-mmin -30    过去 30 分钟内修改
+```
+
+找空文件或空目录：
+
+```bash
+find . -type f -empty
+find . -type d -empty
+```
+
+排除目录：
+
+```bash
+find . -path "./node_modules" -prune -o -type f -print
+find . -path "./.git" -prune -o -type f -name "*.md" -print
+```
+
+多个条件：
+
+```bash
+find . -type f \( -name "*.js" -o -name "*.ts" \)
+```
+
+对结果执行命令：
+
+```bash
+find . -type f -name "*.log" -exec wc -l {} \;
+```
+
+多个文件一次传给命令，通常更快：
+
+```bash
+find . -type f -name "*.log" -exec wc -l {} +
+```
+
+删除前先预览：
+
+```bash
+find . -type f -name "*.tmp" -print
+```
+
+确认后再删：
+
+```bash
+find . -type f -name "*.tmp" -delete
+```
+
+常见场景：
+
+```bash
+# 找最近一天改过的 markdown
+find . -type f -name "*.md" -mtime -1
+
+# 找大文件
+find . -type f -size +100M -print
+
+# 找空目录
+find . -type d -empty -print
+
+# 找 7 天前的日志，先预览
+find ./logs -type f -name "*.log" -mtime +7 -print
+```
+
+`find` 的表达式顺序很重要，尤其是 `-prune` 和 `-delete`。不确定时先 `-print`，不要一上来就删。
+
+## xargs：批量执行命令
+
+`xargs` 把标准输入读到的内容变成后面命令的参数。它常和 `rg -l`、`find` 组合使用。
+
+基本例子：
+
+```bash
+rg -l "oldName" | xargs sed -n '1,20p'
+```
+
+统计匹配文件行数：
+
+```bash
+rg -l "ERROR" logs/ | xargs wc -l
+```
+
+每次只传一个参数：
+
+```bash
+rg -l "TODO" | xargs -n 1 basename
+```
+
+并发执行：
+
+```bash
+find . -type f -name "*.log" -print0 | xargs -0 -n 1 -P 4 gzip
+```
+
+含义：
+
+```text
+-0      输入用 NUL 分隔
+-n 1    每次命令传 1 个参数
+-P 4    最多并发 4 个进程
+```
+
+替换占位符：
+
+```bash
+find . -type f -name "*.json" -print0 |
+  xargs -0 -I {} sh -c 'echo "checking {}"; jq empty "{}"'
+```
+
+如果没有输入，不执行命令：
+
+```bash
+rg -l "pattern-that-may-not-exist" | xargs -r wc -l
+```
+
+macOS 自带 BSD xargs 没有 `-r`，可以用 shell 判断或安装 GNU findutils。跨平台脚本里要注意这一点。
+
+安全批量删除：
+
+```bash
+find ./logs -type f -name "*.log" -mtime +7 -print
+find ./logs -type f -name "*.log" -mtime +7 -print0 | xargs -0 rm
+```
+
+批量替换前先列文件：
+
+```bash
+rg -l "old.package.name"
+```
+
+再替换：
+
+```bash
+rg -l "old.package.name" |
+  xargs sed -i '' 's/old\.package\.name/new.package.name/g'
+```
+
+这里的 `sed -i ''` 是 macOS 写法，Linux 通常是 `sed -i`。
+
+## sed：按行替换、删除、截取
+
+`sed` 适合做流式文本编辑。最常用的是替换，其次是打印某些行、删除某些行。
+
+打印第 1 到 80 行：
+
+```bash
+sed -n '1,80p' file.txt
+```
+
+打印匹配行：
+
+```bash
+sed -n '/ERROR/p' app.log
+```
+
+替换第一次出现：
+
+```bash
+sed 's/foo/bar/' file.txt
+```
+
+替换每行所有出现：
+
+```bash
+sed 's/foo/bar/g' file.txt
+```
+
+原地替换，macOS：
+
+```bash
+sed -i '' 's/foo/bar/g' file.txt
+```
+
+原地替换，Linux：
+
+```bash
+sed -i 's/foo/bar/g' file.txt
+```
+
+生成备份：
+
+```bash
+sed -i.bak 's/foo/bar/g' file.txt
+```
+
+删除空行：
+
+```bash
+sed '/^$/d' file.txt
+```
+
+删除注释行：
+
+```bash
+sed '/^#/d' file.txt
+```
+
+只替换某个范围：
+
+```bash
+sed '10,20s/foo/bar/g' file.txt
+```
+
+只替换匹配某个模式的行：
+
+```bash
+sed '/production/s/debug/info/g' config.txt
+```
+
+把多个连续空白压成一个空格：
+
+```bash
+sed 's/[[:space:]][[:space:]]*/ /g' file.txt
+```
+
+输出匹配区间：
+
+```bash
+sed -n '/BEGIN/,/END/p' file.txt
+```
+
+常见场景：
+
+```bash
+# 看文件前 120 行
+sed -n '1,120p' README.md
+
+# 删除日志里的空行
+sed '/^$/d' app.log
+
+# 批量替换 import 路径，先 rg -l 预览
+rg -l "@/old" src |
+  xargs sed -i '' 's#@/old#@/new#g'
+```
+
+替换路径时推荐把分隔符从 `/` 换成 `#` 或 `|`，少写很多转义：
+
+```bash
+sed 's#/old/path#/new/path#g' file.txt
+```
+
+## awk：按列过滤和统计
+
+`awk` 适合处理“每行一条记录、每行有多个字段”的文本，比如日志、CSV、命令输出。
+
+打印第一列：
+
+```bash
+awk '{print $1}' file.txt
+```
+
+打印第一列和第三列：
+
+```bash
+awk '{print $1, $3}' file.txt
+```
+
+按空白分列是默认行为。指定分隔符：
+
+```bash
+awk -F ':' '{print $1, $3}' /etc/passwd
+awk -F ',' '{print $1, $2}' data.csv
+```
+
+过滤：
+
+```bash
+awk '$3 > 100 {print $1, $3}' data.txt
+```
+
+匹配正则：
+
+```bash
+awk '/ERROR/ {print}' app.log
+awk '$0 ~ /timeout/ {print NR, $0}' app.log
+```
+
+打印行号：
+
+```bash
+awk '{print NR, $0}' file.txt
+```
+
+跳过表头：
+
+```bash
+awk 'NR > 1 {print}' data.csv
+```
+
+只处理表头：
+
+```bash
+awk 'NR == 1 {print}' data.csv
+```
+
+求和：
+
+```bash
+awk '{sum += $2} END {print sum}' data.txt
+```
+
+平均值：
+
+```bash
+awk '{sum += $2; count += 1} END {print sum / count}' data.txt
+```
+
+按字段计数：
+
+```bash
+awk '{count[$1] += 1} END {for (key in count) print key, count[key]}' app.log
+```
+
+格式化输出：
+
+```bash
+awk '{printf "%-30s %8s\n", $1, $2}' data.txt
+```
+
+按分隔符输出：
+
+```bash
+awk 'BEGIN {OFS=","} {print $1, $2, $3}' data.txt
+```
+
+处理 `ps` 输出：
+
+```bash
+ps aux | awk '$3 > 50 {print $2, $3, $11}'
+```
+
+统计访问日志里的状态码：
+
+```bash
+awk '{count[$9] += 1} END {for (code in count) print code, count[code]}' access.log |
+  sort -nr
+```
+
+按时间字段过滤需要先确认格式。简单日志可以这样：
+
+```bash
+awk '$1 == "2024-09-07" && $3 ~ /ERROR/ {print}' app.log
+```
+
+`awk` 比 `cut` 更灵活，比写脚本更轻。只要问题是“按行读、按列取、累加统计”，优先想到 awk。
+
+## jq：查询和转换 JSON
+
+`jq` 是 JSON 查询工具。它适合查看 API 返回、日志里的 JSON、配置文件、Kubernetes JSON 输出等。
+
+格式化 JSON：
+
+```bash
+jq . data.json
+```
+
+检查 JSON 是否合法：
+
+```bash
+jq empty data.json
+```
+
+读取字段：
+
+```bash
+jq '.name' data.json
+jq '.metadata.name' pod.json
+```
+
+数组展开：
+
+```bash
+jq '.items[]' data.json
+```
+
+读取数组字段：
+
+```bash
+jq '.items[].name' data.json
+```
+
+输出原始字符串，不带引号：
+
+```bash
+jq -r '.metadata.name' pod.json
+```
+
+过滤：
+
+```bash
+jq '.items[] | select(.status == "Running")' data.json
+```
+
+过滤并输出某个字段：
+
+```bash
+jq -r '.items[] | select(.status == "Running") | .name' data.json
+```
+
+构造新对象：
+
+```bash
+jq '.items[] | {name: .metadata.name, phase: .status.phase}' pods.json
+```
+
+构造数组：
+
+```bash
+jq '[.items[] | .metadata.name]' pods.json
+```
+
+处理不存在字段：
+
+```bash
+jq '.metadata.labels.app // "unknown"' pod.json
+```
+
+数组长度：
+
+```bash
+jq '.items | length' data.json
+```
+
+排序：
+
+```bash
+jq '.items | sort_by(.createdAt)' data.json
+```
+
+分组：
+
+```bash
+jq '.items | group_by(.status) | map({status: .[0].status, count: length})' data.json
+```
+
+更新字段：
+
+```bash
+jq '.metadata.labels.env = "dev"' pod.json
+```
+
+删除字段：
+
+```bash
+jq 'del(.metadata.managedFields)' pod.json
+```
+
+多个 JSON 文件合并成数组：
+
+```bash
+jq -s '.' *.json
+```
+
+从命令输出里取字段：
+
+```bash
+kubectl get pods -o json |
+  jq -r '.items[] | [.metadata.namespace, .metadata.name, .status.phase] | @tsv'
+```
+
+输出 CSV：
+
+```bash
+jq -r '.items[] | [.name, .status, .createdAt] | @csv' data.json
+```
+
+常见场景：
+
+```bash
+# 看 Kubernetes Pod 名和状态
+kubectl get pods -A -o json |
+  jq -r '.items[] | [.metadata.namespace, .metadata.name, .status.phase] | @tsv'
+
+# 找没有 ready 的容器
+kubectl get pods -A -o json |
+  jq -r '
+    .items[]
+    | select(any(.status.containerStatuses[]?; .ready == false))
+    | [.metadata.namespace, .metadata.name]
+    | @tsv
+  '
+
+# 从接口返回里取 id
+curl -s http://localhost:3000/api/items |
+  jq -r '.items[].id'
+```
+
+`jq` 的关键语法：
+
+```text
+.field             取字段
+.items[]           展开数组
+select(condition)  过滤
+|                  管道
+//                 默认值
+-r                 原始字符串输出
+-s                 slurp，把多个输入读成数组
+```
+
+## yq：查询和转换 YAML
+
+`yq` 是 YAML 查询工具。这里使用的是 Mike Farah 版本的 `yq` 语法，它和 `jq` 很像。
+
+查看版本：
+
+```bash
+yq --version
+```
+
+读取字段：
+
+```bash
+yq '.metadata.name' deployment.yml
+```
+
+读取嵌套字段：
+
+```bash
+yq '.spec.template.spec.containers[0].image' deployment.yml
+```
+
+数组展开：
+
+```bash
+yq '.spec.template.spec.containers[]' deployment.yml
+```
+
+过滤数组：
+
+```bash
+yq '.spec.template.spec.containers[] | select(.name == "app")' deployment.yml
+```
+
+更新字段：
+
+```bash
+yq '.metadata.labels.env = "dev"' deployment.yml
+```
+
+原地更新：
+
+```bash
+yq -i '.metadata.labels.env = "dev"' deployment.yml
+```
+
+删除字段：
+
+```bash
+yq 'del(.metadata.managedFields)' pod.yml
+```
+
+输出 JSON：
+
+```bash
+yq -o=json '.' deployment.yml
+```
+
+把 JSON 转 YAML：
+
+```bash
+yq -P '.' data.json
+```
+
+读取多文档 YAML：
+
+```bash
+yq '.kind' manifests.yml
+```
+
+只选 Deployment：
+
+```bash
+yq 'select(.kind == "Deployment")' manifests.yml
+```
+
+批量看 Kubernetes YAML 里的镜像：
+
+```bash
+yq -r '
+  select(.kind == "Deployment")
+  | .spec.template.spec.containers[]
+  | .image
+' manifests.yml
+```
+
+常见场景：
+
+```bash
+# 看所有 Deployment 名称
+yq -r 'select(.kind == "Deployment") | .metadata.name' *.yml
+
+# 修改镜像 tag
+yq -i '
+  (.spec.template.spec.containers[] | select(.name == "app") | .image)
+  = "registry.example.com/app:v2"
+' deployment.yml
+
+# 删除 Kubernetes 运行时字段
+yq 'del(.metadata.resourceVersion, .metadata.uid, .metadata.managedFields)' pod.yml
+```
+
+注意：有多个不同实现都叫 `yq`。如果网上命令对不上，先看 `yq --version`。
+
+## 常见组合场景
+
+### 在代码库里找调用方
+
+```bash
+rg -n "CreateSession\\("
+```
+
+如果函数名可能出现在注释或文档里：
+
+```bash
+rg -n "CreateSession\\(" -g "*.go" -g "*.ts" -g "!**/*test*"
+```
+
+只看文件名：
+
+```bash
+rg -l "CreateSession\\("
+```
+
+### 批量替换包名
+
+先确认命中文件：
+
+```bash
+rg -l "old.module/path"
+```
+
+再替换，macOS：
+
+```bash
+rg -l "old.module/path" |
+  xargs sed -i '' 's#old.module/path#new.module/path#g'
+```
+
+Linux：
+
+```bash
+rg -l "old.module/path" |
+  xargs sed -i 's#old.module/path#new.module/path#g'
+```
+
+替换后复查：
+
+```bash
+rg -n "old.module/path|new.module/path"
+```
+
+### 查找并压缩旧日志
+
+先预览：
+
+```bash
+find ./logs -type f -name "*.log" -mtime +7 -print
+```
+
+并发压缩：
+
+```bash
+find ./logs -type f -name "*.log" -mtime +7 -print0 |
+  xargs -0 -n 1 -P 4 gzip
+```
+
+### 统计日志里的错误类型
+
+假设日志里有 `error_type=<name>`：
+
+```bash
+rg -o "error_type=[A-Za-z0-9_-]+" app.log |
+  sed 's/error_type=//' |
+  sort |
+  uniq -c |
+  sort -nr
+```
+
+如果日志是 JSON：
+
+```bash
+rg '"level":"error"' app.log |
+  jq -r '.error_type // "unknown"' |
+  sort |
+  uniq -c |
+  sort -nr
+```
+
+### 从 Kubernetes 输出里找异常 Pod
+
+```bash
+kubectl get pods -A -o json |
+  jq -r '
+    .items[]
+    | select(.status.phase != "Running" and .status.phase != "Succeeded")
+    | [.metadata.namespace, .metadata.name, .status.phase]
+    | @tsv
+  '
+```
+
+看镜像：
+
+```bash
+kubectl get pods -A -o json |
+  jq -r '
+    .items[]
+    | .metadata.namespace as $ns
+    | .metadata.name as $pod
+    | .spec.containers[]
+    | [$ns, $pod, .name, .image]
+    | @tsv
+  '
+```
+
+### 从 YAML 里抽镜像列表
+
+```bash
+find ./deploy -type f \( -name "*.yml" -o -name "*.yaml" \) -print0 |
+  xargs -0 yq -r '
+    select(.kind == "Deployment" or .kind == "StatefulSet" or .kind == "DaemonSet")
+    | .spec.template.spec.containers[]
+    | .image
+  ' |
+  sort -u
+```
+
+### 找大文件并按大小排序
+
+```bash
+find . -type f -size +10M -print0 |
+  xargs -0 ls -lh |
+  sort -k 5 -hr
+```
+
+macOS 上 `sort -h` 可用性取决于版本。如果不可用，可以先用 `du`：
+
+```bash
+find . -type f -size +10M -print0 |
+  xargs -0 du -h |
+  sort -hr
+```
+
+### 找没有被引用的图片
+
+先列图片：
+
+```bash
+find public -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.svg" \)
+```
+
+逐个检查文件名是否出现在源码里：
+
+```bash
+find public -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.svg" \) -print0 |
+  xargs -0 -n 1 basename |
+  while read name; do
+    rg -q "$name" src content || echo "$name"
+  done
+```
+
+这种脚本只是初筛。动态拼路径、CSS 引用、外部配置都可能漏掉，删文件前还要人工确认。
+
+### 对 JSON 数组做字段统计
+
+```bash
+jq -r '.items[].status' data.json |
+  sort |
+  uniq -c |
+  sort -nr
+```
+
+如果要直接在 jq 里做：
+
+```bash
+jq '
+  .items
+  | group_by(.status)
+  | map({status: .[0].status, count: length})
+' data.json
+```
+
+### 把表格输出变成 CSV
+
+假设输入是空白分隔：
+
+```bash
+awk 'BEGIN {OFS=","} {print $1, $2, $3}' data.txt
+```
+
+如果字段里可能有空格，命令行会变麻烦，优先让上游输出 JSON，再用 `jq @csv`。
+
+## 快速速查
+
+```text
+搜索内容:
+  rg -n "pattern"
+  rg -l "pattern"
+  rg -i -w "word"
+
+列文件:
+  rg --files
+  find . -type f -name "*.log"
+
+批量执行:
+  find . -type f -print0 | xargs -0 command
+  rg -l "old" | xargs sed -i '' 's/old/new/g'
+
+截取文本:
+  sed -n '1,80p' file
+  sed -n '/BEGIN/,/END/p' file
+
+替换文本:
+  sed 's/foo/bar/g' file
+  sed -i '' 's/foo/bar/g' file
+
+按列:
+  awk '{print $1, $3}' file
+  awk -F ',' '$3 > 10 {print $1}' data.csv
+
+JSON:
+  jq . file.json
+  jq -r '.items[].name' file.json
+  jq '.items[] | select(.status == "Running")' file.json
+
+YAML:
+  yq '.metadata.name' file.yml
+  yq -i '.spec.replicas = 3' deployment.yml
+```
+
+## 常见坑
+
+### 正则和字面量混淆
+
+`rg "a.b"` 会匹配 `aab`、`axb`，因为 `.` 是正则任意字符。搜字面量用：
+
+```bash
+rg -F "a.b"
+```
+
+### 文件名有空格
+
+普通管道容易把一个文件名拆成多个参数。安全写法：
+
+```bash
+find . -type f -print0 | xargs -0 command
+```
+
+### macOS 和 Linux 的 sed 不一样
+
+macOS：
+
+```bash
+sed -i '' 's/foo/bar/g' file.txt
+```
+
+Linux：
+
+```bash
+sed -i 's/foo/bar/g' file.txt
+```
+
+写跨平台脚本时，可以避免 `sed -i`，改成输出到临时文件再替换，或者统一使用 GNU sed。
+
+### 先预览，再删除或原地替换
+
+危险命令前加一步预览：
+
+```bash
+find . -type f -name "*.tmp" -print
+rg -l "old.path"
+```
+
+确认之后再执行：
+
+```bash
+find . -type f -name "*.tmp" -delete
+rg -l "old.path" | xargs sed -i '' 's/old.path/new.path/g'
+```
+
+### JSON/YAML 里字段可能不存在
+
+`jq` 可以用 `//` 给默认值：
+
+```bash
+jq -r '.metadata.labels.app // "unknown"' pod.json
+```
+
+数组可能不存在时，用 `[]?`：
+
+```bash
+jq '.status.containerStatuses[]? | .ready' pod.json
+```
+
+### 不要用纯文本工具硬解析复杂结构
+
+简单日志和表格用 `sed`、`awk` 很舒服。JSON 用 `jq`，YAML 用 `yq`。不要用正则硬拆 JSON 字符串，遇到转义、嵌套、数组顺序变化很容易错。
+
+这组工具没必要追求一行写完。更实用的写法是让每一步都能解释：先筛文件，再筛内容，再转换结构，最后才执行修改或删除。可读、可预览、可撤销，比一条很难维护的长命令更重要。
