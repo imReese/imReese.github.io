@@ -763,7 +763,7 @@ docker system df
 
 如果你不确定 volume 里有没有数据库数据，不要执行 `volume prune`。
 
-## 常见问题
+## 排障场景
 
 ### 端口被占用
 
@@ -937,5 +937,3 @@ docker system df
 docker container prune
 docker image prune
 ```
-
-Docker 的关键是分清“镜像”和“容器”：镜像负责交付一致性，容器负责运行状态。排障时先看 `ps -a`、`logs`、`inspect`，数据持久化先确认 volume，清理命令动手前先确认不会删掉重要状态。
