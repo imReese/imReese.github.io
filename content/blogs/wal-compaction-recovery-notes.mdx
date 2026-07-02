@@ -207,14 +207,6 @@ read CURRENT
 
 如果这些问题能说清楚，这个存储引擎的生命线基本就摸到了。
 
-## 我还没完全想清楚的点
+## 小结
 
-后面继续读，我会追：
-
-- group commit 怎么平衡吞吐和 tail latency。
-- direct I/O 和 page cache 对 WAL/SSTable 的不同影响。
-- compaction filter 如何安全处理过期数据。
-- snapshot 太久不释放会怎样拖住 tombstone。
-- 分布式存储里，单机 WAL 和复制日志之间怎么分层。
-
-我的阶段性理解是：WAL 解决“写入成功后不能凭空消失”，compaction 解决“历史垃圾不能无限堆积”，recovery 解决“崩溃后如何重新确认历史”。这三件事放在一起，才像一个完整的存储系统。
+WAL 解决“写入成功后不能凭空消失”，compaction 解决“历史垃圾不能无限堆积”，recovery 解决“崩溃后如何重新确认历史”。这三件事放在一起，才像一个完整的存储系统。

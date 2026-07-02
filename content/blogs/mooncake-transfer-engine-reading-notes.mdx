@@ -100,14 +100,6 @@ Mooncake 的 README 会把 SGLang、vLLM、LMCache 这些框架放到系统语�
 
 这些问题最终都会回到 serving 系统里更实际的取舍：scheduler、cache policy、KV movement、backend 约束，哪一个才是当前性能瓶颈。
 
-## 我还没完全确认的点
+## 小结
 
-这也是我想保留在公开笔记里的部分。不是所有东西都要写成已经盖棺定论的结论。
-
-- README 和论文语境里的 KVCache-centric scheduler，和当前开源仓库里的组件边界之间，哪些是已经落在主路径里的实现，哪些还是系统设计语境。
-- TENT backend 和 classic Transfer Engine 的 API 兼容边界。
-- Sunrise Link 在 classic path 和 TENT path 里的位置，以及 benchmark 显式安装 transport 时的实际路径。
-- 不同设备 backend 下，registered memory、IPC handle、fallback path 的错误处理和性能代价。
-- SGLang 侧如何把 prefix cache、remote KVCache 和 recompute cost 统一进请求调度决策。
-
-对我来说，Mooncake 值得读的地方不只是“它支持很多 transport”，而是它把 KVCache 从单个 worker 进程里的局部状态，提升成可以被查询、复制、传输和调度的系统资源。Store 和 Transfer Engine 的边界，是我继续读下去时最重要的锚点。
+Mooncake 值得读的地方不只是“它支持很多 transport”，而是它把 KVCache 从单个 worker 进程里的局部状态，提升成可以被查询、复制、传输和调度的系统资源。Store 和 Transfer Engine 的边界，也是理解它的核心锚点。

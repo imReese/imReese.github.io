@@ -202,16 +202,8 @@ request enters waiting queue
 
 这样读的好处是不会一开始就陷进 storage backend 细节。Mooncake、3FS、NIXL、AIBrix、file backend 都很重要，但它们是 L3 的实现选择。HiCache 这套机制真正的主线，还是 SGLang runtime 里如何维护 KV cache 在 GPU、Host、Storage 之间的状态转移。
 
-## 我还没完全想清楚的点
+## 小结
 
-这篇先停在这里，后面我可能会继续追几个问题：
-
-- `page_first`、`page_first_direct`、`page_head` 在不同模型和 backend 下的真实收益边界。
-- Host load back 和 recompute 之间，scheduler 有没有更明确的 cost model。
-- L3 storage key、`hash_value`、`prefix_keys` 在不同 backend 里分别承担多少一致性语义。
-- PD disaggregation 下，decode 侧 HiCache 和 Mooncake Transfer Engine 的关系到底怎么分层。
-- `write_through_selective` 里的 hot prefix 判断，在真实 workload 下会不会比固定 write-through 更稳。
-
-我现在对 HiCache 的阶段性理解是：它不只是“把 KV cache 放到 CPU 或远端存储”。更准确地说，它把 prefix KV cache 从 GPU 上的一组临时 tensor，变成了一个可以降级、恢复、预取、跨层写入、被调度器感知的系统资源。
+我现在对 HiCache 的理解是：它不只是“把 KV cache 放到 CPU 或远端存储”。更准确地说，它把 prefix KV cache 从 GPU 上的一组临时 tensor，变成了一个可以降级、恢复、预取、跨层写入、被调度器感知的系统资源。
 
 这件事看起来很重，但对长上下文和多轮请求来说很关键。因为真正稀缺的不是某一次 attention 计算，而是已经算出来的 KV 状态能不能被系统认真地保留下来，并在值得复用的时候被及时搬回正确的位置。

@@ -85,14 +85,6 @@ RNN 时代，长序列意味着更深的时间依赖链。Transformer 时代，�
 
 后来的 LLM、KV cache、PagedAttention、FlashAttention，都可以看成这条线继续往下走。Transformer 让 attention 成为主干，而一旦 attention 成为主干，attention 的计算、存储和调度就都会变成核心工程问题。
 
-## 读完后的几个问题
+## 小结
 
-我还会继续带着这些问题回看后续论文：
-
-- 为什么 scaled dot-product attention 在大维度下需要除以 `sqrt(d_k)`，它和 softmax 饱和之间的关系到底有多强。
-- Multi-head attention 里不同 head 的分工，哪些是稳定可解释的，哪些只是训练后的现象。
-- 位置编码改变以后，长上下文能力到底来自模型结构、训练数据，还是推理时的位置外推技巧。
-- Decoder-only 架构为什么在大规模语言建模里变得如此主流。
-- 当 attention 成为系统瓶颈时，哪些优化是在改数学，哪些只是改内存访问。
-
-对我来说，`Attention Is All You Need` 现在不是一篇“背公式”的论文，而是一篇把模型结构、并行训练和硬件友好性连在一起的论文。它真正打开的门，是让 token 之间的关系可以被直接、批量、可扩展地计算。
+`Attention Is All You Need` 现在不是一篇“背公式”的论文，而是一篇把模型结构、并行训练和硬件友好性连在一起的论文。它真正打开的门，是让 token 之间的关系可以被直接、批量、可扩展地计算。

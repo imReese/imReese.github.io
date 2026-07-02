@@ -210,14 +210,6 @@ etcd 不直接调度 Pod，也不直接启动容器。它存的是集群控制�
 
 协调服务越关键，越要克制使用范围。它应该小、稳、清楚，而不是被当成万能状态中心。
 
-## 我还会继续追的问题
+## 小结
 
-ZooKeeper 和 etcd 读完以后，我还会继续看：
-
-- ZooKeeper 的 Zab 和 Raft 在日志复制上的差异。
-- etcd watch 在 compaction 后如何恢复。
-- Kubernetes controller 如何处理 watch 断线和 resync。
-- lease TTL 应该怎么选，太短误杀，太长故障恢复慢。
-- 分布式锁在什么情况下会被误用。
-
-我的阶段性理解是：Paxos/Raft 解释“怎么形成一条一致的历史”，ZooKeeper/etcd 解释“怎样把这条历史变成工程系统能用的协调接口”。后者更贴近日常工程，也更容易被滥用。
+Paxos/Raft 解释“怎么形成一条一致的历史”，ZooKeeper/etcd 解释“怎样把这条历史变成工程系统能用的协调接口”。后者更贴近日常工程，也更容易被滥用。

@@ -116,14 +116,6 @@ Transformer attention
 
 PagedAttention 让我看到的是“KV cache 在一个 runtime 里怎么被高效管理”。Mooncake 让我继续问的是“这些 KV cache 能不能变成跨节点、跨请求、可调度的系统资源”。
 
-## 我还没想清楚的问题
+## 小结
 
-这类 attention store 论文读完以后，我会继续追几个问题：
-
-- block size 怎么选，太小会增加元数据和 kernel 访问开销，太大又会带来内部碎片。
-- 分页布局对 attention kernel 的访存连续性有什么影响，收益是否总能覆盖寻址复杂度。
-- prefix sharing、beam search sharing、prompt cache sharing 在真实 workload 中分别占多大比例。
-- 如果引入远端 KV cache，分页结构和网络传输粒度应该怎么对齐。
-- vAttention 这类保持虚拟地址连续、物理按需分配的路线，和 PagedAttention 的工程取舍在哪里。
-
-我的阶段性理解是：attention 论文解决了“怎么让 token 互相看”，attention store 这一类系统论文解决的是“看过以后留下来的状态怎么管理”。前者打开了模型结构，后者决定了服务系统能不能在长上下文和高并发下跑得稳。
+attention 论文解决了“怎么让 token 互相看”，attention store 这一类系统论文解决的是“看过以后留下来的状态怎么管理”。前者打开了模型结构，后者决定了服务系统能不能在长上下文和高并发下跑得稳。
