@@ -8,7 +8,7 @@ import { Analytics } from "@/components/analytics/analytics"
 import { name, headline, introduction } from "@/config/infoConfig"
 import "@/styles/globals.css"
 
-const assetVersion = "20260702b"
+const assetVersion = "20260702c"
 
 const jetBrainsMono = JetBrains_Mono({
   subsets: ["latin"],
