@@ -136,7 +136,7 @@ function DesktopNavigation(props: React.ComponentPropsWithoutRef<'nav'>) {
 
   return (
     <nav {...props}>
-      <ul className="flex rounded-full bg-card/80 px-3 text-sm font-medium shadow-md ring-1 ring-border/70 backdrop-blur">
+      <ul className="flex px-2 text-sm font-medium">
         {navItems.map((item, index) => (
           <Fragment key={item.name}>
             {index > 0 && (
@@ -162,7 +162,7 @@ function AvatarContainer({
   showName?: boolean
 }) {
   return (
-    <div className="pointer-events-auto flex flex-row items-center gap-2 rounded-full bg-card/85 px-2.5 py-1.5 shadow-md shadow-zinc-900/5 ring-1 ring-border/70 backdrop-blur-xl dark:bg-card/70">
+    <div className="pointer-events-auto flex flex-row items-center gap-2">
       <div
         className={clsx(
           className,
@@ -213,9 +213,10 @@ export function Header() {
   return (
     <>
       <header
-        className="pointer-events-none z-50 flex h-16 flex-none flex-col pt-6"
+        className="pointer-events-none relative z-50 flex h-16 flex-none flex-col pt-6"
         style={{ position: 'sticky', top: 0 }}
       >
+        <div className="header-glass" aria-hidden="true" />
         <Container className="w-full">
           <div className="relative flex min-w-0 items-center gap-4">
             <div className="flex min-w-0 flex-1">
@@ -228,7 +229,7 @@ export function Header() {
               <DesktopNavigation className="pointer-events-auto hidden md:block" />
             </div>
             <div className="hidden justify-end md:flex md:flex-1">
-              <div className="pointer-events-auto flex flex-row items-center gap-2 rounded-full bg-card/85 px-2 py-1.5 shadow-md shadow-zinc-900/5 ring-1 ring-border/70 backdrop-blur-xl dark:bg-card/70 md:mr-2">
+              <div className="pointer-events-auto flex flex-row items-center gap-2 md:mr-2">
                 <LanguageToggle />
                 <ThemeToggle />
                 <GithubRepo />
