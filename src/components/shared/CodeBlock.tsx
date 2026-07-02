@@ -90,8 +90,8 @@ export function CodeBlock({
 
   return (
     <div className="not-prose my-8 overflow-hidden rounded-2xl border border-border/70 bg-zinc-950 shadow-sm dark:bg-black/40">
-      <div className="flex h-10 items-center justify-between border-b border-white/10 px-4">
-        <span className="font-mono text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+      <div className="flex h-9 items-center justify-between border-b border-white/10 px-4">
+        <span className="rounded bg-white/5 px-2 py-0.5 font-mono text-[0.72rem] font-medium leading-none text-zinc-400">
           {language}
         </span>
         <button
@@ -116,7 +116,7 @@ export function CodeBlock({
       <pre
         className={clsx(
           className,
-          'm-0 max-h-[42rem] overflow-x-auto bg-transparent px-5 py-5 text-sm leading-7 text-zinc-100',
+          'm-0 max-h-[42rem] overflow-x-auto bg-transparent px-5 py-5 font-mono text-sm leading-7 text-zinc-100',
         )}
         {...props}
       >
