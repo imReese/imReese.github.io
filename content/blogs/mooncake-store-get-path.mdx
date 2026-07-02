@@ -1,0 +1,164 @@
+---
+title: 'Mooncake Store 读取路径：GetReplicaList、lease 和 hot cache'
+description: 'Mooncake Store Get 路径源码拆解：从 master 返回 COMPLETE replica，到 client 选择副本、执行传输和本地 hot cache 加速。'
+author: 'Reese'
+date: '2026-05-31'
+topics:
+  - llm-serving
+  - kv-cache
+  - mooncake
+  - distributed-systems
+---
+
+Mooncake Store 的 Get 也不是“向 master 要 value”。master 只返回可读 replica 和 lease，数据由 client 自己搬。
+
+核心链路：
+
+```text
+Client::Get / Client::BatchGet
+  -> Query / GetReplicaList
+  -> master 返回 COMPLETE replica + lease
+  -> client 选择 preferred replica
+  -> local hot cache 或 TransferSubmitter
+  -> 数据写入 caller slices
+```
+
+## Get 先查 metadata
+
+Get 的第一步是向 master 查询 object metadata。master 需要判断：
+
+- object key 是否存在
+- 是否有 `COMPLETE` replica
+- replica 所在 Segment 是否仍然可用
+- lease 是否可以发放
+- tenant 和 group 语义是否影响本次查询
+
+返回给 client 的不是 payload，而是 `QueryResult` 一类的 metadata：
+
+```text
+replica descriptors
+lease timeout
+object metadata
+```
+
+client 拿到 metadata 以后，才进入数据面。
+
+## 为什么只读 COMPLETE replica
+
+Put 路径中，replica 会经历 `PROCESSING` 状态。Get 不能读它，因为数据面可能还没有写完。
+
+正确读路径应该只把 `COMPLETE` replica 当候选：
+
+```text
+PROCESSING:
+  写入中，不可读
+
+COMPLETE:
+  PutEnd 已提交，可读
+
+REMOVED / FAILED:
+  不可读
+```
+
+这就是 Store 保证读正确性的基本线。如果读到了 PROCESSING replica，就可能拿到半写入数据。
+
+## lease 限制 metadata 的有效期
+
+client 拿到 replica 列表以后，不能无限期复用。原因是 master 侧状态可能变化：
+
+- Segment 被 unmount
+- replica 被清理
+- object 被更新或删除
+- client 和 master 的 view 发生切换
+
+lease 给这次 metadata 使用一个时间边界。client 应该在 lease 有效期内使用 replica descriptor，过期后重新查询。
+
+因此 Get 的正确性不是“metadata 查到一次就永久有效”，而是：
+
+```text
+metadata query success
+  + replica complete
+  + lease valid
+  + transfer success
+```
+
+## preferred replica 与本地性
+
+client 拿到多个 replica 后，需要选择一个。选择时会考虑：
+
+- 是否在同一 endpoint
+- 是否能走本地 memcpy
+- 是否在 local hot cache
+- Segment protocol 是否适合当前 client
+- 是否配置 prefer same node
+
+本地副本优先可以减少网络传输。对 KV Cache 这种大对象，本地性差异可能比 metadata 查询成本大很多。
+
+## Local hot cache 是读加速，不是全局事实
+
+Local hot cache 缓存的是本地热对象数据。它可以减少重复远端读取，但不能代替 master metadata。
+
+更准确地说：
+
+```text
+master metadata:
+  决定哪些 replica 可读
+
+local hot cache:
+  加速已经判定可读的数据访问
+```
+
+hot cache 也需要处理写入 token/generation 这类问题，防止异步 put 把过期内容塞进 cache。它是本地优化层，不是分布式一致性的根。
+
+## 数据面读取如何执行
+
+如果最终选择的是远端 memory replica，client 会把 replica 转成 Transfer Engine READ：
+
+```text
+TransferRequest
+  opcode = READ
+  source = local destination ptr
+  target_id = remote segment id
+  target_offset = replica offset
+  length = slice size
+```
+
+这里 `source` 字段在 Transfer Engine 视角是本地 buffer 地址。READ 表示从远端 Segment 读到本地地址。
+
+如果是本地 replica，可能直接 memcpy。如果是文件或 offload replica，则走对应 backend。
+
+## BatchGet 与 HiCache
+
+HiCache prefetch Mooncake 时会批量读很多 page object。BatchGet 的价值和 BatchPut 类似：减少 per-object metadata 和 transfer overhead。
+
+Mooncake Python zero-copy API 最后会暴露成：
+
+```text
+batch_get_into(keys, ptrs, sizes)
+batch_get_into_multi_buffers(keys, ptrs, sizes)
+```
+
+SGLang backend 把 Host pool page 的目标 pointer 传给 Mooncake。Mooncake Store 把 object 数据直接写入这些 Host buffers。之后 HiCache 再把 Host page load back 到 GPU。
+
+## 读取失败如何影响上层
+
+Get 失败可以发生在几层：
+
+- master 查不到 key
+- 没有 COMPLETE replica
+- lease 已过期
+- selected replica 对应 Segment 不可用
+- Transfer Engine READ 失败
+- batch 中某个 K/V object 失败
+
+对 SGLang HiCache 来说，这些失败最终应该折成 page 级结果。某个 page 的 K object 成功、V object 失败时，这个 logical page 不能算命中。
+
+因此 backend 需要把 object 级状态折回 page 级命中边界。
+
+## 检查问题
+
+- Get 为什么必须先查 metadata？
+- lease 解决的是什么问题？
+- Local hot cache 为什么不能代替 master？
+- READ TransferRequest 里的本地 buffer 和远端 Segment 怎么对应？
+- BatchGet 中一个 object 失败为什么会让 logical page 失败？

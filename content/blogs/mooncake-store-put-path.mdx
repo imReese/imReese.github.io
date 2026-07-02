@@ -1,0 +1,183 @@
+---
+title: 'Mooncake Store 写入路径：PutStart、TransferSubmitter 和 PutEnd'
+description: 'Mooncake Store Put 路径源码拆解：从 master 分配 PROCESSING replica，到 client 数据搬运，再到 PutEnd 提交可读副本。'
+author: 'Reese'
+date: '2026-05-29'
+topics:
+  - llm-serving
+  - kv-cache
+  - mooncake
+  - distributed-systems
+---
+
+Mooncake Store 的 Put 不是一次 RPC。它是一段控制面和数据面协作的状态机。
+
+核心链路：
+
+```text
+Client::Put / Client::BatchPut
+  -> MasterClient::PutStart / BatchPutStart
+  -> master 分配 PROCESSING replica
+  -> Client::SubmitTransfers
+  -> TransferSubmitter 写数据
+  -> MasterClient::PutEnd / BatchPutEnd
+  -> replica 变成 COMPLETE
+```
+
+对应源码入口：
+
+```text
+mooncake-store/include/client_service.h
+mooncake-store/src/client_service.cpp
+mooncake-store/src/master_service.cpp
+mooncake-store/include/transfer_task.h
+mooncake-store/src/transfer_task.cpp
+```
+
+## PutStart 只是开始，不是完成
+
+PutStart 的作用是让 master 为 object 分配写入位置。master 会根据 object key、slice size、replica config、tenant quota、Segment 状态和 allocation strategy 选择 replica。
+
+这个阶段结束后，replica 通常处于：
+
+```text
+PROCESSING
+```
+
+这表示“空间已经被元数据预留，但数据面还没有确认写完”。它不能被正常 Get 当作可读副本。
+
+如果把 PutStart 理解成 Put 成功，后面的读路径就会错。Store 的写入提交点在 PutEnd。
+
+## 为什么需要 PROCESSING
+
+Store 的数据面不经过 master。PutStart 之后，client 需要自己把 data slice 写到对应 replica 的 Segment。
+
+这个过程可能失败：
+
+- client 本地 buffer 不可读
+- Transfer Engine 没有 register 对应内存
+- 远端 Segment 打不开
+- RDMA/TCP/NVLink transport 出错
+- 只写了一部分 replica
+- client 在 PutEnd 前崩掉
+
+`PROCESSING` 给了系统一个中间态：metadata 已经知道有一批候选 replica，但它们还不能对读者可见。
+
+## TransferSubmitter 做数据面翻译
+
+PutStart 返回 replica 描述后，client 会把每个 slice/replica 组合转成具体数据面任务。
+
+大致路径：
+
+```text
+Object slice
+  -> Replica descriptor
+  -> TransferSubmitter
+  -> local memcpy / Transfer Engine WRITE / file or offload path
+```
+
+如果 replica 在本地同 endpoint，可能可以直接 memcpy。如果 replica 在远端 memory Segment，就要交给 Transfer Engine：
+
+```text
+TransferRequest
+  opcode = WRITE
+  source = local slice ptr
+  target_id = remote segment id
+  target_offset = replica offset
+  length = slice size
+```
+
+Store 本身不关心底层 transport 是 RDMA 还是 TCP。TransferSubmitter 只需要把 Store replica 翻译成 Transfer Engine 能执行的请求。
+
+## PutEnd 是可见性边界
+
+所有数据面写入成功以后，client 才调用 PutEnd。master 在 PutEnd 中把对应 replica 从 `PROCESSING` 推进到 `COMPLETE`。
+
+从读语义上看：
+
+```text
+PutStart 成功:
+  说明位置已分配，不说明数据可读
+
+Transfer 成功:
+  说明字节写入完成，但 master 还没提交可见性
+
+PutEnd 成功:
+  说明 replica 可以成为 Get 候选
+```
+
+这个边界非常关键。它让 Store 有能力处理部分写入失败和 client 失败，而不是把半成品暴露给读者。
+
+## PutRevoke 处理失败
+
+如果数据面失败，client 应该撤销这次写入。撤销路径会告诉 master：这些 PROCESSING replica 不应该转成 COMPLETE。
+
+简化状态机：
+
+```text
+INITIALIZED
+  -> PROCESSING
+       -> COMPLETE   on PutEnd
+       -> REMOVED / FAILED on PutRevoke or cleanup
+```
+
+这也是为什么 Store 不是普通 KV map。它的每次写入都要让 metadata 状态和数据面结果保持一致。
+
+## BatchPut 的价值
+
+HiCache 接 Mooncake 时会产生大量 page object。每个 logical page 可能展开成多个 Store object。如果逐个 object Put，RPC 和调度开销会很高。
+
+BatchPut 可以把多个 object 的写入合并成一批：
+
+```text
+BatchPutStart
+  -> 批量分配 replica
+SubmitTransfers
+  -> 批量数据面传输
+BatchPutEnd
+  -> 批量提交可见性
+```
+
+这和 SGLang 的 `batch_set_v1/v2` 对得上。HiCache 以 page 为单位提交，Mooncake Store 以 object 为单位批量写入。
+
+## group_ids 让多个 object 共享逻辑身份
+
+SGLang 一个 logical page 在 Mooncake 中可能对应：
+
+```text
+page_key_rank_k
+page_key_rank_v
+```
+
+如果启用 group semantics，backend 可以给它们相同 group id：
+
+```text
+sglang-hicache:<logical_page_key>
+```
+
+这样 Store 看到多个 object key 时，仍然能知道它们属于同一个逻辑缓存单元。后续 metadata routing、lease refresh、eviction 等行为可以按组优化。
+
+## 写路径的性能边界
+
+Put 路径的成本来自三部分：
+
+- metadata RPC：PutStart/PutEnd
+- data transfer：local memcpy 或 Transfer Engine
+- memory registration 和 Segment open 的前置成本
+
+因此高性能场景通常依赖：
+
+- 批量写入，而不是单 object RPC。
+- Host buffer 预注册，减少写时注册。
+- page 粒度稳定，避免大量小对象。
+- 数据面和控制面分离，master 不经过大块 payload。
+
+如果 page 太小，metadata 和 transfer overhead 会压过复用收益。如果 page 太大，prefix 可复用粒度又会变粗。HiCache 的 page size 和 Mooncake object 粒度要一起看。
+
+## 检查问题
+
+- PutStart 后 replica 为什么不能读？
+- TransferSubmitter 为什么需要同时看 slice 和 replica？
+- PutEnd 的提交语义是什么？
+- BatchPut 对 HiCache page 写入有什么价值？
+- group id 为什么适合 SGLang logical page？

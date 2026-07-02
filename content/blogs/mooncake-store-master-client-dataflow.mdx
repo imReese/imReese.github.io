@@ -1,6 +1,6 @@
 ---
-title: 'Mooncake Store：Master 管元数据，Client 搬数据'
-description: '一篇 Mooncake Store 技术拆解：从 object、slice、replica、Put/Get 数据流理解 master 和 client 的分工。'
+title: 'Mooncake Store 对象模型：object、slice、replica 和 Segment'
+description: 'Mooncake Store 源码拆解入口：先建立 object metadata、slice、replica、Segment、master/client 的基本模型。'
 author: 'Reese'
 date: '2026-05-26'
 topics:
@@ -10,104 +10,172 @@ topics:
   - distributed-systems
 ---
 
-Mooncake Store 这个名字容易让人误会。看到 Store，很自然会想到一个中心化的 KV 服务：client 把数据发给 server，server 存起来，读的时候再从 server 拿回来。
+Mooncake Store 不是“client 把 value 发给 server，server 存起来”的中心化 KV 服务。它更像一个对象元数据控制面，加上一组由 client/provider 执行的数据面。
 
-但 Mooncake Store 的主路径不是这样。它更像一个元数据控制面加一组数据面 client/provider。master 负责维护对象、Segment、副本和租约；真正的数据读写由 client 侧通过 TransferSubmitter 和 Transfer Engine 完成。
+读源码前先建立对象模型，否则 Put/Get 很容易看散。
 
-这个分工是理解 Store 的第一步：**master 回答“数据应该在哪里、现在能不能读”，client 执行“数据怎么过去”。**
-
-## Store 里的对象不是一个简单 value
-
-Store 对外看起来是 key/value，但底层不是一个 key 对应一块连续 buffer 就结束了。对象数据可以由多个 `Slice` 组成，每个 slice 是一段地址和长度。这个设计很适合 tensor 或 KV Cache 这类对象：上层可能已经把数据组织成多段 buffer，Store 不必强行把它们拷成一块。
-
-写入后，对象会对应若干 `Replica`。Replica 可能是 memory replica，也可能是 NoF、disk/offload 等其他路径。每个 replica 会落在某个 `Segment` 上，而 Segment 描述的是一段可被寻址的存储空间，包括 id、name、base、size、protocol 和 endpoint 之类的信息。
-
-所以 Store 的对象模型大概是：
+主要入口：
 
 ```text
-key
+mooncake-store/include/client_service.h
+mooncake-store/include/types.h
+mooncake-store/include/replica.h
+mooncake-store/src/client_service.cpp
+mooncake-store/src/master_service.cpp
+```
+
+## object 不是简单 value
+
+Store 对外是 object key，但内部不会假设 value 必须是一块连续内存。写入时，caller 传入的是 `Slice` 列表：
+
+```text
+Slice
+  ptr
+  size
+```
+
+这对 KV Cache 很重要，因为上层数据经常已经按 K/V、layer、head、page 拆开。Store 不应该为了抽象好看强行拷成一块大 buffer。
+
+因此对象模型更接近：
+
+```text
+ObjectKey
   -> object metadata
   -> slices
   -> replicas
-       -> segment + offset + length
+       -> segment id/name
+       -> offset
+       -> length
        -> status
 ```
 
-这层抽象的意义是：上层只关心 key，Store 内部必须知道这个 key 对应哪些副本、这些副本写完没有、是否还能读、该从哪里读。
+object key 是上层看到的名字；slice 是本次读写的本地 buffer 描述；replica 是 Store 内部真正能读写的数据副本。
 
-## Put 不是一次写入，而是三段控制流
+## Segment 是可寻址存储空间
 
-Store 的 Put 不是 client 直接把数据塞给 master。它更像一次带事务味道的写入：
-
-```text
-Client::Put
-  -> MasterClient::PutStart
-  -> master allocates PROCESSING replicas
-  -> client writes data through TransferSubmitter
-  -> Transfer Engine / memcpy / file path
-  -> MasterClient::PutEnd
-```
-
-`PutStart` 的作用是申请写入位置。master 会根据 key、slice length、replica config、Segment 状态等信息分配 replica，并把这些 replica 先放到 `PROCESSING` 状态。
-
-注意这里的数据还没有写完。`PROCESSING` 的含义正是“控制面已经预留了位置，但数据面还没有确认完成”。client 随后对这些 replica 执行写入：本地路径可能是 memcpy，远端路径会通过 Transfer Engine 变成 WRITE request，文件或 NoF replica 又会走别的策略。
-
-只有数据面写入成功后，client 才会调用 `PutEnd`。master 在 `PutEnd` 里把对应 replica 标记成 `COMPLETE`。如果中间失败，则走 `PutRevoke`，撤销 processing replica。
-
-这也是为什么不能把 `PutStart` 理解为“写入成功”。它只是写入的开始。真正可读的边界在 `PutEnd` 之后。
-
-## Get 先问 metadata，再搬数据
-
-Get 的路径反过来，但思路一样：
+`Segment` 描述的是一段可被寻址的远端或本地存储空间。它包含：
 
 ```text
-Client::Get
-  -> Query / GetReplicaList
-  -> master returns COMPLETE replicas + lease
-  -> client chooses a readable replica
-  -> TransferRead
-  -> data lands in caller slices
+Segment
+  id
+  name
+  base
+  size
+  te_endpoint
+  protocol
 ```
 
-master 的 `GetReplicaList` 不应该返回还在 `PROCESSING` 的副本。它只把已经 complete 的 replica 返回给 client。client 再从这些 replica 里选一个可读对象，可能还会经过 local hot cache redirect，最后执行真正的数据读取。
+Store 里的 replica 不直接写“某台机器某个变量”。它会落到某个 Segment 的某段 offset/length 上。Transfer Engine 之后才能把这段描述翻译成 READ/WRITE 请求。
 
-这里有两个容易忽略的点。
+这层间接性很重要。master 维护 Segment 和 replica metadata，client 根据 metadata 选择本地 memcpy、Transfer Engine、NoF 或 offload 路径。
 
-第一，Get 返回的数据不是 master 发回来的。master 返回的是 replica 和 lease 信息，真正的数据由 client 从对应 Segment 读回来。
+## replica 是可读性的核心
 
-第二，lease 是读取正确性的一部分。client 拿到 replica 列表以后，不代表可以无限期使用这份信息。对象状态可能变化，Segment 可能卸载，副本可能被移除。lease 给这次读一个时效边界。
+Replica 有状态。关键状态包括：
 
-## Master 是事实表，不是搬运工
+```text
+INITIALIZED
+PROCESSING
+COMPLETE
+REMOVED
+FAILED
+```
 
-Store master 的核心价值在于维护事实表。它需要回答：
+一次 Put 过程中，master 可以先分配 replica，但这不等于数据已经写完。只有进入 `COMPLETE` 的 replica 才能成为正常读路径候选。
 
-- 哪些 Segment 已经挂载。
-- 哪些 object metadata 存在。
-- 哪些 replica 还在写。
+因此 Store 的读正确性不是“key 存在”，而是：
+
+```text
+key 存在
+  + metadata 有可用 replica
+  + replica 状态是 COMPLETE
+  + lease 仍在有效期内
+  + client 能从对应 Segment 成功读出数据
+```
+
+这比普通 KV 服务复杂很多，但它允许大对象的数据面绕开 master。
+
+## master 维护事实表
+
+master 的核心职责是维护事实表，不是搬数据。
+
+它至少要回答：
+
+- 哪些 client 和 Segment 已经 mount。
+- 每个 object 有哪些 replica。
+- 哪些 replica 正在写入。
 - 哪些 replica 已经 complete。
-- 哪些 Segment 正在 unmount。
-- 哪些 copy/move task 正在控制面推进。
+- 哪些 Segment 正在 draining 或 unmount。
+- tenant quota、allocation strategy、hot cache、lease 是否允许本次操作。
 
-这些状态会影响所有 Put/Get 决策。比如一个 Segment 进入 draining 或 unmounting 状态后，就不能再把新副本随便分配过去。一个 key 的旧 replica 如果正在被覆盖，也不能让读路径误读到不一致状态。
+Put 时，master 负责分配 replica 并推进状态。Get 时，master 负责返回可读 replica 和 lease。真正的数据字节不经过 master。
 
-这就是 metadata 服务最麻烦的地方：它不在大块数据路径上，但它决定了数据路径是否安全。
+## client 组织数据面
 
-## Client 才是数据面的组织者
+client 不是薄 RPC wrapper。它同时持有：
 
-client 不只是一个薄 RPC wrapper。它同时持有 `MasterClient`、`TransferSubmitter` 和 `TransferEngine`，所以它既能问 master 要 metadata，也能把 replica 描述翻译成实际传输任务。
+```text
+MasterClient
+TransferSubmitter
+TransferEngine
+LocalHotCache
+```
 
-这一层的关键角色是 `TransferSubmitter`。它会根据 replica 类型、本地性、endpoint、backend 等信息选择策略：
+client 先向 master 请求 metadata，再把 metadata 翻译成数据面动作。比如同 endpoint 可以走 memcpy，远端 memory replica 走 Transfer Engine，文件/offload 走对应路径。
 
-- 同进程或同 endpoint 的路径可以走 local memcpy。
-- 远端 memory replica 走 Transfer Engine。
-- disk/offload/NoF 有自己的读写路径。
+这就是 Mooncake Store 的基本分层：
 
-这让 Store 的 Put/Get 不是一个固定传输方式，而是一个“由 metadata 决定目标、由 submitter 决定执行路径”的过程。
+```text
+master:
+  管 metadata、状态、lease、allocation
 
-## 小结
+client:
+  调 master 拿事实
+  调 TransferSubmitter 搬数据
 
-Mooncake Store 的核心不是“把 value 存进 master”，而是把 KV Cache 这类大对象拆成可管理的 object、slice、replica 和 Segment 状态。
+Transfer Engine:
+  只处理 Segment/offset/length 的字节传输
+```
 
-master 维护元数据和副本事实，client 负责把这些事实转成真实的数据搬运。这个边界让 master 避开大块数据面，也让 client 可以根据本地/远端、内存/文件、不同 transport 做更细的执行选择。
+## ReplicateConfig 决定副本策略
 
-理解这个分工以后，Store 的 Put/Get 就不再是普通 KV API，而是一套围绕对象副本生命周期的控制面和数据面协作。
+`ReplicateConfig` 不是装饰参数。它会影响 Put 时 master 怎样放置 replica。
+
+常见字段包括：
+
+```text
+replica_num
+nof_replica_num
+preferred_segments
+preferred_nof_segments
+prefer_alloc_in_same_node
+with_soft_pin
+with_hard_pin
+group_ids
+```
+
+其中 `group_ids` 对 SGLang/Mooncake 接入很有用。一个 logical KV page 可能展开成 K object、V object 或 side pool object。它们虽然是多个 object key，但属于同一逻辑缓存单元。group id 可以让 Store 在 metadata routing、lease refresh、eviction 上按组理解这些 object。
+
+## 和 HiCache 的映射
+
+SGLang HiCache 接 Mooncake Store 时，不会把“一个请求”作为 object。它会把 prefix KV 按 page 拆开：
+
+```text
+HiCache logical page key
+  -> Mooncake object key(s)
+  -> Store object metadata
+  -> replica(s)
+  -> Segment + offset + length
+```
+
+MHA 通常一个 logical page 会展开成 K/V 两个 object；MLA 通常是一个 object；hybrid pool 还会继续展开 side state object。
+
+所以 Store 看到的是一批 object，不知道它们属于哪个 request，也不知道 SGLang 的 radix tree 结构。这个边界必须守住。
+
+## 检查问题
+
+- Store object 和 Slice 是什么关系？
+- Segment 为什么要带 `te_endpoint` 和 `protocol`？
+- 为什么 `PROCESSING` replica 不能直接读？
+- master 为什么不应该参与大块数据传输？
+- HiCache logical page 为什么可能对应多个 Store object？

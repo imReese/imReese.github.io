@@ -1,6 +1,6 @@
 ---
-title: '从 Python API 到 SGLang：Mooncake 接在上层框架的哪里'
-description: '一篇 Mooncake 集成边界拆解：从 pybind11、tensor/object API、SGLang/vLLM/LMCache 文档理解 Mooncake 与上层 serving 框架的关系。'
+title: 'Mooncake 集成边界：Python binding、SGLang、vLLM 和 LMCache'
+description: 'Mooncake 集成层附录：说明 pybind11、tensor/object API、SGLang HiCache/PD、vLLM/LMCache 后端之间的职责边界。'
 author: 'Reese'
 date: '2026-06-04'
 topics:
@@ -10,15 +10,15 @@ topics:
   - sglang
 ---
 
-Mooncake 的 README 和文档会频繁提到 SGLang、vLLM、LMCache、disaggregated prefill-decode、KVCache pool。读这些材料时，一个很容易踩的坑是把“系统愿景”和“当前仓库里的代码边界”混在一起。
+Mooncake 的 README 和文档会频繁提到 SGLang、vLLM、LMCache、disaggregated prefill-decode、KVCache pool。读这些材料时，一个容易踩的坑是把“系统愿景”和“当前仓库里的代码边界”混在一起。
 
-我现在更愿意先把边界拆开：
+边界可以先拆成三层：
 
 - Mooncake 仓库里直接提供 Transfer Engine、Mooncake Store、Python binding、测试和集成文档。
 - 上层框架负责请求调度、模型执行、prefill/decode worker 组织，以及什么时候决定复用或传输 KV Cache。
 - 文档里的 SGLang/vLLM/LMCache 集成说明，是 Mooncake 能力如何接入上层框架的入口，但不等于所有上层 adapter 逻辑都在 Mooncake 仓库里。
 
-这篇想讲的就是这个边界：Mooncake 到底接在上层框架的哪里。
+本文作为系列附录，只回答一个问题：Mooncake 到底接在上层框架的哪里。
 
 ## Python binding 不是另一套 Store
 
@@ -48,9 +48,13 @@ Mooncake 支持 tensor 读写，这很容易让人以为底层就是“tensor st
 
 这个例子能说明 Mooncake 集成层的定位：它不是只做语言绑定，还要把框架里的对象模型翻译成 Store/Transfer Engine 能理解的接口。
 
-## SGLang 更靠近 Transfer Engine
+## SGLang 有两条 Mooncake 路径
 
-SGLang 文档里，Mooncake 主要出现在 disaggregated prefill-decode 场景。prefill worker 和 decode worker 分开以后，KV Cache 需要跨节点传递。这个问题非常适合 Transfer Engine：它提供跨节点、跨 backend 的数据搬运能力。
+SGLang 里至少有两类 Mooncake 相关路径。
+
+第一类是 PD disaggregation。prefill worker 和 decode worker 分开以后，KV Cache 需要跨节点传递。这条路径更靠近 Mooncake Transfer Engine，因为核心问题是把一段 KV 从一个 worker 搬到另一个 worker。
+
+第二类是 HiCache L3 storage backend。它通过 `HiCacheStorage` 接入 `MooncakeStore`，把 prefix KV page 写入 Mooncake Store，再在后续请求中 prefetch 回 Host pool。
 
 从边界上看，SGLang 仍然负责模型执行和请求调度。Mooncake 提供的是把 KV Cache 从一个节点搬到另一个节点的传输能力，以及在一些路径下和 Store/缓存体系配合的基础设施。
 
@@ -97,3 +101,11 @@ Mooncake 接在上层框架的位置，不是一个单点 API，而是一组边�
 Python binding 把 C++ Store 和 Transfer Engine 暴露给 Python 世界；tensor/object wrapper 把上层对象翻译成 Store 可处理的 parts/slices；SGLang 更关注 prefill/decode 分离下的 KV 传输；LMCache/vLLM 更容易从 cache backend 和 object store 角度接入。
 
 真正要避免的是把这些边界混成一句“Mooncake 支持某某框架”。支持只是入口。技术上更重要的是：上层框架在什么时机调用 Mooncake，调用的是 Store 语义还是 Transfer Engine 数据面，以及这次 KV Cache 复用在成本模型上是否真的划算。
+
+## 检查问题
+
+- Python binding 和 C++ Store client 是什么关系？
+- tensor API 为什么不等于底层就是 tensor store？
+- SGLang PD disaggregation 和 HiCache L3 backend 分别更靠近 Mooncake 的哪一层？
+- 为什么不能在 Mooncake 仓库里寻找完整的 SGLang scheduler？
+- 上层框架为什么必须有自己的成本模型？

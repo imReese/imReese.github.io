@@ -1,22 +1,41 @@
 ---
-title: '从 SGLang HiCache 到 Mooncake Store：KV Cache 真正落到哪里'
-description: '一篇基于 SGLang v0.5.14 的 Mooncake Store 技术拆解：沿 HiCache storage backend、page key、zero-copy batch_get/batch_put 和共享 Transfer Engine 看 KV Cache 的跨节点路径。'
+title: 'SGLang v0.5.14 到 Mooncake Store：page key、zero-copy 和 shared TE'
+description: '把 SGLang HiCache 和 Mooncake Store 接起来的源码链路：HiCacheStorage、page key、Host KV pointer、batch_get/set、PoolTransfer 和 shared Transfer Engine。'
 author: 'Reese'
 date: '2026-06-30'
 topics:
   - llm-serving
   - kv-cache
   - sglang
+  - hicache
   - mooncake
+  - transfer-engine
 ---
 
-前面分别写了 SGLang HiCache 和 Mooncake Store，但这两块如果分开看，很容易断在中间。
+SGLang HiCache 和 Mooncake Store 分开看时，最容易断在中间。
 
 SGLang 侧会说：HiCache 把 GPU KV Cache 扩成 L1/L2/L3，L3 可以接 `mooncake` storage backend。Mooncake 侧会说：Store 提供 object/slice/replica/metadata，Client 通过 Transfer Engine 搬数据。
 
 真正关键的问题是：**SGLang 的一段 prefix KV Cache，什么时候会变成 Mooncake Store 里的 object？它又是怎么从 Mooncake Store 回到 SGLang 的 Host/GPU pool？**
 
-这篇基于 SGLang `v0.5.14` 读一遍这条链路。
+本文固定到 SGLang `v0.5.14`。源码入口：
+
+```text
+python/sglang/srt/mem_cache/hicache_storage.py
+python/sglang/srt/mem_cache/unified_radix_cache.py
+python/sglang/srt/mem_cache/storage/mooncake_store/mooncake_store.py
+python/sglang/srt/mem_cache/storage/backend_factory.py
+```
+
+要跟住的主线是：
+
+```text
+radix node hash_value
+  -> HiCacheStorage keys
+  -> MooncakeStore key expansion
+  -> Host KV page buffer pointers
+  -> Mooncake Store zero-copy batch API
+```
 
 ## 先看接口边界：HiCacheStorage
 
@@ -298,3 +317,11 @@ SGLang 先把 prefix KV Cache page 化、hash 化，并把 GPU KV 降级到 Host
 - Mooncake Store：object key、batch existence、zero-copy get/put、replica/metadata、Transfer Engine。
 
 理解这个边界以后，才不会把 Mooncake 当成普通远端 KV，也不会把 HiCache storage backend 误解成一层简单的 Python 字典。它们接起来，是为了让 prefix KV Cache 从单个 SGLang worker 的内存状态，变成可以跨节点查询、搬运和复用的系统资源。
+
+## 检查问题
+
+- `HiCacheStorage` 为什么是 SGLang 和 Mooncake Store 的分界线？
+- 一个 logical page key 在 MHA 下为什么会展开成 K/V object keys？
+- `batch_get_into` 为什么要接收 Host KV pointer，而不是返回 tensor？
+- `PoolTransfer` 如何让 side pools 参与同一个 prefix 的命中判断？
+- shared Mooncake Transfer Engine 为什么只是优化，不是语义前提？

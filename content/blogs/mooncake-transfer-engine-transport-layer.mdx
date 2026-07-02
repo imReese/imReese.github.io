@@ -1,0 +1,151 @@
+---
+title: 'Mooncake Transfer Engine transport 层：MultiTransport 怎么选择 TCP、RDMA 和设备路径'
+description: 'Mooncake Transfer Engine transport 层拆解：理解 MultiTransport、transport install、memory registration 和不同 backend 的职责边界。'
+author: 'Reese'
+date: '2026-06-05'
+topics:
+  - llm-serving
+  - kv-cache
+  - mooncake
+  - transfer-engine
+---
+
+Transfer Engine 的上层 API 很统一，但真正的数据搬运要落到具体 transport。Mooncake 通过 MultiTransport 把不同 backend 统一起来。
+
+读这一层时，重点不是背每个 transport 的实现细节，而是理解选择链路：
+
+```text
+TransferRequest
+  -> MultiTransport
+  -> selected Transport
+  -> RDMA / TCP / EFA / NVLink / device backend
+```
+
+## installTransport 决定可用 backend
+
+TransferEngine 暴露：
+
+```text
+installTransport(proto, args)
+getTransport(proto)
+uninstallTransport(proto)
+```
+
+proto 可以对应不同实现。常见路径包括：
+
+```text
+tcp
+rdma
+efa
+nvlink
+intranode nvlink
+hip / ascend / vendor-specific backend
+```
+
+是否真的可用取决于编译选项、运行环境、设备发现和配置。文档里写支持某种协议，不代表当前 build 一定启用。
+
+## MultiTransport 的职责
+
+MultiTransport 不是新的传输协议。它是路由和聚合层。
+
+它需要做几件事：
+
+- 管理已安装的 transport。
+- 根据 proto 或 Segment 信息找到目标 transport。
+- 把 batch transfer 拆给对应 backend。
+- 汇总 batch status。
+- 在多协议场景下处理注册内存和提交任务。
+
+这层让 Store 和上层框架不必关心每个 backend 的具体类名和状态查询方式。
+
+## memory registration 也要分 backend
+
+`registerLocalMemory` 看起来是一个统一 API，但底层每个 transport 的含义不同。
+
+RDMA/EFA 可能要注册 memory region 和 rkey/lkey。NVLink 或 GPU backend 可能要处理 device pointer、IPC handle 或 stream。TCP 可能不需要同等级的硬件注册，但仍要进入统一接口。
+
+因此注册内存不是可选优化，而是数据面协议的一部分。
+
+对 HiCache + Mooncake Store 来说，Host KV pool 必须在 Store setup 后注册。否则 zero-copy get/put 拿到 pointer，也不一定能被底层 transport 使用。
+
+## local path 不能盲目走 TCP
+
+同机或同 endpoint 的传输不一定应该走 TCP loopback。Mooncake 里有注释强调，当只有 TCP transport 时，同主机 transfer 可能更适合 local memcpy。
+
+原因很直接：本地 memcpy 少了一层协议栈，也避免把同进程或同节点的数据搬运伪装成网络传输。
+
+这也是 Store 的 TransferSubmitter 要判断本地性的原因。不是所有 replica 都需要 Transfer Engine 走网络。
+
+## transport 选择依赖 Segment 信息
+
+Store replica 指向 Segment。Segment 中包含 protocol 和 endpoint 信息。
+
+简化关系：
+
+```text
+Replica
+  -> Segment
+       protocol
+       te_endpoint
+       id
+       offset
+```
+
+TransferSubmitter 根据 replica/Segment 构造 TransferRequest 后，Transfer Engine 通过 target Segment 和 proto 找到 transport。
+
+如果 Segment 的 protocol、TE endpoint、registered memory 和 installed transport 不匹配，就会出现看似“Store key 存在”，但数据搬不回来的问题。
+
+## RDMA 路径要看设备选择
+
+RDMA/EFA 这类路径还涉及 NIC、NUMA、device filter、auto discovery。设备选错可能导致：
+
+- 注册内存失败
+- peer 建连失败
+- 带宽远低于预期
+- 跨 NUMA 访问导致 tail latency 抖动
+
+SGLang Mooncake backend 里复用 shared Transfer Engine 也有严格条件，例如 protocol、metadata server、device name 等要匹配。条件不匹配时，HiCache Mooncake Store 会创建自己的 Store client，而不是盲目复用 PD disaggregation 的 Transfer Engine。
+
+## transport 层不负责对象一致性
+
+Transport 层只知道任务成败。它不会判断：
+
+- 这个 key 是不是最新。
+- replica 是否 COMPLETE。
+- lease 是否过期。
+- K/V object 是否同属于一个 logical page。
+- side pool 是否一起命中。
+
+这些是 Store 和 HiCache 的职责。
+
+排障时不要把 transport 成功当成系统正确。正确链路需要同时满足：
+
+```text
+metadata correct
+replica readable
+lease valid
+buffer registered
+transport success
+HiCache commit 成功
+```
+
+## 性能边界
+
+transport 层常见瓶颈包括：
+
+- page 太小，batch 提交和 completion 开销过高。
+- buffer 未提前注册，热路径上发生注册。
+- 选择 TCP 而不是 RDMA/NVLink。
+- NIC/NUMA 不匹配。
+- batch 内部目标分散，无法有效聚合。
+- Host layout 不适合 zero-copy page 传输。
+
+这些问题最终会表现为 HiCache remote hit 变慢，甚至比重新 prefill 还慢。
+
+## 检查问题
+
+- MultiTransport 和具体 transport 的分工是什么？
+- 为什么 memory registration 的成本和 backend 强相关？
+- Segment 里的 protocol/endpoint 如何影响 transport 选择？
+- 为什么同机路径不一定应该走 TCP？
+- transport 成功为什么不能证明 HiCache 命中可用？

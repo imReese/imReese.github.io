@@ -1,0 +1,201 @@
+---
+title: 'SGLang HiCache 读路径：prefetch、load back 和调度边界'
+description: '基于 SGLang v0.5.14 拆解 HiCache 读路径：从 prefix match 到 storage prefetch，再从 Host load back 到 GPU。'
+author: 'Reese'
+date: '2026-06-28'
+topics:
+  - llm-serving
+  - kv-cache
+  - hicache
+  - sglang
+---
+
+HiCache 读路径回答的是：**请求来了以后，SGLang 怎么判断一段 prefix 能不能复用，以及这段 KV 要不要从 Host 或 Storage 拉回来。**
+
+这条链路不能简化成“storage 有 key 就命中”。真正参与推理的是 GPU KV slots，Storage 命中只说明数据可能可以被搬回 Host，再进一步 load back 到 GPU。
+
+## 读路径的三种命中
+
+一次 prefix match 以后，HiCache 要区分三类命中：
+
+```text
+GPU hit:
+  node.value 存在，可直接用于 attention
+
+Host hit:
+  node.host_value 存在，需要 H->D load back
+
+Storage hit:
+  L3 backend 存在对应 page，需要 Storage->H prefetch
+```
+
+这三者的成本完全不同。GPU hit 几乎是本地索引复用；Host hit 需要设备传输；Storage hit 还要经过 backend 查询、远端数据搬运、Host buffer 分配和后续 load back。
+
+## prefetch_from_storage 做什么
+
+`prefetch_from_storage(...)` 的目标是把 L3 中可能存在的 prefix page 提前读到 Host pool。
+
+核心流程：
+
+```text
+prefetch_from_storage(req_id, last_host_node, new_input_tokens, ...)
+  -> 把 new_input_tokens 对齐到 page
+  -> 检查 prefetch_threshold 和 rate limit
+  -> 为 KV 分配 Host indices
+  -> 为 side pools 构造 PoolTransfer
+  -> cache_controller.prefetch(...)
+  -> HiCacheStorage.batch_get_v1/v2(...)
+  -> 记录 ongoing_prefetch
+```
+
+这里有几个边界很重要。
+
+第一，prefetch key 必须 page aligned。Storage backend 按 page 查询，不能对任意 token offset 做通用命中。
+
+第二，prefetch 需要 Host 空间。如果 Host pool 不够，HiCache 会尝试 evict Host；如果仍然不够，会缩短 prefetch length 或直接放弃。
+
+第三，prefetch 成功只是进入 Host，不是进入 GPU。它还不能直接被 attention kernel 使用。
+
+## batch_exists 决定可用前缀边界
+
+Storage backend 通常先查存在性，再决定能 prefetch 多少页。
+
+普通 KV 路径中：
+
+```text
+batch_exists(keys) -> 连续存在的 page 数量
+```
+
+hybrid cache 路径中：
+
+```text
+batch_exists_v2(keys, pool_transfers) -> PoolTransferResult
+```
+
+v2 的返回结果更关键。它需要合并 KV 和 side pools 的命中边界：
+
+```text
+kv_hit_pages = 10
+mamba_hit_pages = 8
+swa_hit_pages = 9
+final usable pages = 8
+```
+
+如果只看 KV page 存在，就可能把缺少 side state 的 prefix 当成可复用，后续模型状态会不完整。
+
+## Storage->Host 不等于 Host->GPU
+
+Storage prefetch 的结果是 Host pool 中出现一段 `host_indices`。之后如果调度器决定使用这段 prefix，还需要走 `load_back(...)`。
+
+`load_back(best_match_node, mem_quota, req)` 的目标是把 Host KV page 搬回 GPU KV pool。
+
+核心流程：
+
+```text
+load_back(best_match_node)
+  -> inc_host_lock_ref(best_match_node)
+  -> 为 KV 构造 LOAD_BACK transfer
+  -> 为 side pools 构造 LOAD_BACK transfers
+  -> 检查 load_back_threshold 和 mem_quota
+  -> GPU 空间不够时 evict
+  -> cache_controller.load(...)
+  -> commit device_indices
+  -> 更新 evictable sets
+  -> 记录 ongoing_load_back
+```
+
+注意 `load_back_threshold`。如果要搬回 GPU 的 token 太少，HiCache 可能直接放弃，因为传输和调度成本不划算。
+
+## load back 为什么要 lock
+
+load back 是异步路径。搬运期间同时存在几个风险：
+
+- Host buffer 被回收。
+- radix node 被 split 或删除。
+- GPU 空间被别的请求抢占。
+- side pool 与 KV pool 状态提交不一致。
+
+因此 load back 会同时持有 Host 侧和 GPU 侧引用保护。成功后，它才把 `device_indices` commit 回 node；失败时释放引用，不把 node 标成 GPU 可用。
+
+这点很关键：**只有 commit device indices 之后，prefix 才真正回到 L1。**
+
+## 调度器为什么不能无条件等待
+
+远端 cache 命中不一定值得等。HiCache 读路径中有多种提前放弃条件：
+
+- prefetch token 数低于阈值
+- prefetch 触发 rate limit
+- Host pool 无法分配足够空间
+- load back token 数低于阈值
+- load back 超过当前 GPU mem quota
+- side pool 不满足命中策略
+- storage backend batch get 失败
+
+这些条件意味着 HiCache 是一个 performance-aware cache，而不是强一致的远端内存抽象。它的目标是提高吞吐和减少重复 prefill，但不能为了 cache 把调度器拖死。
+
+## Mooncake backend 的读路径
+
+当 L3 backend 是 Mooncake，读路径会进入：
+
+```text
+MooncakeStore.batch_get_v1(keys, host_indices)
+MooncakeStore.batch_get_v2(transfers)
+```
+
+v1 会把每个 logical page key 展开成 Mooncake object keys，再从 Host pool 取目标 buffer pointer：
+
+```text
+key_strs, buffer_ptrs, buffer_sizes =
+  _batch_preprocess(keys, host_indices)
+```
+
+然后调用：
+
+```text
+batch_get_into(key_strs, buffer_ptrs, buffer_sizes)
+batch_get_into_multi_buffers(key_strs, buffer_ptrs, buffer_sizes)
+```
+
+返回结果是 object 级的。Mooncake backend 再把 object 级结果折回 page 级 bool：
+
+```text
+MHA page:
+  K object success && V object success
+
+MLA page:
+  K object success
+```
+
+这解释了为什么一个 page key 背后可能有多个 Mooncake object。HiCache 只想知道 page 是否可用；Mooncake Store 看到的是更细的 object。
+
+## 读路径完整链路
+
+完整读链可以这样画：
+
+```text
+request tokens
+  -> radix prefix match
+  -> GPU hit 可直接使用
+  -> Host hit 触发 load_back
+  -> Storage candidate 触发 prefetch_from_storage
+  -> HiCacheStorage.batch_exists / batch_get
+  -> Host pool 填充
+  -> load_back 到 GPU
+  -> attention kernel 使用 device KV slots
+```
+
+所以“remote KV cache hit”至少要问三个问题：
+
+- L3 backend 里对应 page 是否存在？
+- 数据是否已经读回 Host pool？
+- 对应 Host page 是否已经 load back 到 GPU？
+
+只有第三个问题为真，推理计算才能真正跳过这段 prefill。
+
+## 检查问题
+
+- 为什么 storage prefetch 需要 page alignment？
+- `batch_exists_v2` 为什么要取多个 pool 的共同命中边界？
+- `load_back_threshold` 在防什么？
+- Storage->Host 成功后，为什么不能直接认为 attention 可以复用？
+- Mooncake backend 为什么需要把 object 级结果折回 page 级结果？

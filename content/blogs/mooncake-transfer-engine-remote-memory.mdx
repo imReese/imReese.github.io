@@ -1,106 +1,195 @@
 ---
-title: 'Transfer Engine：把远端内存变成可提交的传输任务'
-description: '一篇 Mooncake Transfer Engine 技术拆解：从 Segment、registered memory、BatchTransfer 和 transport 选择理解数据搬运层。'
+title: 'Mooncake Transfer Engine：Segment、注册内存和 BatchTransfer'
+description: 'Mooncake Transfer Engine 源码拆解：从公开 API、Segment、registerLocalMemory、TransferRequest 和 BatchID 理解数据搬运层。'
 author: 'Reese'
-date: '2026-05-28'
+date: '2026-06-03'
 topics:
   - llm-serving
   - kv-cache
   - mooncake
-  - systems-reading
+  - transfer-engine
 ---
 
-如果说 Mooncake Store 负责回答“对象在哪、能不能读”，那 Transfer Engine 负责回答的是另一个问题：**知道远端在哪里以后，数据到底怎么搬？**
+Mooncake Transfer Engine 解决的问题很窄：**给定本地 buffer、远端 Segment、offset 和 length，如何把一批 bytes 可靠地搬过去或读回来。**
 
-Transfer Engine 不是对象存储，也不是 KV Cache 语义层。它不理解 key，不知道 replica 是否 complete，也不负责 lease。它看到的是更低层的传输问题：本地 buffer、远端 Segment、offset、length、READ/WRITE，以及一批任务的完成状态。
+它不理解 object key，不判断 replica 是否 COMPLETE，也不知道这段数据是不是 KV Cache。这些都是 Store 或上层框架的职责。
 
-这个抽象听起来朴素，但对 Mooncake 很关键。因为 Store 只有把对象读写翻译到这一层，才能把不同硬件和网络 backend 藏到统一的数据搬运接口后面。
-
-## Segment 是远端地址语言
-
-Transfer Engine 里最重要的抽象之一是 Segment。
-
-我会把 Segment 理解成“可被远端访问的一段内存或存储区域的描述”。它不是一个文件句柄，也不是普通 socket。调用方通过 `openSegment` 拿到内部 `SegmentID`，后续传输请求就用这个 id 加 offset 来表达目标位置。
-
-也就是说，Transfer Engine 处理的不是：
+核心入口：
 
 ```text
-read key = "abc"
+mooncake-transfer-engine/include/transfer_engine.h
+mooncake-transfer-engine/include/transport/transport.h
+mooncake-transfer-engine/src/transfer_engine_impl.cpp
+mooncake-transfer-engine/src/multi_transport.cpp
 ```
 
-而是：
+## TransferEngine 的公开 API
+
+Transfer Engine 的公开接口可以分成几类：
+
+```text
+init / freeEngine
+installTransport / uninstallTransport / getTransport
+openSegment / closeSegment / removeLocalSegment
+registerLocalMemory / unregisterLocalMemory
+allocateBatchID / freeBatchID
+submitTransfer
+getTransferStatus / getBatchTransferStatus
+```
+
+这些 API 说明它不是 KV store。它处理的是内存注册、Segment 发现和批量传输任务。
+
+## Segment 是远端可寻址空间
+
+传输任务不能只写 “remote ptr”。跨进程、跨机器时，本地进程不能直接相信远端虚拟地址。Transfer Engine 先通过 `openSegment(segment_name)` 得到 `SegmentHandle`。
+
+Store 侧的 Segment metadata 会告诉 client：
+
+```text
+segment id
+segment name
+base
+size
+te_endpoint
+protocol
+```
+
+Transfer Engine 侧拿到 Segment 后，传输任务才能表达：
+
+```text
+target_id
+target_offset
+length
+```
+
+也就是说，Store 的 replica 描述会被压成 Transfer Engine 的 Segment + offset + length。
+
+## registerLocalMemory 是数据面的前置条件
+
+很多 transport 不能直接拿任意 malloc 出来的地址做高速传输。RDMA、GPU P2P、NVLink、EFA 等路径通常需要 pin memory、注册 MR、生成 key 或建立映射。
+
+因此 Transfer Engine 暴露：
+
+```text
+registerLocalMemory(addr, length, location, remote_accessible, update_metadata)
+unregisterLocalMemory(addr)
+registerLocalMemoryBatch(...)
+```
+
+这一步的意义是：告诉 Transfer Engine 这段本地 buffer 可以参与传输。
+
+SGLang 接 Mooncake Store 时，Mooncake backend 会注册 Host KV pool。之后 `batch_get_into` 和 `batch_put_from` 才能把 Host KV page pointer 直接交给 Store/TE，不需要把数据拷成 Python bytes。
+
+## TransferRequest 是最小传输语义
+
+Transfer Engine 的核心请求可以简化为：
+
+```text
+TransferRequest
+  opcode: READ | WRITE
+  source: local buffer address
+  target_id: remote Segment id
+  target_offset: offset inside remote Segment
+  length: bytes
+```
+
+READ 和 WRITE 的区别在于数据方向：
 
 ```text
 READ:
-  source = local address
-  target_id = remote segment id
-  target_offset = N
-  length = L
+  remote Segment -> local source buffer
+
+WRITE:
+  local source buffer -> remote Segment
 ```
 
-这个转换很重要。Store 层的 key、slice、replica 语义，最终会在数据面被压成 Segment + offset + length。Transfer Engine 不需要知道上层对象是什么，只要保证这段传输任务能被正确提交和完成。
+字段名 `source` 需要按 Transfer Engine 语义理解：它是本地 buffer 地址。具体方向由 opcode 决定。
 
-## registerLocalMemory 不只是登记一张表
+## BatchID 和批量任务
 
-另一个容易低估的 API 是 `registerLocalMemory`。
-
-如果只从名字看，它像是在 Transfer Engine 里登记一下本地 buffer。但实际工程里，注册内存往往和底层 transport 强相关。RDMA、GPU IPC、NVLink 或其他设备路径，都可能要求本地 buffer 先完成 pin、注册、handle 生成或地址映射。
-
-所以 `registerLocalMemory` 更像是在告诉所有已安装 transport：这段本地内存之后可能参与传输，请提前建立必要的访问上下文。
-
-这也是为什么 Store client 初始化、mount segment、local hot cache 这类路径里都会碰到 memory registration。只要一段 buffer 可能成为 Transfer Engine 的 source 或 target，它就不只是普通 malloc 出来的内存，而是数据面的一部分。
-
-## BatchTransfer 是任务语言
-
-Transfer Engine 的传输不是“一次 API 调用阻塞拷完一切”这么简单。它用 BatchID 和 task status 来表达一组异步传输。
-
-典型路径是：
+Transfer Engine 不鼓励每个小对象都单独同步传输。它使用 BatchID 表达一组 transfer request：
 
 ```text
-allocateBatchID(batch_size)
-  -> build TransferRequest[]
-  -> submitTransfer(batch_id, requests)
-  -> poll getTransferStatus(batch_id, task_id)
-  -> freeBatchID(batch_id)
+BatchID id = allocateBatchID(batch_size)
+submitTransfer(id, requests)
+getBatchTransferStatus(id, status)
+freeBatchID(id)
 ```
 
-`TransferRequest` 里会包含 opcode、source、target segment、target offset、length 等字段。提交以后，底层 transport 可能还会把一个 request 切成多个 slice。调用方看到的是 task 级别的状态，但 transport 内部可能已经发生了更细粒度的拆分、重试和状态聚合。
+这对 KV Cache 很重要。一个 prefix 可能有大量 page，每个 page 又可能拆成 K/V object。如果每个 object 都独立提交，会被提交开销和轮询开销淹没。
 
-这层设计的好处是，Store 可以把多个 slice 或多个 replica 的读写合并成一批任务提交，而不是每个小传输都变成一次独立同步调用。
+BatchTransfer 的目标是把许多小传输组织成一批，让 transport 层统一调度和查询状态。
 
-对 KV Cache 这种大对象来说，batch 化和异步状态很重要。因为真正昂贵的往往不是“调用一次传输 API”，而是大量块在不同节点和 backend 之间移动时，如何减少提交开销、轮询开销和 metadata 冷路径开销。
+## TransferStatus 不是对象状态
 
-## MultiTransport 决定走哪条路
+Transfer Engine 的状态是数据面状态：
 
-Transfer Engine 还需要处理一个现实问题：不同环境里可用的 transport 完全不一样。
+```text
+WAITING
+PENDING
+COMPLETED
+TIMEOUT
+FAILED
+CANCELED
+```
 
-本地开发可能只有 TCP；生产集群可能有 RDMA 或 EFA；GPU 之间可能走 NVLink、HIP、Ascend 或 Sunrise Link；某些路径又可能通过 TENT backend 进入另一套实现。Mooncake 不可能让 Store 层理解所有这些 backend 的细节。
+这些状态只说明传输任务完成没有，不说明 Store object 是否可读。
 
-所以 classic path 里有 `MultiTransport` 这一层。它负责安装 transport，根据目标 Segment 的 protocol 或运行时信息选择具体实现，再把传输任务提交下去。
+例如 Put 路径中，WRITE transfer 成功以后，Store 仍然需要 PutEnd 把 replica 提交为 COMPLETE。反过来，Get 路径中，如果 master 返回 COMPLETE replica，但 READ transfer 失败，上层仍然不能使用数据。
 
-从 Store 的角度看，它提交的是“把这段 slice 写到那个 replica”。从 Transfer Engine 的角度看，它提交的是“对这个 Segment 执行 WRITE”。从 `MultiTransport` 的角度看，它还要继续判断：这个 Segment 应该交给哪个 transport。
+因此要区分：
 
-这就是分层带来的好处：上层对象语义不会被 RDMA/NVLink 细节污染，底层 transport 也不需要知道 key 和 replica。
+```text
+TransferStatus:
+  bytes 是否搬完
 
-## Transfer Engine 的边界
+ReplicaStatus:
+  object replica 是否可读
+```
 
-Transfer Engine 强大，但它的边界也要说清楚。
+## Transfer Engine 在 Store Put/Get 中的位置
 
-它不决定一个对象是否可读，不决定哪个副本最新，也不决定远端 KV Cache 值不值得复用。这些是 Store、scheduler 或上层框架的问题。
+Put 时：
 
-它负责的是数据面能力：
+```text
+Store replica
+  -> TransferSubmitter
+  -> TransferRequest(WRITE)
+  -> TransferEngine.submitTransfer
+  -> transport
+```
 
-- 初始化 endpoint 和 metadata。
-- 打开远端 Segment。
-- 注册本地内存。
-- 构造和提交批量传输。
-- 查询任务状态。
-- 在多个 transport backend 之间分发任务。
+Get 时：
 
-如果把 Transfer Engine 误解成完整的 KV Cache 系统，就会找不到 metadata、lease、replica 状态这些逻辑；如果忽略 Transfer Engine，又会低估 Mooncake 处理跨节点数据搬运的核心复杂度。
+```text
+Store replica
+  -> TransferSubmitter
+  -> TransferRequest(READ)
+  -> TransferEngine.submitTransfer
+  -> local slices filled
+```
 
-## 小结
+Store 负责 object/replica/lease；Transfer Engine 负责 bytes。这个边界不应该混。
 
-Transfer Engine 把远端内存访问抽象成 Segment、registered memory 和 BatchTransfer。它不理解对象，但它让对象系统可以落到真实的数据搬运上。
+## 为什么这层要独立出来
 
-Mooncake 的 Store/Transfer Engine 分层，本质上是在把“KV Cache 复用”拆成两个问题：对象语义怎么维护，数据字节怎么移动。Transfer Engine 解决后者，而且把 TCP、RDMA、GPU 互联等 backend 的差异尽量压到统一传输接口之下。
+如果 Store 自己直接实现 RDMA/TCP/NVLink/EFA，每加一种 backend 都会污染 object 语义层。
+
+Transfer Engine 独立出来以后，Store 只需要表达：
+
+```text
+把 slice 写到 replica
+从 replica 读到 slice
+```
+
+底层到底走哪个 transport，由 Transfer Engine 和 MultiTransport 处理。
+
+这让 Mooncake 能同时支持多种部署形态：本地开发可以 TCP，生产可能 RDMA/EFA，同机多卡可能 NVLink，异构硬件还有其他 backend。
+
+## 检查问题
+
+- Transfer Engine 为什么不需要知道 object key？
+- Segment + offset + length 如何从 Store replica 推导出来？
+- `registerLocalMemory` 防的是什么成本或限制？
+- `TransferStatus.COMPLETED` 为什么不等于 Store object 可读？
+- BatchID 对 KV Cache page 传输有什么价值？
