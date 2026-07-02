@@ -1,0 +1,444 @@
+---
+title: 'kubectl 使用笔记：先弄清 Context，再开始排障'
+description: '一篇面向日常使用的 kubectl 笔记：从 kubeconfig、context、namespace 开始，整理 get、describe、logs、exec、apply 和 rollout 的排障路径。'
+author: 'Reese'
+date: '2026-07-02'
+---
+
+这篇不是 Kubernetes 的完整教程，只是一份我希望自己早点整理出来的 `kubectl` 使用笔记。
+
+`kubectl` 的命令很多，但日常真正重要的不是背命令，而是先回答三个问题：
+
+```text
+我正在操作哪个集群？
+我正在看哪个 namespace？
+我现在要查的是资源定义、运行状态，还是容器里的行为？
+```
+
+这三个问题没答清楚，后面 `get`、`describe`、`logs`、`exec` 再熟也容易打偏。Kubernetes 的复杂度很大一部分来自“对象很多、层级很多、状态很多”，而 `kubectl` 是我们进入这些状态的入口。
+
+## 先看 kubeconfig，不要急着 get pod
+
+`kubectl` 默认会读 `~/.kube/config`。这个文件里最重要的是四块：
+
+- `clusters`：集群 API server 和证书信息。
+- `users`：认证信息，比如 token、证书、exec plugin。
+- `contexts`：把 cluster、user、namespace 组合成一个上下文。
+- `current-context`：当前默认使用哪个 context。
+
+所以 context 不是一个装饰性的名字，它决定了你接下来所有命令会打到哪里。
+
+我一般先看：
+
+```bash
+kubectl config get-contexts
+kubectl config current-context
+kubectl config view --minify
+```
+
+`get-contexts` 看有哪些环境，`current-context` 看当前在哪，`view --minify` 只看当前 context 生效后的配置。最后这个命令很适合避免误操作，因为它能把当前 cluster、user、namespace 收缩到一屏里。
+
+切换 context：
+
+```bash
+kubectl config use-context <context-name>
+```
+
+给当前 context 设置默认 namespace：
+
+```bash
+kubectl config set-context --current --namespace=<namespace>
+```
+
+我更喜欢显式设置 namespace，而不是每条命令都靠脑子记 `-n`。当然，做危险操作时我仍然会把 `-n <namespace>` 写出来，让命令自己带上上下文。
+
+## kubeconfig 的优先级
+
+如果你手上有多个 kubeconfig，`kubectl` 有几种读取方式。
+
+单次命令指定：
+
+```bash
+kubectl --kubeconfig=/path/to/config get pods
+```
+
+当前 shell 指定：
+
+```bash
+export KUBECONFIG=/path/to/config1:/path/to/config2
+kubectl config get-contexts
+```
+
+默认位置：
+
+```text
+~/.kube/config
+```
+
+优先级可以这样记：
+
+```text
+--kubeconfig
+  > KUBECONFIG
+  > ~/.kube/config
+```
+
+多集群环境里，`KUBECONFIG` 可以合并多个文件。这个能力很好用，但也会让“当前 context 到底来自哪个文件”变得不直观。配置文件里通常有认证信息，所以权限也要注意，至少不要把 kubeconfig 当普通示例配置随手传。
+
+## kubectl 命令的基本形状
+
+`kubectl` 大多数命令都能放进这个形状：
+
+```text
+kubectl <command> <resource-type> <resource-name> <flags>
+```
+
+比如：
+
+```bash
+kubectl get pods
+kubectl describe pod <pod-name>
+kubectl get deployment <deployment-name> -o yaml
+kubectl delete pod <pod-name> -n <namespace>
+```
+
+资源类型可以写单数、复数或缩写：
+
+```bash
+kubectl get pod
+kubectl get pods
+kubectl get po
+```
+
+但我不建议一开始就沉迷缩写。熟了以后 `po`、`svc`、`deploy` 很顺手；刚学时，写完整一点更能帮自己建立对象模型。
+
+## get 是看列表，describe 是看现场
+
+`get` 适合快速扫一眼资源。
+
+```bash
+kubectl get pods
+kubectl get pods -n <namespace>
+kubectl get pods -A
+kubectl get pods -o wide
+kubectl get pods -w
+```
+
+我常用 `-o wide` 看节点、Pod IP、额外状态，用 `-w` 看变化。
+
+但 `get` 只是列表视角。真正开始排障时，`describe` 更像看现场：
+
+```bash
+kubectl describe pod <pod-name> -n <namespace>
+kubectl describe node <node-name>
+kubectl describe deployment <deployment-name> -n <namespace>
+```
+
+`describe pod` 里我最关心几块：
+
+- Pod 被调度到了哪个 node。
+- 容器状态是 waiting、running、terminated 还是 restart。
+- readiness/liveness probe 是否失败。
+- image pull 是否失败。
+- 最下面 Events 有没有调度、拉镜像、挂载 volume、探针失败等信息。
+
+很多时候，`get pods` 只会告诉你 `CrashLoopBackOff`，但 `describe pod` 会告诉你它为什么一直重启。
+
+## logs 看应用输出，exec 看容器内部
+
+`logs` 适合看容器 stdout/stderr：
+
+```bash
+kubectl logs <pod-name> -n <namespace>
+kubectl logs -f <pod-name> -n <namespace>
+kubectl logs <pod-name> -c <container-name> -n <namespace>
+kubectl logs <pod-name> --previous -n <namespace>
+```
+
+`--previous` 很有用。容器如果已经重启，当前日志可能只剩新一轮启动输出，上一轮崩溃原因要从 previous 里看。
+
+多容器 Pod 要加 `-c`，不然你可能看到的是 sidecar 的日志，而不是主容器的日志。
+
+`exec` 则是进入容器内部看：
+
+```bash
+kubectl exec -it <pod-name> -n <namespace> -- /bin/sh
+kubectl exec -it <pod-name> -c <container-name> -n <namespace> -- /bin/bash
+kubectl exec <pod-name> -n <namespace> -- ls /app
+```
+
+我会把 `logs` 和 `exec` 分开理解：
+
+```text
+logs
+  -> 应用已经吐出来的信息
+
+exec
+  -> 进入当下运行环境检查文件、环境变量、网络、进程
+```
+
+如果镜像很瘦，容器里可能没有 `bash`、`curl`、`ps` 这些工具。这个时候不要怀疑人生，先试 `/bin/sh`。如果还是不够，就考虑临时 debug pod 或 ephemeral container。
+
+## port-forward 是本地排查的桥
+
+`port-forward` 很适合临时访问集群里的服务。
+
+转发到 Pod：
+
+```bash
+kubectl port-forward pod/<pod-name> 8080:80 -n <namespace>
+```
+
+转发到 Service：
+
+```bash
+kubectl port-forward svc/<service-name> 8080:80 -n <namespace>
+```
+
+我更常对 Service 做 port-forward，因为它更接近应用入口，不依赖某个具体 Pod。除非我要查某个 Pod 的个体问题，才会直接转 Pod。
+
+需要注意的是，`port-forward` 是调试工具，不是发布方式。它适合临时看 Web UI、连一下内部 API、验证服务是否能响应，不适合拿来长期跑流量。
+
+## apply 是日常主路径
+
+Kubernetes 资源最好走声明式管理。
+
+```bash
+kubectl apply -f deployment.yaml
+kubectl apply -f ./manifests/
+```
+
+`create` 更像“一次性创建”，`apply` 更像“把集群推向我声明的状态”。日常维护里，我更希望 YAML 文件是事实来源，然后用 `apply` 同步到集群。
+
+有时想快速生成一个 YAML 模板，可以用 dry-run：
+
+```bash
+kubectl create deployment nginx \
+  --image=nginx \
+  --dry-run=client \
+  -o yaml
+```
+
+生成后再保存、编辑、提交，而不是直接在命令行里堆一长串参数。这样后面 review 和回滚都更清楚。
+
+看线上对象的完整 YAML：
+
+```bash
+kubectl get deployment <deployment-name> -n <namespace> -o yaml
+```
+
+这个命令适合对比“我以为的配置”和“集群里真实存在的配置”。不过导出的 YAML 会带很多运行时字段，不适合原样拿回仓库提交。真正要沉淀成 manifests 时，需要删掉 status、resourceVersion、managedFields 等集群生成字段。
+
+## rollout 看发布过程
+
+Deployment 出问题时，我会看 rollout。
+
+```bash
+kubectl rollout status deployment/<deployment-name> -n <namespace>
+kubectl rollout history deployment/<deployment-name> -n <namespace>
+kubectl rollout undo deployment/<deployment-name> -n <namespace>
+```
+
+重启一组 Pod：
+
+```bash
+kubectl rollout restart deployment/<deployment-name> -n <namespace>
+```
+
+扩缩容：
+
+```bash
+kubectl scale deployment/<deployment-name> --replicas=3 -n <namespace>
+```
+
+这些命令要谨慎，尤其是生产环境。`rollout restart` 看起来温和，本质上还是触发滚动更新；如果 readiness、资源限制、镜像拉取策略有问题，它会把隐藏问题暴露出来。
+
+## 一个排障顺序
+
+如果一个服务访问不了，我通常按这个顺序看。
+
+第一步，看 Pod 是否活着：
+
+```bash
+kubectl get pods -n <namespace> -o wide
+```
+
+第二步，看异常 Pod 的现场：
+
+```bash
+kubectl describe pod <pod-name> -n <namespace>
+```
+
+第三步，看日志：
+
+```bash
+kubectl logs <pod-name> -n <namespace>
+kubectl logs <pod-name> --previous -n <namespace>
+```
+
+第四步，看 Service 有没有选中 Pod：
+
+```bash
+kubectl get svc -n <namespace>
+kubectl describe svc <service-name> -n <namespace>
+kubectl get endpoints <service-name> -n <namespace>
+```
+
+如果 Service 没有 endpoints，通常是 selector 和 Pod label 对不上，或者 Pod 没 ready。
+
+第五步，看 Deployment/ReplicaSet：
+
+```bash
+kubectl describe deployment <deployment-name> -n <namespace>
+kubectl get rs -n <namespace>
+```
+
+第六步，必要时进入容器或转发端口：
+
+```bash
+kubectl exec -it <pod-name> -n <namespace> -- /bin/sh
+kubectl port-forward svc/<service-name> 8080:80 -n <namespace>
+```
+
+这条路径不是万能，但它能覆盖很多常见问题：调度失败、镜像拉不下来、容器启动失败、探针失败、Service selector 错、应用端口没监听、配置没挂进去。
+
+## 输出格式是排障效率的一半
+
+`kubectl get` 的 `-o` 很有用。
+
+只看资源名：
+
+```bash
+kubectl get pods -n <namespace> -o name
+```
+
+输出 YAML：
+
+```bash
+kubectl get pod <pod-name> -n <namespace> -o yaml
+```
+
+JSONPath：
+
+```bash
+kubectl get pods -n <namespace> -o jsonpath='{.items[*].metadata.name}'
+```
+
+自定义列：
+
+```bash
+kubectl get pods -n <namespace> \
+  -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,PHASE:.status.phase
+```
+
+我觉得 `custom-columns` 比很多复杂 JSONPath 更适合日常使用。它能把自己关心的字段摆成表格，排查时很清爽。
+
+如果不知道字段在哪里，先用：
+
+```bash
+kubectl explain pod
+kubectl explain pod.spec
+kubectl explain pod.spec.containers
+```
+
+`explain` 是被低估的命令。它能直接从 API schema 里告诉你字段含义，比在网上搜一段过期 YAML 稳得多。
+
+## label 和 selector 是很多问题的根
+
+Kubernetes 里很多对象不是通过“名字相等”关联，而是通过 label selector。
+
+Service 通过 selector 找 Pod：
+
+```bash
+kubectl describe svc <service-name> -n <namespace>
+kubectl get pods -n <namespace> --show-labels
+```
+
+给资源加 label：
+
+```bash
+kubectl label pod <pod-name> app=web -n <namespace>
+```
+
+按 label 筛选：
+
+```bash
+kubectl get pods -n <namespace> -l app=web
+```
+
+排查 Service 没流量时，我会很快看 selector 和 Pod labels。因为这类问题表现像网络问题，但根因可能只是 label 拼错。
+
+## 节点维护命令要慢一点
+
+节点维护常见命令是：
+
+```bash
+kubectl cordon <node-name>
+kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
+kubectl uncordon <node-name>
+```
+
+`cordon` 是标记节点不可调度，新 Pod 不再上去。`drain` 会驱逐节点上的 Pod，用于维护或下线节点。`uncordon` 则是恢复调度。
+
+这几个命令比 `get`、`logs` 重得多，尤其是 `drain`。它会影响正在运行的工作负载，还可能受到 PodDisruptionBudget、DaemonSet、本地数据卷等约束。生产环境里不应该把它当成普通清理命令。
+
+## delete 和 edit 要有边界感
+
+`delete` 很直接：
+
+```bash
+kubectl delete pod <pod-name> -n <namespace>
+kubectl delete -f deployment.yaml
+```
+
+但删除 Pod 不等于删除应用。如果 Pod 是 Deployment 管的，控制器会再拉一个新的起来。这有时正是我们想要的“重建 Pod”，但也可能掩盖真正问题。
+
+强制删除更要谨慎：
+
+```bash
+kubectl delete pod <pod-name> --force --grace-period=0 -n <namespace>
+```
+
+`edit` 会直接改集群对象：
+
+```bash
+kubectl edit deployment <deployment-name> -n <namespace>
+```
+
+我只把它当成临时修复或验证手段。长期配置应该回到 YAML、Helm chart 或 GitOps 流程里。否则集群里的真实状态和仓库里的声明会慢慢分叉，下一次发布时再被覆盖。
+
+## 我会给自己设的别名
+
+`kubectl` 很长，别名确实能省手。
+
+```bash
+alias k=kubectl
+```
+
+但别名只是效率工具，不应该让命令变得不可读。尤其是写文档、写 runbook、给别人发排障命令时，我还是会写完整的 `kubectl`，少一点上下文依赖。
+
+自动补全也值得开：
+
+```bash
+source <(kubectl completion zsh)
+```
+
+然后放进 `.zshrc`。补全不只是省输入，它还会减少资源名和 namespace 拼错。
+
+## 我现在的理解
+
+`kubectl` 最重要的不是某一个命令，而是一套观察顺序。
+
+```text
+config/context
+  -> namespace
+  -> get: 有哪些对象，当前状态是什么
+  -> describe: controller 和 event 怎么说
+  -> logs: 应用自己怎么说
+  -> exec/port-forward: 进入现场验证
+  -> apply/rollout: 修改和发布
+```
+
+Kubernetes 本身很复杂，但排障时不要一上来就把所有概念摊开。先确定自己在哪个集群、哪个 namespace，再沿着资源关系往下走。
+
+我觉得一个人熟悉 `kubectl` 的标志，不是能背出多少子命令，而是看到一个异常状态时，知道下一步应该看哪一层证据。

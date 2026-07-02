@@ -1,0 +1,356 @@
+---
+title: 'Python 环境管理：版本、虚拟环境和依赖隔离'
+description: '一篇从 pyenv 泛化出去的 Python 环境管理笔记：先分清解释器版本、虚拟环境、依赖锁定和项目工具链。'
+author: 'Reese'
+date: '2026-07-02'
+---
+
+这篇是从一份 pyenv 使用笔记扩出来的。
+
+我以前也很容易把 Python 环境问题混成一句话：“这个项目 Python 环境坏了。”但真排起来会发现，它至少可能是四类问题：
+
+```text
+Python 解释器版本不对
+  -> 这个项目到底该用 3.10、3.11 还是 3.12？
+
+虚拟环境不对
+  -> pip install 到了哪个 site-packages？
+
+依赖版本不对
+  -> requirements / lock file / 本地缓存有没有漂移？
+
+命令入口不对
+  -> python、pip、pytest、uvicorn 实际指向哪里？
+```
+
+所以我觉得不要把 pyenv 当成“Python 环境管理”的全部。更稳的理解是：**pyenv 管解释器版本，venv/virtualenv 管项目隔离，pip/uv/poetry 管依赖安装和锁定。**
+
+这几层分清以后，很多问题会从玄学变成路径问题。
+
+## 不要先怪 pip
+
+Python 环境出问题时，第一反应经常是 `pip install` 再来一遍。但这通常不是最好的入口。
+
+我更习惯先问三个问题：
+
+```bash
+which python
+python --version
+python -m pip --version
+```
+
+这三行能回答一件很关键的事：当前 shell 里的 `python` 是谁，`pip` 又在给谁装包。
+
+我一般更推荐用：
+
+```bash
+python -m pip install <package>
+```
+
+而不是直接：
+
+```bash
+pip install <package>
+```
+
+原因很简单：`python -m pip` 会明确绑定当前这个 `python`。直接敲 `pip` 时，它可能来自另一个虚拟环境、另一个 pyenv shim，甚至是系统路径里残留的脚本。命令看起来只差几个字符，排障时差别很大。
+
+## 第一层：Python 解释器版本
+
+解释器版本解决的是“这个项目用哪一个 Python 跑”。
+
+比如一个项目依赖的库只支持到 Python 3.11，另一个项目已经要求 Python 3.12。如果全靠系统 Python，很快就会互相污染。macOS 和很多 Linux 发行版还会把系统组件绑在系统 Python 上，随便改系统 Python 是一件很不值得的事。
+
+这就是 pyenv 的位置。
+
+它的核心价值不是“装 Python 很酷”，而是把解释器版本从系统环境里抽出来：
+
+```bash
+pyenv install --list
+pyenv install 3.11.9
+pyenv install 3.12.4
+pyenv versions
+```
+
+然后你可以按作用域选择版本：
+
+```bash
+pyenv global 3.12.4
+pyenv local 3.11.9
+pyenv shell 3.10.14
+```
+
+这三个命令的作用域不同：
+
+- `global` 是默认版本，写到 `~/.pyenv/version`。
+- `local` 是项目目录版本，写到当前目录的 `.python-version`。
+- `shell` 只影响当前终端会话，通常用于临时测试。
+
+我最常用的是 `pyenv local`。一个项目目录里放一份 `.python-version`，以后进这个目录时解释器自动切过去，脑子少记一件事。
+
+## pyenv 的 shim 是怎么工作的
+
+pyenv 容易显得神秘，是因为它不是直接替换系统 Python，而是在 PATH 前面放了一层 shims。
+
+大致可以这样理解：
+
+```text
+shell runs "python"
+  -> finds ~/.pyenv/shims/python
+  -> pyenv checks version priority
+  -> dispatches to ~/.pyenv/versions/<version>/bin/python
+```
+
+版本优先级通常是：
+
+```text
+PYENV_VERSION
+  > 当前目录或父目录里的 .python-version
+  > ~/.pyenv/version
+  > system
+```
+
+所以当你怀疑 pyenv 没生效时，我会看：
+
+```bash
+pyenv version
+pyenv which python
+pyenv versions
+```
+
+`pyenv version` 会告诉你当前版本来自哪里。这个“来自哪里”比版本号本身还重要，因为它能解释为什么你明明设置过 local，当前 shell 却还在用另一个版本。
+
+有时安装了新的可执行入口以后，还需要：
+
+```bash
+pyenv rehash
+```
+
+现在很多场景下 pyenv 会自动处理，但当 shim 入口看起来异常时，`rehash` 仍然是一个可以尝试的低成本动作。
+
+## 第二层：虚拟环境
+
+pyenv 解决的是“解释器版本”，但它不应该负责所有项目依赖。
+
+同样是 Python 3.11，一个项目需要 `flask==2.3`，另一个项目需要 `flask==3.0`。如果都装在同一个解释器的全局 site-packages 里，迟早会互相踩。
+
+虚拟环境解决的是这个问题。
+
+最基础的方式是 Python 自带的 `venv`：
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -r requirements.txt
+```
+
+激活以后，再看：
+
+```bash
+which python
+python --version
+python -m pip --version
+```
+
+此时 `python` 应该指向项目目录下的 `.venv/bin/python`。这说明依赖会被安装到这个项目自己的虚拟环境里，而不是系统 Python 或 pyenv 的全局版本里。
+
+我比较喜欢把虚拟环境放在项目根目录的 `.venv`。它的好处是直观：打开项目目录就能看到这个项目自己的运行环境在哪里。缺点是每个项目都会有一份目录，所以要记得把 `.venv/` 放进 `.gitignore`。
+
+## pyenv-virtualenv 是两层合在一起
+
+如果你装了 `pyenv-virtualenv`，它会让虚拟环境也进入 pyenv 的版本管理体系。
+
+比如：
+
+```bash
+pyenv virtualenv 3.11.9 my-project-3.11
+cd my_project
+pyenv local my-project-3.11
+```
+
+这时 `.python-version` 里写的不是裸 Python 版本，而是虚拟环境名字。进入目录后，pyenv 会自动切到这个虚拟环境。
+
+这个方式的优点是自动化程度高，不需要每次 `source .venv/bin/activate`。缺点是环境目录藏在 `~/.pyenv/versions/` 下面，不如项目内 `.venv` 直观。
+
+我自己的判断是：
+
+- 小项目、临时脚本、需要直观看见环境：用 `python -m venv .venv`。
+- 本机长期维护多个固定 Python 版本，并且习惯 pyenv 自动切换：用 `pyenv-virtualenv`。
+- 团队项目：优先看团队已有工具链，不要为了个人偏好引入另一套环境约定。
+
+## 第三层：依赖文件和锁定
+
+虚拟环境只能保证“装包的位置隔离”，不能保证“装到的版本稳定”。
+
+比如你写：
+
+```text
+fastapi
+uvicorn
+pydantic
+```
+
+这只是声明“我要这些包”，不是声明“我要这些包的哪些版本”。今天装和一个月后装，依赖树可能已经不一样。
+
+传统做法是 `requirements.txt`：
+
+```bash
+python -m pip freeze > requirements.txt
+python -m pip install -r requirements.txt
+```
+
+这适合简单项目，但它也有缺点：`freeze` 会把直接依赖和间接依赖混在一起，久了以后很难看出哪些包是你真正关心的。
+
+更现代的项目经常会用：
+
+- `pyproject.toml` 描述项目和直接依赖。
+- lock file 固定完整依赖树。
+- `uv`、`poetry`、`pdm` 等工具负责解析和同步环境。
+
+我不会把这些工具理解成 pyenv 的替代品。它们解决的是不同层的问题。
+
+```text
+pyenv
+  -> install/select Python interpreter
+
+venv / virtualenv
+  -> isolate site-packages for one project
+
+pip / uv / poetry / pdm
+  -> install, resolve, lock, sync dependencies
+```
+
+如果项目已经用 `uv.lock`，那就按 `uv sync` 来；如果项目已经用 Poetry，就按 `poetry install` 来。不要在一个项目里混用好几套依赖管理器，不然下一次排障的人会很想念朴素生活。
+
+## 我会怎样初始化一个普通项目
+
+如果是一个没有特殊要求的 Python 项目，我会这样做。
+
+先选解释器：
+
+```bash
+pyenv install 3.12.4
+cd my_project
+pyenv local 3.12.4
+python --version
+```
+
+再建虚拟环境：
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+```
+
+然后确认路径：
+
+```bash
+which python
+python -m pip --version
+```
+
+最后安装依赖：
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+如果是新项目，我会尽量从 `pyproject.toml` 开始，而不是让项目一直停留在一堆散乱命令里。简单项目不一定需要复杂工具，但至少应该留下“别人怎么复现这个环境”的入口。
+
+## 我会怎样排查环境问题
+
+Python 环境坏掉时，我会按这个顺序查。
+
+第一步，确认当前命令指向：
+
+```bash
+which python
+which pip
+python --version
+python -m pip --version
+```
+
+第二步，确认 pyenv 状态：
+
+```bash
+pyenv version
+pyenv which python
+cat .python-version
+```
+
+第三步，确认虚拟环境是否激活：
+
+```bash
+echo $VIRTUAL_ENV
+python -c "import sys; print(sys.executable)"
+python -c "import site; print(site.getsitepackages())"
+```
+
+第四步，确认包到底装在哪里：
+
+```bash
+python -m pip show <package>
+python -m pip list
+```
+
+第五步，再考虑重装依赖：
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+如果前四步没看，直接第五步，很多时候只是把错误装得更结实。
+
+## 常见误区
+
+我自己踩过或见过最多的，是这些。
+
+第一，把 pyenv 当成虚拟环境。
+
+`pyenv local 3.11.9` 只是切解释器，不会自动隔离依赖。除非你用的是 `pyenv-virtualenv` 创建出来的环境，否则多个项目仍然可能共享同一个 Python 版本下的 site-packages。
+
+第二，虚拟环境激活了，但 `pip` 不是这个环境的。
+
+这就是为什么我倾向 `python -m pip`。它啰嗦一点，但少很多路径误会。
+
+第三，把 `.venv` 提交进仓库。
+
+虚拟环境是本地生成物，不应该进 Git。应该提交的是依赖描述文件，比如 `requirements.txt`、`pyproject.toml`、lock file。
+
+第四，随便改系统 Python。
+
+系统 Python 服务的是操作系统和系统工具，不是你的项目。项目要自己的解释器和虚拟环境。
+
+第五，不记录项目 Python 版本。
+
+只写依赖，不写 Python 版本，会在半年后变成一个温柔的陷阱。`.python-version`、`requires-python`、README 里至少要有一个地方说明项目期望的 Python 范围。
+
+## 我现在的偏好
+
+如果只是个人项目，我会用：
+
+```text
+pyenv
+  + project-local .python-version
+  + .venv in project root
+  + pyproject.toml or requirements.txt
+```
+
+如果是更正式的工程，我会更关心两件事：
+
+- lock file 能不能稳定复现依赖树。
+- CI 里使用的 Python 版本是否和本地一致。
+
+Python 环境管理最重要的不是记住所有工具，而是分清每个工具负责哪一层。解释器版本、虚拟环境、依赖解析、命令入口，这四层一旦分开看，问题就没有那么像玄学了。
+
+我希望一个项目做到的最低标准是：新人 clone 下来以后，能在 README 里看到清楚的三步。
+
+```bash
+pyenv local <python-version>
+python -m venv .venv
+python -m pip install -r requirements.txt
+```
+
+至于后面换成 `uv sync`、`poetry install`，那是工具成熟度的问题。底层心智模型还是一样：先选对 Python，再隔离项目，再同步依赖。
