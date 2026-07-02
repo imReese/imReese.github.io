@@ -61,9 +61,22 @@ blogPage:
     topicsLabel: Topics
     noteSingular: note
     notePlural: notes
+    clearFilter: Clear filter
+    emptyFilter: No notes match this filter yet.
     topics:
-      - LLM serving
-      - KV cache
-      - Mooncake
-      - Attention
-      - Systems reading
+      - label: Distributed systems
+        value: distributed-systems
+      - label: Storage systems
+        value: storage-systems
+      - label: Performance
+        value: performance
+      - label: Cloud tooling
+        value: cloud-tooling
+      - label: LLM serving
+        value: llm-serving
+      - label: KV cache
+        value: kv-cache
+      - label: Mooncake
+        value: mooncake
+      - label: Attention
+        value: attention

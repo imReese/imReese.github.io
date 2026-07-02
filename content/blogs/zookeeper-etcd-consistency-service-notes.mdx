@@ -3,6 +3,8 @@ title: 'ZooKeeper / etcd 学习笔记：把一致性做成服务'
 description: '一篇关于 ZooKeeper 和 etcd 的系统笔记：从一致性协议走到配置、选主、watch、租约和服务发现。'
 author: 'Reese'
 date: '2022-09-18'
+topics:
+  - distributed-systems
 ---
 
 看完 Paxos/Raft 以后，再看 ZooKeeper 和 etcd，会发现问题从“协议怎样保证一致”变成了“怎样把一致性包装成应用能直接用的服务”。

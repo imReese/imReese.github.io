@@ -100,7 +100,12 @@ export type BlogPageContent = {
     topicsLabel: string
     noteSingular: string
     notePlural: string
-    topics: string[]
+    clearFilter: string
+    emptyFilter: string
+    topics: Array<{
+      label: string
+      value: string
+    }>
   }
 }
 

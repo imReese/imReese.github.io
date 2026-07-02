@@ -61,9 +61,22 @@ blogPage:
     topicsLabel: 主题
     noteSingular: 篇
     notePlural: 篇
+    clearFilter: 清除筛选
+    emptyFilter: 暂时没有匹配这个筛选的笔记。
     topics:
-      - 大模型推理
-      - KV Cache
-      - Mooncake
-      - Attention
-      - 系统读码
+      - label: 分布式系统
+        value: distributed-systems
+      - label: 存储系统
+        value: storage-systems
+      - label: 性能优化
+        value: performance
+      - label: 云原生工具
+        value: cloud-tooling
+      - label: 大模型推理
+        value: llm-serving
+      - label: KV Cache
+        value: kv-cache
+      - label: Mooncake
+        value: mooncake
+      - label: Attention
+        value: attention

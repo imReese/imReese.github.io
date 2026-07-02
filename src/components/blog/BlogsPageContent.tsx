@@ -1,6 +1,9 @@
 'use client'
 
+import { Suspense, useMemo } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import clsx from 'clsx'
 import { Card } from '@/components/shared/Card'
 import { Container } from '@/components/layout/Container'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
@@ -47,15 +50,54 @@ function getBlogYears(blogs: BlogType[]) {
   return Array.from(counts.entries()).sort(([a], [z]) => Number(z) - Number(a))
 }
 
+function getTopicCounts(blogs: BlogType[]) {
+  const counts = new Map<string, number>()
+
+  for (const blog of blogs) {
+    for (const topic of blog.topics ?? []) {
+      counts.set(topic, (counts.get(topic) ?? 0) + 1)
+    }
+  }
+
+  return counts
+}
+
+function getFilterHref({
+  year,
+  topic,
+}: {
+  year?: string | null
+  topic?: string | null
+}) {
+  const params = new URLSearchParams()
+
+  if (year) {
+    params.set('year', year)
+  }
+
+  if (topic) {
+    params.set('topic', topic)
+  }
+
+  const query = params.toString()
+  return query ? `/blogs?${query}` : '/blogs'
+}
+
 function BlogReadingMap({
   blogs,
   copy,
+  selectedYear,
+  selectedTopic,
 }: {
   blogs: BlogType[]
   copy: BlogPageContent['readingMap']
+  selectedYear: string | null
+  selectedTopic: string | null
 }) {
   const latestBlog = blogs[0]
   const years = getBlogYears(blogs)
+  const topicCounts = getTopicCounts(blogs)
+  const hasActiveFilter = Boolean(selectedYear || selectedTopic)
   const formatCount = (count: number) =>
     `${count} ${count === 1 ? copy.noteSingular : copy.notePlural}`
 
@@ -98,17 +140,33 @@ function BlogReadingMap({
             </div>
             <div className="mt-3 grid gap-2">
               {years.map(([year, count]) => (
-                <div
+                <Link
                   key={year}
-                  className="flex items-center justify-between gap-3 text-sm"
+                  href={getFilterHref({
+                    year: selectedYear === year ? null : year,
+                    topic: selectedTopic,
+                  })}
+                  scroll={false}
+                  aria-current={selectedYear === year ? 'true' : undefined}
+                  className={clsx(
+                    'group flex items-center justify-between gap-3 rounded-md py-1 text-sm transition',
+                    selectedYear === year
+                      ? 'text-primary'
+                      : 'text-muted-foreground hover:text-primary',
+                  )}
                 >
-                  <span className="font-mono text-muted-foreground">
-                    {year}
-                  </span>
-                  <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                  <span className="font-mono">{year}</span>
+                  <span
+                    className={clsx(
+                      'rounded-full px-2 py-0.5 text-xs font-medium transition',
+                      selectedYear === year
+                        ? 'bg-primary/15 text-primary'
+                        : 'bg-secondary text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary',
+                    )}
+                  >
                     {formatCount(count)}
                   </span>
-                </div>
+                </Link>
               ))}
             </div>
           </div>
@@ -120,23 +178,72 @@ function BlogReadingMap({
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {copy.topics.map((topic) => (
-                <span
-                  key={topic}
-                  className="rounded-md bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                <Link
+                  key={topic.value}
+                  href={getFilterHref({
+                    year: selectedYear,
+                    topic: selectedTopic === topic.value ? null : topic.value,
+                  })}
+                  scroll={false}
+                  aria-current={
+                    selectedTopic === topic.value ? 'true' : undefined
+                  }
+                  aria-label={`${topic.label}, ${formatCount(topicCounts.get(topic.value) ?? 0)}`}
+                  className={clsx(
+                    'rounded-md px-2.5 py-1 text-xs font-medium transition',
+                    selectedTopic === topic.value
+                      ? 'bg-primary/15 text-primary'
+                      : 'bg-secondary text-muted-foreground hover:bg-primary/10 hover:text-primary',
+                  )}
                 >
-                  {topic}
-                </span>
+                  {topic.label}
+                  <span className="ml-1 font-mono text-[0.65rem] opacity-70">
+                    {topicCounts.get(topic.value) ?? 0}
+                  </span>
+                </Link>
               ))}
             </div>
           </div>
         </div>
+
+        {hasActiveFilter ? (
+          <Link
+            href="/blogs"
+            scroll={false}
+            className="mt-6 inline-flex text-xs font-semibold text-primary transition hover:text-primary/80"
+          >
+            {copy.clearFilter}
+          </Link>
+        ) : null}
       </div>
     </aside>
   )
 }
 
-export function BlogsPageContent({ blogs }: { blogs: BlogType[] }) {
+function BlogsPageContentView({
+  blogs,
+  selectedYear,
+  selectedTopic,
+}: {
+  blogs: BlogType[]
+  selectedYear: string | null
+  selectedTopic: string | null
+}) {
   const { blogPage } = useLocalizedContent()
+  const filteredBlogs = useMemo(
+    () =>
+      blogs.filter((blog) => {
+        const matchesYear = selectedYear
+          ? blog.date.slice(0, 4) === selectedYear
+          : true
+        const matchesTopic = selectedTopic
+          ? (blog.topics ?? []).includes(selectedTopic)
+          : true
+
+        return matchesYear && matchesTopic
+      }),
+    [blogs, selectedTopic, selectedYear],
+  )
 
   return (
     <Container className="mt-16 sm:mt-32">
@@ -153,18 +260,57 @@ export function BlogsPageContent({ blogs }: { blogs: BlogType[] }) {
 
           <div className="mt-16 min-w-0 sm:mt-20 md:border-l md:border-zinc-100 md:pl-6 md:dark:border-zinc-700/40">
             <div className="flex max-w-4xl flex-col space-y-16">
-              {blogs.map((blog) => (
-                <Blog
-                  key={blog.slug}
-                  blog={blog}
-                  readBlog={blogPage.readBlog}
-                />
-              ))}
+              {filteredBlogs.length > 0 ? (
+                filteredBlogs.map((blog) => (
+                  <Blog
+                    key={blog.slug}
+                    blog={blog}
+                    readBlog={blogPage.readBlog}
+                  />
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {blogPage.readingMap.emptyFilter}
+                </p>
+              )}
             </div>
           </div>
         </div>
-        <BlogReadingMap blogs={blogs} copy={blogPage.readingMap} />
+        <BlogReadingMap
+          blogs={blogs}
+          copy={blogPage.readingMap}
+          selectedYear={selectedYear}
+          selectedTopic={selectedTopic}
+        />
       </div>
     </Container>
+  )
+}
+
+function BlogsPageContentWithFilters({ blogs }: { blogs: BlogType[] }) {
+  const searchParams = useSearchParams()
+
+  return (
+    <BlogsPageContentView
+      blogs={blogs}
+      selectedYear={searchParams.get('year')}
+      selectedTopic={searchParams.get('topic')}
+    />
+  )
+}
+
+export function BlogsPageContent({ blogs }: { blogs: BlogType[] }) {
+  return (
+    <Suspense
+      fallback={
+        <BlogsPageContentView
+          blogs={blogs}
+          selectedYear={null}
+          selectedTopic={null}
+        />
+      }
+    >
+      <BlogsPageContentWithFilters blogs={blogs} />
+    </Suspense>
   )
 }
