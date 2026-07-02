@@ -1,0 +1,124 @@
+---
+title: 'Replica、Lease 和 Hot Cache：Mooncake Store 怎么判断数据能不能读'
+description: '一篇 Mooncake Store 状态管理拆解：从 replica 生命周期、lease 边界和 local hot cache 理解读路径正确性。'
+author: 'Reese'
+date: '2026-06-01'
+topics:
+  - llm-serving
+  - kv-cache
+  - mooncake
+  - distributed-systems
+---
+
+读一个分布式 Store，很容易先看 Put/Get 的主路径。但真正让系统变复杂的，通常不是“怎么把数据写进去”，而是“什么时候可以相信这份数据”。
+
+Mooncake Store 里，这个问题主要落在三个概念上：Replica、Lease 和 Local Hot Cache。
+
+Replica 描述对象副本的生命周期，Lease 给读路径一个时效边界，Hot Cache 则试图在 client 本地复用热对象，但必须避免把已经失效的异步填充重新发布出来。
+
+这三个点合在一起，其实都在回答同一个问题：**一个 key 对应的数据，现在到底能不能读？**
+
+## Replica 状态比 key 是否存在更重要
+
+如果只是单机 map，判断一个 key 能不能读，通常看 key 是否存在就行。但 Mooncake Store 不是这样。
+
+Store 写入时，master 会先分配 replica。这个 replica 一开始不是 complete，而是 processing。数据面写入完成后，client 调 `PutEnd`，master 才把它标记为 complete。失败时，client 会走 `PutRevoke`，master 撤销这批 processing replica。
+
+所以 replica 状态至少有三类语义：
+
+```text
+PROCESSING:
+  metadata 已经分配，但数据还没确认写完
+
+COMPLETE:
+  数据写完，可以作为读候选
+
+REMOVED:
+  副本已经被移除或失效
+```
+
+这意味着 `GetReplicaList` 不能只查 object metadata 里有没有这个 key。它必须过滤出 complete replica。否则 client 可能读到一个只完成了元数据预留、但数据面还没写完的副本。
+
+从这个角度看，Put 的 `PutStart -> transfer -> PutEnd` 不是形式主义，而是在为读路径提供一个清晰的可见性边界。
+
+## Lease 是 metadata 的有效期
+
+即使 master 返回了 complete replica，client 也不能把这份信息当成永久有效。
+
+分布式系统里，metadata 不是静态真理。对象可能被覆盖，副本可能被移除，Segment 可能进入 unmount，hot cache 可能发生 redirect。client 从 master 拿到 replica 列表时，只能说明“在这个时刻，master 认为这些副本可读”。
+
+Lease 给这份判断加了时间边界。
+
+```text
+client query master
+  -> gets complete replicas
+  -> gets lease timeout
+  -> reads data before lease expires
+```
+
+这样做不是为了增加一个漂亮概念，而是为了避免 client 长时间持有过期 metadata。尤其是 KV Cache 这类对象，很可能和上层请求调度、cache eviction、远端存储回收交织在一起。读路径必须知道自己拿到的判断什么时候失效。
+
+也就是说，Store 的读正确性不是“有 complete replica 就行”，而是“在 lease 边界内使用这份 complete replica 判断”。
+
+## Hot Cache 让读路径更快，也让一致性更容易踩坑
+
+Local Hot Cache 的目标很直接：如果某些对象在 client 本地很热，就不要每次都从远端读。把它们放在本地 hot cache，可以减少远端传输和延迟。
+
+但 hot cache 最怕 stale fill。
+
+想象一个读 miss 触发异步填充：client 开始把远端对象搬到本地 cache。填充还没完成时，这个 key 被 remove 或 overwrite。此时如果异步 fill 结束后仍然把旧数据 publish 到 cache，后续读就会命中一份已经失效的数据。
+
+所以 Mooncake 的 Local Hot Cache 引入了 token、generation、epoch 这类机制。直观理解是：异步填充开始时拿一个“资格证明”，发布时再检查这个证明是否仍然有效。如果中间发生 remove、overwrite 或 cache epoch 变化，旧 token 就不能再发布。
+
+```text
+read miss
+  -> acquire put token
+  -> async fill block
+  -> remove / overwrite bumps generation
+  -> fill completes
+  -> publish only if token still matches
+```
+
+这类设计很细，但非常重要。因为 hot cache 的性能收益来自异步和本地化，而异步一旦没有失效保护，就会把旧状态重新带回系统。
+
+## LRU 更新也要避开读路径竞争
+
+Hot cache 里还有一个工程细节：命中以后不一定马上移动 LRU 链表。
+
+读路径最怕每次命中都抢写锁。如果每次 `GetHotKey` 都立即更新 LRU 结构，高并发读会把 cache 命中路径变成锁竞争路径。更稳的做法是读路径只设置一个 accessed 标记，后续在写锁路径里批量 drain，把这些访问反映到 LRU 上。
+
+这说明 hot cache 不是简单的“本地 map + LRU”。它要同时考虑：
+
+- 命中路径要轻。
+- 异步填充不能发布旧数据。
+- block 被 reader 引用时不能立刻释放。
+- remove/overwrite 要推进 generation，让旧 fill 失效。
+
+这些都是缓存系统里很容易被低估的细节。
+
+## Replica、Lease、Hot Cache 解决的是同一个问题
+
+把这三个概念放在一起看，会发现它们不是孤立功能。
+
+Replica 状态保证 master 不会把未完成写入暴露给读路径。Lease 限制 client 使用 metadata 的时间。Hot cache 的 token/generation 防止本地缓存把旧异步结果重新发布。
+
+它们分别站在不同层：
+
+```text
+master metadata:
+  replica status
+
+client read control:
+  lease timeout
+
+client local cache:
+  token / generation / epoch
+```
+
+但目标是一致的：读路径看到的数据必须是当前系统允许它看到的数据，而不是某个已经过期的中间状态。
+
+## 小结
+
+Mooncake Store 的难点不只是把对象写到远端，也不只是把对象读回来。更难的是在并发写入、失败回滚、本地缓存和远端副本之间，持续回答“这份数据现在能不能读”。
+
+Replica、Lease 和 Hot Cache 分别从副本生命周期、metadata 有效期和本地缓存一致性三个角度约束读路径。理解这几个概念以后，Store 就不再只是 Put/Get API，而是一套围绕可见性和正确性边界组织起来的状态机。
