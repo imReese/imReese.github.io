@@ -83,7 +83,7 @@ function MobileNavigation(
               </h2>
             </div>
             <nav className="mt-6">
-              <ul className="-my-2 divide-y divide-zinc-100 text-base dark:divide-zinc-100/5">
+              <ul className="-my-2 divide-y divide-border/70 text-base">
                 {navItems.map((item) => (
                   <MobileNavItem key={item.name} href={item.href}>
                     {t(`nav.${item.name}` as Parameters<typeof t>[0])}
@@ -173,7 +173,7 @@ function AvatarContainer({
       <div
         className={clsx(
           className,
-          'h-10 w-10 rounded-full bg-white/90 p-0.5 shadow-lg shadow-zinc-800/5 ring-1 ring-zinc-900/5 backdrop-blur dark:bg-zinc-800/90 dark:ring-white/10',
+          'h-10 w-10 rounded-full bg-[#eff1f5]/90 p-0.5 shadow-lg shadow-[#4c4f69]/5 ring-1 ring-[#bcc0cc]/70 backdrop-blur dark:bg-[#313244]/85 dark:ring-[#45475a]/80',
         )}
         {...props}
       />
@@ -207,7 +207,7 @@ function Avatar({
         height={large ? 64 : 36}
         sizes={large ? '4rem' : '2.25rem'}
         className={clsx(
-          'rounded-full bg-zinc-100 object-cover dark:bg-zinc-800',
+          'rounded-full bg-[#e6e9ef] object-cover dark:bg-[#313244]',
           large ? 'h-16 w-16' : 'h-9 w-9',
         )}
         priority

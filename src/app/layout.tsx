@@ -67,8 +67,8 @@ export default function RootLayout({
           type="image/svg+xml"
           media="(prefers-color-scheme: dark)"
         />
-        <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
-        <meta name="theme-color" content="#0f111b" media="(prefers-color-scheme: dark)" />
+        <meta name="theme-color" content="#eff1f5" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#1e1e2e" media="(prefers-color-scheme: dark)" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />

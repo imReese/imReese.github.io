@@ -21,7 +21,7 @@ export function AboutContent() {
               height={320}
               sizes="(min-width: 1024px) 32rem, 20rem"
               placeholder="blur"
-              className="aspect-square rotate-3 rounded-2xl bg-zinc-100 object-cover dark:bg-zinc-800"
+              className="aspect-square rotate-3 rounded-2xl bg-[#e6e9ef] object-cover dark:bg-[#313244]"
               priority={false}
             />
           </div>

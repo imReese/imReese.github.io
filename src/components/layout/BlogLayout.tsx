@@ -43,16 +43,16 @@ export function BlogLayout({
                   type="button"
                   onClick={() => router.back()}
                   aria-label="Go back to blogs"
-                  className="group flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-md shadow-zinc-800/5 ring-1 ring-zinc-900/5 transition dark:border dark:border-zinc-700/50 dark:bg-zinc-800 dark:ring-0 dark:ring-white/10 dark:hover:border-zinc-700 dark:hover:ring-white/20"
+                  className="group flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eff1f5] shadow-md shadow-[#4c4f69]/5 ring-1 ring-[#bcc0cc]/70 transition hover:ring-primary/30 dark:bg-[#313244] dark:ring-[#45475a]/80 dark:hover:ring-[#94e2d5]/30"
                 >
-                  <ArrowLeftIcon className="h-4 w-4 stroke-zinc-500 transition group-hover:stroke-zinc-700 dark:stroke-zinc-500 dark:group-hover:stroke-zinc-400" />
+                  <ArrowLeftIcon className="h-4 w-4 stroke-muted-foreground transition group-hover:stroke-primary" />
                 </button>
               )}
               <time
                 dateTime={blog.date}
-                className="ml-auto flex shrink-0 items-center text-base text-zinc-400 dark:text-zinc-500"
+                className="ml-auto flex shrink-0 items-center text-base text-muted-foreground"
               >
-                <span className="h-4 w-0.5 rounded-full bg-zinc-200 dark:bg-zinc-500" />
+                <span className="h-4 w-0.5 rounded-full bg-border" />
                 <span className="ml-3">{formatDate(blog.date)}</span>
                 <span className="mx-2">·</span>
                 <span>{blog.author}</span>

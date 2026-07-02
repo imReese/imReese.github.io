@@ -6,6 +6,6 @@ export const themedFavicon = {
 } as const
 
 export const themedBrowserColor = {
-  light: "#f8fafc",
-  dark: "#0f111b",
+  light: "#eff1f5",
+  dark: "#1e1e2e",
 } as const

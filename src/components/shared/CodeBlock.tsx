@@ -89,9 +89,9 @@ export function CodeBlock({
   }
 
   return (
-    <div className="not-prose my-8 overflow-hidden rounded-2xl border border-border/70 bg-zinc-950 shadow-sm dark:bg-black/40">
-      <div className="flex h-9 items-center justify-between border-b border-white/10 px-4">
-        <span className="rounded bg-white/5 px-2 py-0.5 font-mono text-[0.72rem] font-medium leading-none text-zinc-400">
+    <div className="not-prose my-8 overflow-hidden rounded-lg border border-[#bcc0cc]/70 bg-[#eff1f5] shadow-[0_18px_50px_-32px_rgba(76,79,105,0.45)] dark:border-[#45475a]/70 dark:bg-[#1e1e2e] dark:shadow-[0_18px_55px_-35px_rgba(17,17,27,0.9)]">
+      <div className="flex h-10 items-center justify-between border-b border-[#ccd0da]/80 bg-[#e6e9ef]/75 px-4 dark:border-[#45475a]/70 dark:bg-[#181825]/70">
+        <span className="rounded-md border border-[#bcc0cc]/70 bg-[#ccd0da]/45 px-2 py-0.5 font-mono text-[0.72rem] font-medium leading-none text-[#6c6f85] dark:border-[#45475a]/70 dark:bg-[#313244]/60 dark:text-[#bac2de]">
           {language}
         </span>
         <button
@@ -100,10 +100,10 @@ export function CodeBlock({
           title={copied ? 'Copied' : 'Copy code'}
           aria-label={copied ? 'Copied code' : 'Copy code'}
           className={clsx(
-            'inline-flex h-7 w-7 items-center justify-center rounded-md border transition',
+            'inline-flex h-7 w-7 items-center justify-center gap-1.5 rounded-md border transition sm:w-auto sm:px-2',
             copied
-              ? 'border-primary/30 bg-primary/15 text-primary'
-              : 'border-white/10 bg-white/5 text-zinc-400 hover:border-primary/40 hover:text-primary',
+              ? 'border-[#179299]/35 bg-[#179299]/10 text-primary dark:border-[#94e2d5]/35 dark:bg-[#94e2d5]/10 dark:text-[#94e2d5]'
+              : 'border-[#bcc0cc]/70 bg-[#eff1f5]/65 text-[#6c6f85] hover:border-[#179299]/50 hover:text-primary dark:border-[#45475a]/70 dark:bg-[#313244]/55 dark:text-[#a6adc8] dark:hover:border-[#94e2d5]/50 dark:hover:text-[#94e2d5]',
           )}
         >
           {copied ? (
@@ -111,12 +111,15 @@ export function CodeBlock({
           ) : (
             <Copy className="h-3.5 w-3.5" aria-hidden="true" />
           )}
+          <span className="hidden font-mono text-[0.72rem] font-medium leading-none sm:inline">
+            {copied ? 'Copied' : 'Copy'}
+          </span>
         </button>
       </div>
       <pre
         className={clsx(
           className,
-          'm-0 max-h-[42rem] overflow-x-auto bg-transparent px-5 py-5 font-mono text-sm leading-7 text-zinc-100',
+          'm-0 max-h-[42rem] overflow-x-auto bg-transparent px-4 py-4 font-mono text-sm leading-7 text-[#4c4f69] sm:px-5 sm:py-5 dark:text-[#cdd6f4]',
         )}
         {...props}
       >
