@@ -94,7 +94,7 @@ Mooncake 把能力提供出来以后，上层框架还要回答一个更难的�
 
 这些问题不完全属于 Mooncake 仓库本身，但 Mooncake 的 Store 和 Transfer Engine 是回答这些问题的基础设施。没有稳定的数据面和对象语义，上层 scheduler 很难认真考虑 KV Cache 复用。
 
-## 小结
+## 边界比入口更重要
 
 Mooncake 接在上层框架的位置，不是一个单点 API，而是一组边界。
 
@@ -102,7 +102,7 @@ Python binding 把 C++ Store 和 Transfer Engine 暴露给 Python 世界；tenso
 
 真正要避免的是把这些边界混成一句“Mooncake 支持某某框架”。支持只是入口。技术上更重要的是：上层框架在什么时机调用 Mooncake，调用的是 Store 语义还是 Transfer Engine 数据面，以及这次 KV Cache 复用在成本模型上是否真的划算。
 
-## 检查问题
+## 读上层集成时要分清的边界
 
 - Python binding 和 C++ Store client 是什么关系？
 - tensor API 为什么不等于底层就是 tensor store？

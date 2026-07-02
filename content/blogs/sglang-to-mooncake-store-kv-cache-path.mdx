@@ -305,7 +305,7 @@ Mooncake Store objects
 
 这里 SGLang 负责 prefix tree、page hash、Host/GPU pool、scheduler 等 runtime 状态；Mooncake Store 负责 object 存在性、zero-copy get/put、master metadata 和底层 Transfer Engine 数据搬运。
 
-## 小结
+## 这条链路的边界
 
 SGLang 到 Mooncake Store 的技术边界，不是“把 KV Cache 放进 Mooncake”这么一句话。
 
@@ -318,7 +318,7 @@ SGLang 先把 prefix KV Cache page 化、hash 化，并把 GPU KV 降级到 Host
 
 理解这个边界以后，才不会把 Mooncake 当成普通远端 KV，也不会把 HiCache storage backend 误解成一层简单的 Python 字典。它们接起来，是为了让 prefix KV Cache 从单个 SGLang worker 的内存状态，变成可以跨节点查询、搬运和复用的系统资源。
 
-## 检查问题
+## 串 SGLang 和 Mooncake 时要对齐的点
 
 - `HiCacheStorage` 为什么是 SGLang 和 Mooncake Store 的分界线？
 - 一个 logical page key 在 MHA 下为什么会展开成 K/V object keys？

@@ -116,6 +116,6 @@ Transformer attention
 
 PagedAttention 让我看到的是“KV cache 在一个 runtime 里怎么被高效管理”。Mooncake 让我继续问的是“这些 KV cache 能不能变成跨节点、跨请求、可调度的系统资源”。
 
-## 小结
+## 从 attention 到状态管理
 
 attention 论文解决了“怎么让 token 互相看”，attention store 这一类系统论文解决的是“看过以后留下来的状态怎么管理”。前者打开了模型结构，后者决定了服务系统能不能在长上下文和高并发下跑得稳。

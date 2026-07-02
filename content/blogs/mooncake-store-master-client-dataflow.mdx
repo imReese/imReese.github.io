@@ -172,7 +172,7 @@ MHA 通常一个 logical page 会展开成 K/V 两个 object；MLA 通常是一�
 
 所以 Store 看到的是一批 object，不知道它们属于哪个 request，也不知道 SGLang 的 radix tree 结构。这个边界必须守住。
 
-## 检查问题
+## 读对象模型时要盯住的点
 
 - Store object 和 Slice 是什么关系？
 - Segment 为什么要带 `te_endpoint` 和 `protocol`？

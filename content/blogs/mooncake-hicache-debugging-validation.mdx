@@ -231,7 +231,7 @@ Mooncake Store 层读写成功还依赖 Transfer Engine。
 
 如果第 5 步命中但第 7 步没有成功，说明 Mooncake Store 已经工作，问题在 HiCache load back 或 scheduler 边界。
 
-## 检查问题
+## 验证 remote KV 时要盯住什么
 
 - 为什么看到 MooncakeStore setup 成功还不能说明 remote KV 命中？
 - `batch_exists` 返回短前缀时，应该先查 key 还是 transport？

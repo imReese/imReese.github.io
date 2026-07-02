@@ -15,7 +15,7 @@ topics:
 Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V
 ```
 
-这个公式当然重要，但如果只记住它，很容易把 Transformer 看成“一个更复杂的相似度计算”。后来我觉得更好的入口不是公式，而是论文真正想替换掉什么：它想把序列建模里最难并行的 recurrence 拿掉。
+这个公式当然重要，但只盯着公式，很容易把 Transformer 看成“一个更复杂的相似度计算”。后来我觉得更好的入口不是公式，而是论文真正想替换掉什么：它想把序列建模里最难并行的 recurrence 拿掉。
 
 RNN 的直觉很自然：一句话从左往右读，每一步都带着前面的 hidden state。问题也在这里：训练时很多计算天然排成一条长队，长距离依赖还要经过很多步传播。Transformer 的切入点是：如果一个 token 想知道另一个 token 对它重不重要，为什么一定要靠中间状态一格一格传过去？
 
@@ -85,6 +85,6 @@ RNN 时代，长序列意味着更深的时间依赖链。Transformer 时代，�
 
 后来的 LLM、KV cache、PagedAttention、FlashAttention，都可以看成这条线继续往下走。Transformer 让 attention 成为主干，而一旦 attention 成为主干，attention 的计算、存储和调度就都会变成核心工程问题。
 
-## 小结
+## 这篇论文真正打开的门
 
 `Attention Is All You Need` 现在不是一篇“背公式”的论文，而是一篇把模型结构、并行训练和硬件友好性连在一起的论文。它真正打开的门，是让 token 之间的关系可以被直接、批量、可扩展地计算。

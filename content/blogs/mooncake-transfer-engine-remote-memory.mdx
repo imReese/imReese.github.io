@@ -186,7 +186,7 @@ Transfer Engine 独立出来以后，Store 只需要表达：
 
 这让 Mooncake 能同时支持多种部署形态：本地开发可以 TCP，生产可能 RDMA/EFA，同机多卡可能 NVLink，异构硬件还有其他 backend。
 
-## 检查问题
+## 看 Transfer Engine 时要确认什么
 
 - Transfer Engine 为什么不需要知道 object key？
 - Segment + offset + length 如何从 Store replica 推导出来？

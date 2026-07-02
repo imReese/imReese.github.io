@@ -174,7 +174,7 @@ Put 路径的成本来自三部分：
 
 如果 page 太小，metadata 和 transfer overhead 会压过复用收益。如果 page 太大，prefix 可复用粒度又会变粗。HiCache 的 page size 和 Mooncake object 粒度要一起看。
 
-## 检查问题
+## 写路径要追的几个点
 
 - PutStart 后 replica 为什么不能读？
 - TransferSubmitter 为什么需要同时看 slice 和 replica？

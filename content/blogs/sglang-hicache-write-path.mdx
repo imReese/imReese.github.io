@@ -214,7 +214,7 @@ batch_put_from_multi_buffers(...)
 
 HiCache 通过 lock、ongoing operation 和 page 级结果尽量把失败限制在可回退状态，而不是把 radix tree 直接标成“全都可用”。
 
-## 检查问题
+## 写入路径里不能跳过的点
 
 - `write_backup` 为什么要求父节点先 backup？
 - D->H backup 成功后，node 一定已经写到 L3 了吗？

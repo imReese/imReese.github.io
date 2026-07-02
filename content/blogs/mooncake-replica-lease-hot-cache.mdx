@@ -152,7 +152,7 @@ page_v: COMPLETE + lease valid + transfer success
 
 不要一上来只查 transport。transport 成功只能证明 bytes 搬过了，不能证明这份 bytes 应该被读。
 
-## 检查问题
+## 排查可见性时看哪里
 
 - `PROCESSING` 和 `COMPLETE` 的差别为什么是可见性边界？
 - lease 为什么不能省？
