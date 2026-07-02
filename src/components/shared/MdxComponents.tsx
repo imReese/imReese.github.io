@@ -3,6 +3,7 @@ import Image, { type ImageProps } from 'next/image'
 import Link from 'next/link'
 import { type AnchorHTMLAttributes } from 'react'
 import clsx from 'clsx'
+import { CodeBlock } from './CodeBlock'
 
 const linkClassName =
   'font-semibold text-primary underline decoration-primary/30 underline-offset-4 transition hover:decoration-primary'
@@ -42,4 +43,5 @@ export const mdxComponents: MDXComponents = {
     />
   ),
   a: CustomLink,
+  pre: CodeBlock,
 }
