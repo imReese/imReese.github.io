@@ -1,0 +1,214 @@
+---
+title: 'LSM Tree 学习笔记：写入很快，代价不会消失'
+description: '一篇存储引擎学习笔记：从 memtable、WAL、SSTable、compaction 和读放大理解 LSM Tree。'
+author: 'Reese'
+date: '2023-05-14'
+---
+
+我第一次看 LSM Tree 时，最容易记住的是一句话：写入快。
+
+但这句话如果停在这里，就会误导自己。LSM Tree 的写入快，不是因为系统不用付代价，而是因为它把随机写变成顺序写，把前台写入压力转移到后台 compaction、读路径和空间放大上。
+
+所以我更愿意这样理解：
+
+```text
+LSM Tree
+  -> 前台写入尽量简单
+  -> 数据先进入内存和顺序日志
+  -> 后台逐步整理成有序文件
+  -> 用读放大、写放大、空间放大换写入吞吐
+```
+
+这不是免费午餐，只是把账记在了别的地方。
+
+## 写入路径
+
+一个典型 LSM 写入路径大概是：
+
+```text
+client write
+  -> append WAL
+  -> update memtable
+  -> return success
+  -> memtable full
+  -> flush to SSTable
+  -> background compaction
+```
+
+WAL 负责崩溃恢复，memtable 负责内存里的有序结构。memtable 满了以后会变成 immutable memtable，然后 flush 成磁盘上的 SSTable。
+
+这里最关键的是：前台写入不需要立刻在磁盘上找到某个位置原地修改。它只要追加日志，再改内存结构。追加写对磁盘和 SSD 都友好得多。
+
+这也是 LSM 适合高写入吞吐场景的原因。
+
+## SSTable 是不可变文件
+
+SSTable 通常是 sorted string table。文件内部按 key 排序，并且写出后不再原地修改。
+
+不可变文件有几个好处：
+
+- 写出时顺序写。
+- 并发读不需要担心文件内容被修改。
+- 可以配合 index 和 bloom filter 加速查找。
+- compaction 可以生成新文件，然后原子替换元数据。
+
+但不可变也带来问题：更新和删除不会立刻覆盖旧值。
+
+如果 key `a` 写了三次，磁盘上可能有多个版本：
+
+```text
+L0 file 3: a -> v3
+L1 file 2: a -> v2
+L2 file 1: a -> v1
+```
+
+读取时要找到最新版本。删除也不是直接删旧文件里的 key，而是写一个 tombstone，等 compaction 时再清理旧数据。
+
+## 读路径为什么会变复杂
+
+LSM 写入简单，读就会复杂一点。
+
+一次 point lookup 可能要查：
+
+```text
+memtable
+immutable memtable
+L0 SSTables
+L1 SSTables
+L2 SSTables
+...
+```
+
+如果每层、每个文件都去读，代价会很高。所以系统会用：
+
+- bloom filter 判断某个 key 是否可能在文件里。
+- block index 定位数据块。
+- block cache 缓存热数据块。
+- manifest/metadata 管理文件范围。
+
+这就是 LSM 的读放大。数据不是只有一个位置，读路径要在多个层级和多个文件之间找最新值。
+
+对于范围扫描，问题又不一样。因为每层都有有序数据，扫描时需要 merge iterator，把多个来源按 key 顺序合并，并处理覆盖和 tombstone。
+
+## L0 是最容易变乱的地方
+
+LSM 的层级里，L0 通常最特别。
+
+flush 出来的 SSTable 会先进 L0。由于不同 memtable flush 出来的 key range 可能重叠，L0 文件之间也可能互相重叠。
+
+这会让读路径变贵。查一个 key 时，L0 里多个文件都可能包含它，所以要查多个文件。
+
+后续 compaction 会把 L0 文件合并到更低层，让低层文件尽量保持 key range 不重叠。这样 point lookup 可以更快判断某个 key 应该在哪个文件范围内。
+
+所以 L0 文件数量过多，经常是 LSM 系统里一个危险信号。它意味着后台整理跟不上前台写入，读放大和写停顿风险都会变高。
+
+## Compaction 是核心，也是麻烦来源
+
+Compaction 做的是整理：
+
+```text
+pick input files
+  -> merge sorted records
+  -> drop overwritten old values
+  -> drop expired tombstones
+  -> write new SSTables
+  -> update metadata
+  -> delete obsolete files
+```
+
+它让读路径重新变得可控，也回收旧版本和删除标记。但它会消耗 I/O、CPU、内存和后台线程。
+
+Compaction 相关问题经常表现成：
+
+- 写放大变高。
+- 后台 I/O 抢占前台读写。
+- p99 延迟出现毛刺。
+- L0 文件堆积。
+- 空间暂时膨胀。
+- tombstone 长时间清不掉。
+
+所以调 LSM 系统时，不要只看前台 QPS。后台 compaction 的节奏决定了系统能不能长期稳定。
+
+## 三个放大
+
+我会用三个放大来记 LSM 的代价。
+
+第一，写放大。
+
+一条数据写入后，可能会在 compaction 中被反复读出、合并、写入下一层。最终磁盘写入量大于用户写入量。
+
+第二，读放大。
+
+读取一个 key，可能要查多层文件、多个 bloom filter、多个 block。范围扫描还要 merge 多路 iterator。
+
+第三，空间放大。
+
+旧版本、tombstone、compaction 临时输出文件都会让磁盘占用大于逻辑数据量。
+
+```text
+write amplification
+read amplification
+space amplification
+```
+
+LSM 的调优，本质上经常是在这三者之间找平衡。
+
+## Leveling 和 Tiering
+
+Compaction 策略里常见两种方向。
+
+Leveling 更积极地把数据整理到分层结构里，低层文件范围尽量不重叠。它通常读放大更低，但写放大更高。
+
+Tiering 更倾向于先积累多个 run，再一起合并。它写放大可能更低，但读放大和空间放大可能更高。
+
+没有绝对更好的策略，取决于 workload：
+
+- 写多读少，可以接受更多读放大。
+- 读多写少，希望读路径更短。
+- 范围查询多，要关注文件布局和 merge 成本。
+- TTL/tombstone 多，要关注删除回收是否及时。
+
+这也是为什么存储引擎参数不能脱离 workload 单独讨论。
+
+## WAL 和 LSM 的关系
+
+WAL 不只是数据库课本里的一个名词。对 LSM 来说，它是前台写入能快速返回的关键。
+
+写入先 append WAL，然后更新 memtable。如果进程在 memtable flush 前崩溃，重启时可以 replay WAL 恢复内存状态。
+
+这条路径有几个重要问题：
+
+- WAL 是否 fsync，何时 fsync。
+- group commit 如何批量摊平落盘成本。
+- WAL 文件何时可以删除。
+- replay 时间是否可控。
+- WAL 和 memtable flush 的边界如何记录。
+
+如果只看 memtable/SSTable，会漏掉崩溃恢复这条主线。真正的存储系统不是只在正常运行时正确，还要在掉电、进程崩溃、部分文件写入成功时仍然能恢复到一致状态。
+
+## 我会怎样读一个 LSM 实现
+
+如果让我读一个 LSM 存储引擎，我会按这条路线：
+
+1. 写入入口：请求如何进入 WAL 和 memtable。
+2. memtable：用什么内存结构，何时变 immutable。
+3. flush：如何生成 SSTable，文件格式是什么。
+4. manifest：系统如何记录当前有哪些文件。
+5. read path：point lookup 和 iterator 如何找最新值。
+6. compaction picker：如何选择要合并的文件。
+7. compaction output：如何处理覆盖、删除和 range tombstone。
+8. recovery：崩溃后如何从 manifest 和 WAL 恢复。
+
+这条路线能避免一开始陷进某个参数。先把数据生命周期走完，再看 tuning。
+
+## 我还没完全想清楚的点
+
+LSM 继续往下读，我还会追这些问题：
+
+- bloom filter 的 false positive 如何影响真实读延迟。
+- compaction debt 如何定义，什么时候应该限流前台写入。
+- range tombstone 和 prefix delete 为什么容易拖慢 compaction。
+- block cache 和 OS page cache 是否会重复缓存。
+- 多租户场景下，后台 compaction 如何隔离资源。
+
+我的阶段性理解是：LSM Tree 的核心不是“写入快”四个字，而是把数据从内存、日志、有序文件、后台整理一路推过去。每一步都在延迟某个成本，也都必须在后面某个地方还回来。

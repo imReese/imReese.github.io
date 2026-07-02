@@ -1,0 +1,221 @@
+---
+title: 'ZooKeeper / etcd 学习笔记：把一致性做成服务'
+description: '一篇关于 ZooKeeper 和 etcd 的系统笔记：从一致性协议走到配置、选主、watch、租约和服务发现。'
+author: 'Reese'
+date: '2022-09-18'
+---
+
+看完 Paxos/Raft 以后，再看 ZooKeeper 和 etcd，会发现问题从“协议怎样保证一致”变成了“怎样把一致性包装成应用能直接用的服务”。
+
+大多数业务并不想自己实现 leader election、lease、watch、分布式锁、配置变更传播。它们想要的是一个相对可靠的协调层：
+
+```text
+存一小份关键元数据
+  -> 大家看到同一份顺序
+  -> 变更能通知出去
+  -> 节点挂了能被感知
+  -> 临时状态能自动清掉
+```
+
+ZooKeeper 和 etcd 的价值就在这里。它们不是拿来放大数据的存储系统，而是拿来放关键协调状态的系统。
+
+## 协调服务不要存大对象
+
+我觉得理解这类系统的第一步，是不要把它们当普通 KV 数据库。
+
+ZooKeeper 和 etcd 适合存：
+
+- 服务注册信息。
+- leader 信息。
+- 配置版本。
+- 元数据指针。
+- 租约和会话状态。
+- 小规模的控制面状态。
+
+它们不适合存：
+
+- 大文件。
+- 高频指标。
+- 大量日志。
+- 业务主数据。
+- 高吞吐写入流。
+
+原因很直接：一致性和顺序是有成本的。每次写入都要经过复制协议、落盘、提交、再通知 watch。把大量业务数据塞进去，会让协调层自己变成瓶颈。
+
+我更愿意把这类系统想成“控制面的事实来源”，而不是“数据面的存储池”。
+
+## ZooKeeper 的 znode 模型
+
+ZooKeeper 的数据模型像一棵树：
+
+```text
+/
+  services/
+    search/
+      instance-0001
+      instance-0002
+  locks/
+  config/
+```
+
+每个节点叫 znode。它既可以有数据，也可以有子节点。
+
+最有用的是几类 znode：
+
+- persistent：普通持久节点。
+- ephemeral：会话断开后自动删除。
+- sequential：创建时自动带递增序号。
+- ephemeral sequential：临时且有序，常用于选主和锁。
+
+这个模型非常适合协调问题。
+
+比如服务注册：服务启动后创建 ephemeral 节点，进程挂了或会话断了，节点自动消失。消费者 watch 这个目录，就能感知服务列表变化。
+
+比如分布式锁：多个客户端在同一目录下创建 sequential 节点，序号最小的拿锁，其余客户端 watch 自己前一个节点。前一个节点删除后，再判断自己是否最小。
+
+这里的关键不是“树结构多漂亮”，而是 ephemeral 和 sequential 让很多协调语义可以自然表达。
+
+## etcd 的 KV + revision 模型
+
+etcd 的表面模型更像 KV：
+
+```text
+/services/search/instance-1 -> endpoint
+/config/rate-limit          -> value
+/leader/job-a               -> node-id
+```
+
+但 etcd 的关键是 revision。每次写入都会推进全局 revision，watch 可以从某个 revision 开始观察后续变化。
+
+这让 etcd 很适合做 Kubernetes 这类系统的后端存储。API 对象的变化可以被排序，watch client 可以从某个版本继续追，不必一直全量扫描。
+
+我会把 etcd 的几个概念放在一起看：
+
+```text
+key-value
+  + revision
+  + watch
+  + lease
+  + transaction
+  + compaction
+```
+
+其中 revision 是时间线，watch 是订阅变化，lease 是生命周期，transaction 是条件更新，compaction 是清理过旧历史。
+
+## watch 不是普通回调
+
+watch 很容易被低估。
+
+应用看配置变化、服务上下线、Kubernetes controller 看对象变化，本质上都依赖 watch。
+
+一个可靠的 watch 机制至少要回答：
+
+- 从哪个版本开始看。
+- 中间断线后怎么恢复。
+- 历史被 compact 后怎么办。
+- 事件顺序是否和写入顺序一致。
+- 客户端处理慢了会不会堆积。
+
+所以 watch 不是“改了就调个 callback”这么简单。它是把一致性存储里的有序历史，变成应用能消费的事件流。
+
+这也是为什么 etcd 的 revision 很重要。没有版本号，断线恢复时就很难说清楚“我错过了哪些事件”。
+
+## lease 解决生命周期问题
+
+分布式系统里，最麻烦的问题之一是：一个节点到底还活着吗？
+
+如果只靠显式 delete，进程崩溃时就来不及清理。lease 的思路是反过来：状态默认有过期时间，客户端要持续续约；续不上，就认为它失效。
+
+etcd 里常见模式是：
+
+```text
+grant lease
+put key with lease
+keepalive lease
+process exits or network breaks
+lease expires
+key deleted
+watchers receive delete event
+```
+
+ZooKeeper 的 ephemeral node 也有类似效果，只是它绑定在 session 上。
+
+lease 不是完美的故障检测。网络抖动、GC pause、负载过高都可能导致误判。但在工程上，它提供了一个可实现的边界：系统不需要永远等一个沉默的客户端。
+
+## 选主不是谁先写成功这么简单
+
+很多人第一次写 leader election，会想用一个 key：
+
+```text
+/leader = node-a
+```
+
+谁先写成功谁就是 leader。
+
+这还不够。你还要处理：
+
+- leader 挂了以后 key 怎么删。
+- 旧 leader 网络恢复后会不会继续以为自己是 leader。
+- 新 leader 是否知道旧 leader 留下的状态。
+- watch 丢事件后 follower 怎么重新判断。
+- leader 的任期或 fence token 如何传给下游资源。
+
+所以真正可靠的选主通常要配合 lease、revision、session、sequential node 或 fencing token。
+
+我觉得这里最重要的是 fencing。即使旧 leader 后来恢复，它带着旧 token 去操作外部系统，也应该被拒绝。否则协调服务内部选出了新 leader，但外部资源仍然可能被旧 leader 改坏。
+
+## Kubernetes 为什么离不开 etcd
+
+Kubernetes 里的 etcd 是一个很好的例子。
+
+API Server 把集群对象写进 etcd。Controller 通过 watch 观察对象变化，然后不断把实际状态推向期望状态。
+
+这条链路大致是：
+
+```text
+kubectl apply
+  -> API Server validates object
+  -> write object to etcd
+  -> controller watches change
+  -> controller creates/updates other objects
+  -> kubelet watches assigned Pods
+  -> node runtime starts containers
+```
+
+etcd 不直接调度 Pod，也不直接启动容器。它存的是集群控制面的事实。Kubernetes 的很多“声明式”能力，其实都建立在这个有序、可 watch 的事实来源上。
+
+这也解释了为什么 etcd 的健康如此重要。控制面可以短暂抖动，但如果 etcd 的一致性、延迟、空间、compaction 出问题，整个集群的控制面都会变得不稳定。
+
+## 这类系统的边界感
+
+我现在会这样给协调服务划边界：
+
+适合它做的事：
+
+- 谁是 leader。
+- 当前配置版本是多少。
+- 哪些 worker 活着。
+- 某个任务是否被领取。
+- 某个资源的元数据指针是什么。
+
+不适合它做的事：
+
+- 存用户大表。
+- 记录每个请求日志。
+- 当消息队列高频吞吐。
+- 存大块二进制数据。
+- 把所有业务状态都塞进去。
+
+协调服务越关键，越要克制使用范围。它应该小、稳、清楚，而不是被当成万能状态中心。
+
+## 我还会继续追的问题
+
+ZooKeeper 和 etcd 读完以后，我还会继续看：
+
+- ZooKeeper 的 Zab 和 Raft 在日志复制上的差异。
+- etcd watch 在 compaction 后如何恢复。
+- Kubernetes controller 如何处理 watch 断线和 resync。
+- lease TTL 应该怎么选，太短误杀，太长故障恢复慢。
+- 分布式锁在什么情况下会被误用。
+
+我的阶段性理解是：Paxos/Raft 解释“怎么形成一条一致的历史”，ZooKeeper/etcd 解释“怎样把这条历史变成工程系统能用的协调接口”。后者更贴近日常工程，也更容易被滥用。
