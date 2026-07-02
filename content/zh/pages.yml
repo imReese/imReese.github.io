@@ -1,12 +1,12 @@
 about:
-  headline: "Hi，我是 Reese，一个在北京做大模型推理系统的后端工程师。"
+  headline: "Hi，我是段冰，一个在北京做大模型推理系统的后端工程师。"
 
 home:
   hero:
     viewProjects: 查看项目
     readNotes: 阅读笔记
   systemsPanel:
-    workspaceTitle: "Reese 的工作台"
+    workspaceTitle: "段冰的工作台"
     workspaceSubtitle: 大模型推理服务 / 后端性能
     location: 北京
     sectionTitle: 经历

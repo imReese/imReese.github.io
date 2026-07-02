@@ -32,7 +32,7 @@
       <stop offset="0.58" stop-color="var(--bg1)"/>
       <stop offset="1" stop-color="var(--bg2)"/>
     </linearGradient>
-    <linearGradient id="accent" x1="78" x2="434" y1="407" y2="407" gradientUnits="userSpaceOnUse">
+    <linearGradient id="accent" x1="78" x2="434" y1="395" y2="395" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="var(--accent)" stop-opacity="0"/>
       <stop offset="0.22" stop-color="var(--accent)" stop-opacity="0.58"/>
       <stop offset="0.5" stop-color="var(--accent)"/>
@@ -51,6 +51,6 @@
   <g transform="translate(15 24) scale(0.94)">
     <path d="M155 374V154h108c31 0 56 8 74 23 18 15 27 36 27 62 0 18-5 34-14 47-9 13-22 23-38 30l82 58h-82l-66-53h-37v53h-54Zm54-99h52c16 0 28-3 37-10 8-7 12-16 12-28s-4-21-12-28c-9-7-21-10-37-10h-52v76Z" fill="var(--mark)" filter="url(#markShadow)"/>
   </g>
-  <rect x="78" y="398" width="356" height="18" rx="9" fill="url(#accent)"/>
-  <rect x="104" y="400" width="304" height="30" rx="15" fill="var(--glow)" opacity="0.2" filter="url(#lineGlow)"/>
+  <rect x="78" y="386" width="356" height="18" rx="9" fill="url(#accent)"/>
+  <rect x="104" y="388" width="304" height="30" rx="15" fill="var(--glow)" opacity="0.2" filter="url(#lineGlow)"/>
 </svg>

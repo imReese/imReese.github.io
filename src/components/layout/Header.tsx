@@ -14,7 +14,7 @@ import { ThemeToggle } from '@/components/shared/ThemeToggle'
 import { GithubRepo } from '@/components/shared/GithubRepo'
 import { LanguageToggle } from '@/components/shared/LanguageToggle'
 import { useLanguage } from '@/components/shared/LanguageProvider'
-import { name } from '@/config/infoConfig'
+import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 import { isNavItemActive } from '@/lib/navigation'
 import { ChevronDownIcon, XIcon } from 'lucide-react'
 
@@ -38,6 +38,7 @@ function MobileNavigation(
   props: React.ComponentPropsWithoutRef<typeof Popover>,
 ) {
   const { t } = useLanguage()
+  const { site } = useLocalizedContent()
 
   return (
     <Popover {...props}>
@@ -78,7 +79,7 @@ function MobileNavigation(
                 <XIcon className="h-6 w-6 text-muted-foreground" />
               </Popover.Button>
               <h2 className="text-sm font-medium text-muted-foreground">
-                {name}
+                {site.name}
               </h2>
             </div>
             <nav className="mt-6">
@@ -165,6 +166,8 @@ function AvatarContainer({
 }: React.ComponentPropsWithoutRef<'div'> & {
   showName?: boolean
 }) {
+  const { site } = useLocalizedContent()
+
   return (
     <div className="pointer-events-auto flex flex-row items-center gap-2">
       <div
@@ -176,7 +179,7 @@ function AvatarContainer({
       />
       {showName && (
         <Link href="/" aria-label="Home">
-          <div className="text-base font-semibold capitalize">{name}</div>
+          <div className="text-base font-semibold capitalize">{site.name}</div>
         </Link>
       )}
     </div>

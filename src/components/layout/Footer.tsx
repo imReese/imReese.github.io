@@ -5,9 +5,9 @@ import Link from 'next/link'
 import { ContainerInner, ContainerOuter } from '@/components/layout/Container'
 import { footerItems } from '@/config/siteConfig'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
-import { name } from '@/config/infoConfig'
 import SocialLinks from '@/components/home/SocialLinks'
 import { useLanguage } from '@/components/shared/LanguageProvider'
+import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 
 
 function NavLink({
@@ -29,6 +29,7 @@ function NavLink({
 
 export function Footer() {
   const { t } = useLanguage()
+  const { site } = useLocalizedContent()
 
   return (
     <footer className="mt-32 flex-none">
@@ -47,7 +48,7 @@ export function Footer() {
               <div className="flex flex-col items-center gap-2 sm:items-end">
                 <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 sm:justify-end">
                   <p className="text-sm text-muted-foreground">
-                    &copy; {new Date().getFullYear()} {name}. {t("footer.rights")}
+                    &copy; {new Date().getFullYear()} {site.name}. {t("footer.rights")}
                   </p>
                   <div className="flex items-center gap-1">
                     <ThemeToggle />
