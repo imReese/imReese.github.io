@@ -6,9 +6,8 @@ import { Providers } from "@/app/providers"
 import { Layout } from "@/components/layout/Layout"
 import { Analytics } from "@/components/analytics/analytics"
 import { name, headline, introduction } from "@/config/infoConfig"
+import { assetVersion } from "@/config/assets"
 import "@/styles/globals.css"
-
-const assetVersion = "20260702d"
 
 const jetBrainsMono = JetBrains_Mono({
   subsets: ["latin"],

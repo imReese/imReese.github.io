@@ -4,6 +4,7 @@ import { createContext, useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import { ThemeProvider, useTheme } from 'next-themes'
 import { LanguageProvider } from '@/components/shared/LanguageProvider'
+import { ThemeFavicon } from '@/components/shared/ThemeFavicon'
 
 function usePrevious<T>(value: T) {
   let ref = useRef<T>()
@@ -50,6 +51,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <ThemeProvider attribute="class" disableTransitionOnChange>
         <LanguageProvider>
           <ThemeWatcher />
+          <ThemeFavicon />
           {children}
         </LanguageProvider>
       </ThemeProvider>
