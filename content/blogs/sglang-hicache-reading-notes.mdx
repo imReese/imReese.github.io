@@ -1,0 +1,214 @@
+---
+title: 'SGLang HiCache 读码：把 KV Cache 扩成三级缓存'
+description: '一篇基于 SGLang 最新 origin/main 的 HiCache 学习笔记：从 GPU KV pool、HiRadixCache、Host pool 读到 L3 storage prefetch。'
+author: 'Reese'
+date: '2026-07-02'
+---
+
+这篇还是一篇读码笔记，不是 HiCache 的完整介绍。
+
+我这次看的版本是 [SGLang `origin/main@1c75243f5e`](https://github.com/sgl-project/sglang/tree/1c75243f5eda)。官方的 [HiCache 设计文档](https://github.com/sgl-project/sglang/blob/1c75243f5eda/docs/advanced_features/hicache_design.md) 已经把 L1/L2/L3 架构讲得很完整，我更想从源码入口回答一个更工程的问题：**KV Cache 离开 GPU 以后，SGLang 到底多维护了哪些状态？这些状态又在调度路径上怎么被用起来？**
+
+我的当前理解可以先压成一条线：
+
+```text
+ReqToTokenPool / TokenToKVPool
+  -> RadixCache: GPU 上的 prefix KV cache
+  -> HiRadixCache: 给 radix node 补上 host/storage 状态
+  -> HiCacheController: 异步搬运 GPU <-> Host <-> Storage
+  -> Scheduler: 决定 prefetch、load back、继续 prefill 还是跳过本轮
+```
+
+这个顺序很重要。HiCache 不是先有一个远端存储，再把 KV cache 扔进去就结束了。它是在 SGLang 已有的 prefix cache 和 KV pool 之上，多加了一层“这段 prefix 的 KV 现在在哪个 tier”的元数据，以及几条异步数据搬运路径。
+
+## 先把 L1 看清楚
+
+读 HiCache 之前，我觉得要先把两个底层结构分开：
+
+- `ReqToTokenPool` 记录 request slot 到 token slot 的映射。
+- `TokenToKVPoolAllocator` / `MHATokenToKVPool` 管 GPU KV cache 的 token slot 分配和真实 K/V buffer。
+
+前者更像“这个请求的第 i 个 token 指向哪里”，后者才是“大块 KV tensor 存在哪里”。所以不要把 `req_to_token_pool` 误解成 KV cache 本体，它只是让请求能找到对应的 token indices。
+
+到了普通 RadixCache，prefix cache node 里的 `value` 指向 GPU KV slots。一次 prefix 命中，本质上是在 radix tree 上找到一段连续 token prefix，然后返回这段 prefix 对应的 GPU indices。后续 prefill 可以少算这段 KV。
+
+HiCache 的变化就在这里：如果 GPU 放不下了，node 的 `value` 可能已经被清掉，但这段 prefix 不一定真的消失了。它可能还在 Host Memory，甚至已经写到了 Storage Backend。
+
+## HiRadixCache 多出来的是位置状态
+
+`HiRadixCache` 继承自 `RadixCache`，但它真正增加的不是一种新的匹配算法，而是给每个 radix node 补了更多 tier 状态。
+
+我读的时候会盯住几个字段：
+
+- `value`：这段 prefix 在 GPU KV pool 里的 indices。
+- `host_value`：这段 prefix 在 Host KV pool 里的 indices。
+- `hash_value`：和 storage key / page hash 相关的值。
+- `lock_ref` / `host_ref_counter`：异步搬运时防止节点被提前回收。
+- `backuped`：是否已经有 host 备份。
+- `backuped_storage`：是否已经有 storage 备份。
+
+这几个字段解释了 HiCache 和普通 RadixCache 的最大区别：**radix tree 不只表示 prefix 关系，也开始表示 KV cache 的位置关系。**
+
+一次 `match_prefix` 不再只返回 GPU 命中结果。它还会区分：
+
+```text
+last_device_node: 最后一个还在 GPU 上的 node
+last_host_node:   最后一个至少在 Host 上有备份的 node
+host_hit_length:  GPU 之外、Host 之内命中的长度
+```
+
+这个设计很实用。请求来了以后，SGLang 可以先用本地 tree 快速判断：前缀中哪一段已经在 GPU，可直接复用；哪一段只在 Host，需要 load back；后面哪一段本地没有，才考虑去 L3 storage prefetch。
+
+## Host pool 不是普通 Python 缓存
+
+Host KV cache 也不是一个 `dict[key] = bytes`。
+
+以 MHA 路径为例，`MHATokenToKVPoolHost` 会根据模型层数、KV head、head dim、dtype 和 HiCache 配置创建一块 host KV buffer。它还支持不同 layout，比如：
+
+- `layer_first`
+- `page_first`
+- `page_first_direct`
+- `page_head`
+
+这些 layout 不是为了代码好看，而是为了在 CPU/GPU 搬运和 L3 storage I/O 之间取舍。GPU 计算天然更接近 layer-by-layer；storage 写读更希望 page 粒度连续。HiCache 这里做的事，本质上是在“算子喜欢的布局”和“系统 I/O 喜欢的布局”之间找一个可接受的折中。
+
+所以我会把 Host pool 理解成真正的 L2 KV memory pool：它有自己的 slot、自己的布局、自己的分配器，也有 pinned memory / kernel I/O 路径配合设备传输。
+
+## 写入路径：先有 Host 备份，再考虑 Storage
+
+HiCache 最容易读混的地方是“write back”这个词。
+
+在源码里，`write_backup` 先做的是 GPU 到 Host 的备份：
+
+```text
+HiRadixCache.write_backup(node)
+  -> HiCacheController.write(device_indices=node.value)
+  -> Host pool alloc
+  -> enqueue write operation
+  -> async GPU -> Host copy
+  -> ack 后标记 node 已经在 CPU
+```
+
+如果启用了 storage backend，Host 备份确认以后，才会继续走 `write_backup_storage`：
+
+```text
+Host KV
+  -> storage key / hash
+  -> HiCacheController.write_storage
+  -> L3 backend
+```
+
+这说明 L2 和 L3 是两层不同的语义。Host 备份解决的是“GPU eviction 后还能不能快速恢复”；Storage 备份解决的是“这个 KV 能不能跨实例、跨更长生命周期复用”。
+
+我还注意到一个细节：write-through 模式下，代码要求被备份的 node 在 radix tree 上形成从 root 开始的连续 prefix。也就是说，它不希望出现“中间一段没有 Host 备份，但后面某段已经备份了”的空洞。这个约束会让后续 `match_prefix` 和 load back 更容易保持连续语义。
+
+## GPU eviction 不是删除 prefix
+
+普通缓存里说 eviction，很容易理解成“删掉了”。但 HiCache 里的 GPU eviction 更像是把某段 prefix 从 L1 降级到 L2。
+
+如果一个 node 已经 `backuped`，GPU eviction 可以只释放 device KV slots，然后保留 `host_value`。此时：
+
+```text
+node.value      -> None / evicted
+node.host_value -> still valid
+node.backuped   -> true
+```
+
+这段 prefix 还在 tree 上，后续请求也还能命中，只是命中的 tier 变了。
+
+真正释放 Host Memory 要走 `evict_host`。而 `evict_host` 又会跳过两类节点：还没从 GPU evict 的节点，以及 `host_ref_counter > 0` 的节点。这个逻辑很像一个小型内存系统：L1 可以先退到 L2，L2 再按 LRU/priority 回收，但异步 I/O 正在使用的对象不能被删。
+
+这也是我觉得 HiCache 值得单独读的地方。它不是简单加一个缓存层，而是把 KV cache 变成了有生命周期、有引用保护、有 tier 状态的对象。
+
+## Host 命中以后，还要 load back
+
+如果请求 prefix 命中了 Host，但 GPU 上已经没有这段 KV，调度器不能直接把它当成可计算状态。GPU attention kernel 最终还是需要 device indices。
+
+这时会走 `init_load_back` / `load_back`：
+
+```text
+last_host_node
+  -> 向上找到最近的 device ancestor
+  -> 拼出需要从 Host 搬回 GPU 的 host_indices
+  -> 检查 load_back_threshold 和 mem_quota
+  -> Host -> GPU async load
+  -> 更新这些 node 的 value
+```
+
+这里有两个取舍。
+
+第一，不是所有 Host hit 都值得搬回 GPU。如果命中太短，可能重算更便宜；如果超过本轮 memory quota，也不能硬塞进 GPU。第二，load back 是“整段连续 host prefix 要么加载，要么不加载”的思路，不然 prefix indices 会变得很难维护。
+
+所以 HiCache 并不是“只要缓存命中就一定复用”。它还要在调度时判断：这次命中的长度、当前 GPU 空间、异步搬运成本，是否值得为了这段 prefix 等一等。
+
+## L3 prefetch 是在排队时发起的
+
+L3 storage 的路径更有意思，因为它不是在 prefill kernel 需要 KV 的那一刻才读。
+
+请求进入 scheduler 后，如果启用了 `hicache_storage_backend`，SGLang 会先做一次本地 prefix match。对于本地 L1/L2 没覆盖的新 token，scheduler 会调用 `prefetch_from_storage`，尝试把 storage 里的 KV 提前拉到 Host pool：
+
+```text
+request enters waiting queue
+  -> local match L1/L2
+  -> build page-aligned prefetch key
+  -> Host pool alloc
+  -> Storage -> Host async prefetch
+  -> waiting queue scheduling checks progress
+```
+
+真正把请求放进 prefill batch 前，scheduler 还会调用 `check_prefetch_progress`。如果 prefetch 还没达到当前策略允许的终止条件，这个 request 会先被跳过，等下一轮再看。
+
+这里就能看出 `best_effort`、`wait_complete`、`timeout` 这几个 prefetch policy 的意义。它们不是 storage backend 自己的细节，而是直接影响 scheduler 是否愿意为了 L3 hit 等待。
+
+我的理解是：L3 prefetch 的目标不是让请求永远阻塞到“缓存全命中”，而是在排队阶段把一部分 storage latency 藏起来。能及时拉回来的 KV 就用；来不及的部分，要么继续等，要么回到普通 prefill/recompute。
+
+## 入口参数反映了系统边界
+
+这次读最新代码时，我会把这些参数放在一起看：
+
+- `--enable-hierarchical-cache`
+- `--hicache-ratio` / `--hicache-size`
+- `--hicache-write-policy`
+- `--hicache-io-backend`
+- `--hicache-mem-layout`
+- `--hicache-storage-backend`
+- `--hicache-storage-prefetch-policy`
+- `--hicache-storage-backend-extra-config`
+
+它们基本对应了 HiCache 的几条边界：
+
+- L2 Host Memory 到底多大。
+- GPU/Host 搬运用什么 backend。
+- Host Memory 用什么 layout。
+- GPU KV 什么时候写到 Host。
+- Host KV 是否继续写到 L3。
+- L3 prefetch 要不要等，等多久。
+
+如果只看文档，可能会觉得 HiCache 是一个统一功能；但从参数看，它更像一组可组合的系统机制。只开 L2 和同时接 L3 storage，是两个复杂度完全不同的模式。
+
+## 我会按这条路线继续读
+
+如果要给自己排一条源码路线，我会这样走：
+
+1. 先看 `memory_pool.py`，确认 `ReqToTokenPool` 和 `MHATokenToKVPool` 分别管什么。
+2. 再看 `allocator/token.py`，把 GPU token KV slot 的 alloc/free 机制补上。
+3. 进入 `hiradix_cache.py`，只盯 `match_prefix`、`write_backup`、`evict`、`evict_host`、`load_back`、`prefetch_from_storage`。
+4. 切到 `memory_pool_host.py`，理解 Host KV pool 的 layout 和 page 粒度。
+5. 看 `cache_controller.py`，确认真正的数据搬运是怎么被 queue、stream、ack 串起来的。
+6. 最后回到 `scheduler.py`，看 request 入队、prefetch progress、prefill batch 构造之间的关系。
+
+这样读的好处是不会一开始就陷进 storage backend 细节。Mooncake、3FS、NIXL、AIBrix、file backend 都很重要，但它们是 L3 的实现选择。HiCache 这套机制真正的主线，还是 SGLang runtime 里如何维护 KV cache 在 GPU、Host、Storage 之间的状态转移。
+
+## 我还没完全想清楚的点
+
+这篇先停在这里，后面我可能会继续追几个问题：
+
+- `page_first`、`page_first_direct`、`page_head` 在不同模型和 backend 下的真实收益边界。
+- Host load back 和 recompute 之间，scheduler 有没有更明确的 cost model。
+- L3 storage key、`hash_value`、`prefix_keys` 在不同 backend 里分别承担多少一致性语义。
+- PD disaggregation 下，decode 侧 HiCache 和 Mooncake Transfer Engine 的关系到底怎么分层。
+- `write_through_selective` 里的 hot prefix 判断，在真实 workload 下会不会比固定 write-through 更稳。
+
+我现在对 HiCache 的阶段性理解是：它不只是“把 KV cache 放到 CPU 或远端存储”。更准确地说，它把 prefix KV cache 从 GPU 上的一组临时 tensor，变成了一个可以降级、恢复、预取、跨层写入、被调度器感知的系统资源。
+
+这件事看起来很重，但对长上下文和多轮请求来说很关键。因为真正稀缺的不是某一次 attention 计算，而是已经算出来的 KV 状态能不能被系统认真地保留下来，并在值得复用的时候被及时搬回正确的位置。
