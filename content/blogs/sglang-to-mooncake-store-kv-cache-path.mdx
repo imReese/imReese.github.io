@@ -37,6 +37,35 @@ radix node hash_value
   -> Mooncake Store zero-copy batch API
 ```
 
+<SequenceDiagram
+  title="SGLang 和 Mooncake Store 的真正分界线"
+  caption="SGLang 交出 page keys 和 Host buffer；Mooncake Store 接手 object key、metadata 和 zero-copy get/put。"
+  actors={['Radix node', 'HiCacheStorage', 'Mooncake backend', 'Mooncake Store']}
+  steps={[
+    {
+      from: 'Radix node',
+      to: 'HiCacheStorage',
+      label: 'hash_value + host_indices',
+      detail: 'page key 来自 token page rolling hash，buffer 来自 Host KV pool',
+      tone: 'teal',
+    },
+    {
+      from: 'HiCacheStorage',
+      to: 'Mooncake backend',
+      label: 'batch_set / batch_get',
+      detail: '统一 storage interface 把 L3 backend 隔离在 runtime 外',
+      tone: 'blue',
+    },
+    {
+      from: 'Mooncake backend',
+      to: 'Mooncake Store',
+      label: 'expanded object keys + pointers',
+      detail: '根据 MHA/MLA/hybrid layout 展开 object，并调用 zero-copy API',
+      tone: 'mauve',
+    },
+  ]}
+/>
+
 ## 先看接口边界：HiCacheStorage
 
 SGLang 并不是在 radix cache 里直接调用 Mooncake Store API。中间隔了一层统一 storage interface：`HiCacheStorage`。
@@ -151,6 +180,36 @@ prefix token pages
   -> layout-specific object keys
   -> Mooncake Store batch_is_exist / batch_put_from / batch_get_into
 ```
+
+<MappingDiagram
+  title="一个 logical page key 会按模型布局展开成多个 Store object"
+  caption="HiCache 只关心这一页 prefix 是否可用；Mooncake Store 看到的是多个 object 的存在性和传输结果。"
+  source={{
+    label: 'logical page key',
+    detail: 'hash_value[i]，由 token page 和上一个 hash 滚动生成',
+    tone: 'teal',
+  }}
+  groups={[
+    {
+      label: 'MHA layout',
+      detail: 'K/V 都存在，这一页才算成功',
+      tone: 'blue',
+      items: ['{page_key}_{rank}_k', '{page_key}_{rank}_v'],
+    },
+    {
+      label: 'MLA layout',
+      detail: '通常只有一个 K-like object',
+      tone: 'mauve',
+      items: ['{page_key}_{rank}_k'],
+    },
+    {
+      label: 'split heads / hybrid pools',
+      detail: '同一页可能继续展开到多个 rank 或 side state',
+      tone: 'amber',
+      items: ['kv object', 'side pool object', 'draft object'],
+    },
+  ]}
+/>
 
 这解释了为什么 Mooncake backend 里有 `_get_mha_buffer_meta`、`_get_mla_buffer_meta`、`_get_mha_split_heads_buffer_meta` 这些函数。它们不是装饰性代码，而是在把 SGLang 的 Host KV layout 翻译成 Mooncake Store object 列表和 pointer 列表。
 
@@ -302,6 +361,49 @@ Mooncake Store objects
   -> HiCache load_back
   -> GPU KV slots
 ```
+
+<SequenceDiagram
+  title="写入和读取其实是同一条边界的两个方向"
+  caption="无论是 batch_put_from 还是 batch_get_into，Mooncake backend 处理的都是 Host pointer 和 object key 的对应关系。"
+  actors={['GPU KV slots', 'Host KV pages', 'Mooncake backend', 'Mooncake Store']}
+  steps={[
+    {
+      from: 'GPU KV slots',
+      to: 'Host KV pages',
+      label: 'write_backup',
+      detail: 'SGLang 先把 device KV 降级到 Host',
+      tone: 'teal',
+    },
+    {
+      from: 'Host KV pages',
+      to: 'Mooncake backend',
+      label: 'batch_set_v1/v2',
+      detail: 'Host page indices + page keys 进入 storage backend',
+      tone: 'blue',
+    },
+    {
+      from: 'Mooncake backend',
+      to: 'Mooncake Store',
+      label: 'batch_put_from',
+      detail: '写出 object slices，并由 Store/TE 处理远端副本',
+      tone: 'mauve',
+    },
+    {
+      from: 'Mooncake Store',
+      to: 'Host KV pages',
+      label: 'batch_get_into',
+      detail: '读取时先把 object 写回 Host buffer',
+      tone: 'mauve',
+    },
+    {
+      from: 'Host KV pages',
+      to: 'GPU KV slots',
+      label: 'load_back',
+      detail: 'HiCache 再把 Host prefix 提交回 GPU',
+      tone: 'green',
+    },
+  ]}
+/>
 
 这里 SGLang 负责 prefix tree、page hash、Host/GPU pool、scheduler 等 runtime 状态；Mooncake Store 负责 object 存在性、zero-copy get/put、master metadata 和底层 Transfer Engine 数据搬运。
 

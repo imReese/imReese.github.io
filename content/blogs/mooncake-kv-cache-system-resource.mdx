@@ -25,6 +25,31 @@ Mooncake Transfer Engine
   负责 Segment、registered memory、BatchTransfer、transport 数据搬运
 ```
 
+<LayerDiagram
+  title="KV Cache 从 runtime 状态变成分布式资源，需要经过三层语义"
+  caption="HiCache 决定缓存什么时候写、什么时候读；Store 决定对象是否存在、是否可读；Transfer Engine 只负责把已知地址上的 bytes 搬过去。"
+  layers={[
+    {
+      label: 'SGLang HiCache',
+      detail: 'runtime cache policy',
+      tone: 'teal',
+      items: ['radix node', 'GPU KV pool', 'Host KV pool', 'page hash', 'prefetch', 'load_back'],
+    },
+    {
+      label: 'Mooncake Store',
+      detail: 'object metadata and visibility',
+      tone: 'blue',
+      items: ['object key', 'slice', 'replica', 'lease', 'PROCESSING', 'COMPLETE'],
+    },
+    {
+      label: 'Mooncake Transfer Engine',
+      detail: 'remote memory movement',
+      tone: 'mauve',
+      items: ['Segment', 'offset', 'length', 'registered memory', 'BatchID', 'transport'],
+    },
+  ]}
+/>
+
 这三层经常被一句“把 KV Cache 放到 Mooncake”糊在一起。实际读源码时必须拆开，否则很容易把 Store 当普通 KV 服务，或者把 Transfer Engine 当完整缓存系统。
 
 ## 先定义三层边界
@@ -79,6 +104,49 @@ Mooncake Store object
   -> GPU KV pool
   -> attention kernel 使用 device KV slots
 ```
+
+<SequenceDiagram
+  title="一页 remote KV 从写出到读回的完整路径"
+  caption="注意 Mooncake 只把数据读回 Host pool；真正让 attention 使用，还要由 HiCache 再 load back 到 GPU。"
+  actors={['GPU KV pool', 'HiCache', 'Mooncake Store', 'Transfer Engine', 'Host KV pool']}
+  steps={[
+    {
+      from: 'GPU KV pool',
+      to: 'HiCache',
+      label: 'write_backup(node)',
+      detail: 'device KV slots 先降级成 Host KV pages',
+      tone: 'teal',
+    },
+    {
+      from: 'HiCache',
+      to: 'Mooncake Store',
+      label: 'batch_set(page keys, host pointers)',
+      detail: 'HiCacheStorage backend 把 page key 和 Host buffer 交给 Store',
+      tone: 'blue',
+    },
+    {
+      from: 'Mooncake Store',
+      to: 'Transfer Engine',
+      label: 'WRITE object slices',
+      detail: 'Store 根据 replica 的 Segment/offset/length 生成传输请求',
+      tone: 'mauve',
+    },
+    {
+      from: 'Mooncake Store',
+      to: 'Host KV pool',
+      label: 'batch_get_into(...)',
+      detail: '远端 object 读回时先落到 Host KV pages',
+      tone: 'blue',
+    },
+    {
+      from: 'Host KV pool',
+      to: 'GPU KV pool',
+      label: 'load_back(best_match_node)',
+      detail: 'HiCache 分配 device slots 后，prefix 才真正回到 L1',
+      tone: 'green',
+    },
+  ]}
+/>
 
 这条路径说明两个事实。
 

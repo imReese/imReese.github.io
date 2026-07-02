@@ -29,6 +29,31 @@ Storage hit:
   L3 backend 存在对应 page，需要 Storage->H prefetch
 ```
 
+<LayerDiagram
+  title="一次 prefix match 之后，命中位置决定后续成本"
+  caption="Storage hit 只是最远的一层命中；真正跳过 prefill 之前，还要先回 Host，再回 GPU。"
+  layers={[
+    {
+      label: 'GPU hit',
+      detail: 'node.value exists',
+      tone: 'teal',
+      items: ['device slots ready', 'attention can reuse directly'],
+    },
+    {
+      label: 'Host hit',
+      detail: 'node.host_value exists',
+      tone: 'blue',
+      items: ['needs load_back', 'H->D copy', 'mem_quota check'],
+    },
+    {
+      label: 'Storage hit',
+      detail: 'page exists in L3 backend',
+      tone: 'mauve',
+      items: ['batch_exists', 'prefetch', 'Storage->Host', 'page alignment'],
+    },
+  ]}
+/>
+
 这三者的成本完全不同。GPU hit 几乎是本地索引复用；Host hit 需要设备传输；Storage hit 还要经过 backend 查询、远端数据搬运、Host buffer 分配和后续 load back。
 
 ## prefetch_from_storage 做什么
@@ -183,6 +208,42 @@ request tokens
   -> load_back 到 GPU
   -> attention kernel 使用 device KV slots
 ```
+
+<SequenceDiagram
+  title="remote KV read 要分成 Storage->Host 和 Host->GPU 两段"
+  caption="如果只验证 batch_get 成功，只能说明 L3 已经填充 Host；还不能说明这段 prefix 已经能被 attention 使用。"
+  actors={['Scheduler', 'HiCache', 'Storage backend', 'Host KV pool', 'GPU KV pool']}
+  steps={[
+    {
+      from: 'Scheduler',
+      to: 'HiCache',
+      label: 'radix prefix match',
+      detail: '先判断 GPU/Host 已有前缀，再决定是否触发 storage prefetch',
+      tone: 'teal',
+    },
+    {
+      from: 'HiCache',
+      to: 'Storage backend',
+      label: 'batch_exists / batch_get',
+      detail: '按 page key 查询连续命中边界，并把 object 结果折回 page 结果',
+      tone: 'blue',
+    },
+    {
+      from: 'Storage backend',
+      to: 'Host KV pool',
+      label: 'prefetch_from_storage',
+      detail: 'Mooncake backend 调 batch_get_into，把数据写入 Host pages',
+      tone: 'mauve',
+    },
+    {
+      from: 'HiCache',
+      to: 'GPU KV pool',
+      label: 'load_back(best_match_node)',
+      detail: '分配 device slots，提交 node.value 后，attention 才能复用',
+      tone: 'green',
+    },
+  ]}
+/>
 
 所以“remote KV cache hit”至少要问三个问题：
 

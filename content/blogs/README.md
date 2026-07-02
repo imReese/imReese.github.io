@@ -16,7 +16,94 @@ title: 'My post title'
 description: 'A short summary for the blog index and metadata.'
 author: 'Reese'
 date: '2026-06-30'
+topics:
+  - cloud-tooling
 ---
+```
+
+## Writing Standard
+
+Every post should leave the reader with something concrete they can explain or use. Do not write soft summaries.
+
+Use one of these shapes:
+
+```text
+Source-level technical note
+  Use for Mooncake, HiCache, SGLang, runtime internals.
+  Required: entry files/functions, key data structures, call path, state changes, failure boundaries, and at least one diagram.
+
+Systems note
+  Use for Paxos/Raft, LSM, WAL, benchmark, profiling.
+  Required: problem setup, concrete example, design tradeoff, boundary, and what to check when reading an implementation.
+
+Tool guide
+  Use for Git, Docker, kubectl, pyenv, rg/sed/awk/jq/yq.
+  Required: what the tool does, when to use it, command groups by scenario, common mistakes, and practical recovery/debugging commands.
+```
+
+Avoid generic section endings such as `Summary`, `Common questions`, or `Checklist` unless the title names the actual technical boundary. Prefer section titles that say what the reader is about to learn:
+
+```text
+Good:
+  Store metadata and Transfer Engine status are different
+  Read path: Mooncake fills Host, HiCache loads back to GPU
+  Git rescue paths
+
+Weak:
+  Summary
+  Common questions
+  Things to remember
+```
+
+## Diagram Components
+
+Use React + Tailwind MDX components for important flows instead of plain Mermaid blocks.
+
+Available components:
+
+```mdx
+<LayerDiagram
+  title="KV cache tiers"
+  layers={[
+    { label: 'GPU KV pool', detail: 'attention uses these slots', tone: 'teal' },
+    { label: 'Host KV pool', detail: 'HiCache backup/load-back buffer', tone: 'blue' },
+  ]}
+/>
+
+<SequenceDiagram
+  title="Remote KV read path"
+  actors={['SGLang', 'HiCache', 'Mooncake Store', 'Transfer Engine']}
+  steps={[
+    { from: 'SGLang', to: 'HiCache', label: 'prefix match' },
+    { from: 'HiCache', to: 'Mooncake Store', label: 'batch_exists(page keys)' },
+  ]}
+/>
+
+<StateDiagram
+  title="Replica visibility"
+  states={[
+    { label: 'PROCESSING', detail: 'PutStart reserved metadata', next: 'PutEnd' },
+    { label: 'COMPLETE', detail: 'readable replica' },
+  ]}
+/>
+
+<MappingDiagram
+  title="Page key expansion"
+  source={{ label: 'logical page key', detail: 'rolling hash from token page' }}
+  groups={[
+    { label: 'MHA', items: ['page_rank_k', 'page_rank_v'] },
+    { label: 'MLA', items: ['page_rank_k'] },
+  ]}
+/>
+```
+
+Use diagrams when the article contains:
+
+```text
+multiple layers
+metadata state transitions
+request/data flow across components
+one logical object expanding into multiple physical objects
 ```
 
 Mooncake / HiCache series reading order:

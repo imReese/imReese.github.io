@@ -39,6 +39,31 @@ H->Storage backup:
   Host KV pool -> Storage backend
 ```
 
+<LayerDiagram
+  title="HiCache 写路径不是一次 set，而是两次降级"
+  caption="第一段保护 GPU KV 被驱逐时不丢；第二段让 Host KV 也可以释放，并在未来从 L3 拉回来。"
+  layers={[
+    {
+      label: 'L1: GPU KV pool',
+      detail: 'attention kernel 直接使用的 device slots',
+      tone: 'teal',
+      items: ['node.value', 'device_indices', 'lock_ref'],
+    },
+    {
+      label: 'L2: Host KV pool',
+      detail: 'write_backup 的目标，也是 storage backend 的读写 buffer',
+      tone: 'blue',
+      items: ['node.host_value', 'host_indices', 'host_ref_counter'],
+    },
+    {
+      label: 'L3: Storage backend',
+      detail: 'Mooncake backend 按 page key 写 object',
+      tone: 'mauve',
+      items: ['node.hash_value', 'batch_set_v1/v2', 'object keys'],
+    },
+  ]}
+/>
+
 第一段让 GPU KV 可以被驱逐但不丢失。第二段让 Host KV 也可以释放，后续还可以从远端 storage prefetch 回来。
 
 ## D->H：write_backup
@@ -66,6 +91,42 @@ write_backup(node)
   -> commit_hicache_transfer(...)
   -> 标记 node 已经有 Host 备份
 ```
+
+<SequenceDiagram
+  title="write_backup 把一个 radix node 从 GPU 降级到 Host"
+  caption="这段流程只完成 D->H，不代表数据已经进入 Mooncake Store。"
+  actors={['Radix node', 'HiCache', 'Cache controller', 'Host KV pool']}
+  steps={[
+    {
+      from: 'Radix node',
+      to: 'HiCache',
+      label: 'read node.value',
+      detail: '取出这段 prefix 对应的 GPU KV indices',
+      tone: 'teal',
+    },
+    {
+      from: 'HiCache',
+      to: 'Cache controller',
+      label: 'write(PoolTransfer)',
+      detail: '为 KV 和 side pools 组织 D->H transfer descriptor',
+      tone: 'blue',
+    },
+    {
+      from: 'Cache controller',
+      to: 'Host KV pool',
+      label: 'allocate host pages and copy',
+      detail: 'Host 空间不足时先尝试 evict_host',
+      tone: 'mauve',
+    },
+    {
+      from: 'HiCache',
+      to: 'Radix node',
+      label: 'commit_hicache_transfer',
+      detail: '写回 host_value，并标记 node 有 Host 备份',
+      tone: 'green',
+    },
+  ]}
+/>
 
 这里的 `cache_controller.write` 才是真正执行 D->H 拷贝的地方。`write_backup` 自己更多是在组织 transfer descriptor、分配 Host 空间、提交 node 状态。
 
@@ -199,6 +260,35 @@ mem_pool_host.get_page_buffer_meta(host_indices)
 batch_put_from(...)
 batch_put_from_multi_buffers(...)
 ```
+
+<SequenceDiagram
+  title="write_backup_storage 把 Host page 写入 Mooncake Store"
+  caption="这段流程的输入是 Host pointer，不是 Python bytes，也不是 GPU tensor。"
+  actors={['HiCache', 'Host KV pool', 'Mooncake backend', 'Mooncake Store']}
+  steps={[
+    {
+      from: 'HiCache',
+      to: 'Mooncake backend',
+      label: 'batch_set_v1/v2(keys, host_indices)',
+      detail: 'keys 来自 node.hash_value，host_indices 来自 node.host_value',
+      tone: 'teal',
+    },
+    {
+      from: 'Mooncake backend',
+      to: 'Host KV pool',
+      label: 'get_page_buffer_meta',
+      detail: '拿到每页 KV 的 pointer 和 size',
+      tone: 'blue',
+    },
+    {
+      from: 'Mooncake backend',
+      to: 'Mooncake Store',
+      label: 'batch_put_from(_multi_buffers)',
+      detail: 'Store 把 object/slice/replica 状态和 TE WRITE 接起来',
+      tone: 'mauve',
+    },
+  ]}
+/>
 
 所以写到 Mooncake 的不是 Python bytes，也不是 GPU tensor，而是 Host KV page 的 pointer 列表。
 

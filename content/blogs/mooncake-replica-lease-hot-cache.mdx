@@ -31,6 +31,36 @@ INITIALIZED
        -> REMOVED / FAILED
 ```
 
+<StateDiagram
+  title="replica 状态决定读路径能不能使用这份数据"
+  caption="Transfer Engine 传输成功只是数据面结果；Store 读路径只应该相信已经提交成 COMPLETE 的 replica。"
+  states={[
+    {
+      label: 'INITIALIZED',
+      detail: 'master 分配 metadata 位置，还没有数据面写入',
+      next: 'PutStart',
+      tone: 'surface',
+    },
+    {
+      label: 'PROCESSING',
+      detail: 'client 正在写 bytes，Get 不能读取',
+      next: 'PutEnd',
+      tone: 'amber',
+    },
+    {
+      label: 'COMPLETE',
+      detail: 'metadata 提交完成，可以进入 GetReplicaList',
+      next: 'evict/remove',
+      tone: 'green',
+    },
+    {
+      label: 'REMOVED / FAILED',
+      detail: '不再参与全局可读事实',
+      tone: 'rose',
+    },
+  ]}
+/>
+
 写入时，master 先为 object 分配 replica。此时 replica 只是有位置，还没有完成数据写入。client 完成数据面传输后，PutEnd 才把 replica 提交为 `COMPLETE`。
 
 读路径只应该使用 `COMPLETE` replica。这条规则看起来简单，但它是 Store 读正确性的核心。

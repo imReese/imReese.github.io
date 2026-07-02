@@ -4,6 +4,12 @@ import Link from 'next/link'
 import { type AnchorHTMLAttributes } from 'react'
 import clsx from 'clsx'
 import { CodeBlock } from './CodeBlock'
+import {
+  LayerDiagram,
+  MappingDiagram,
+  SequenceDiagram,
+  StateDiagram,
+} from './TechDiagram'
 
 const linkClassName =
   'font-semibold text-primary underline decoration-primary/30 underline-offset-4 transition hover:decoration-primary'
@@ -35,6 +41,10 @@ const CustomLink = ({
 }
 
 export const mdxComponents: MDXComponents = {
+  LayerDiagram,
+  MappingDiagram,
+  SequenceDiagram,
+  StateDiagram,
   Image: ({ alt = '', className, ...props }: ImageProps) => (
     <Image
       {...props}
