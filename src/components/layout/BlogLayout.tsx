@@ -9,6 +9,14 @@ import { Prose } from '@/components/shared/Prose'
 import { type BlogType } from '@/lib/blogs'
 import { formatDate } from '@/lib/formatDate'
 
+const categoryLabels: Record<string, string> = {
+  'engineering-deep-dive': 'Engineering Deep Dive',
+  'debugging-validation': 'Debugging & Validation',
+  'engineering-notes': 'Engineering Notes',
+  runbooks: 'Runbooks',
+  'reading-notes': 'Reading Notes',
+}
+
 function ArrowLeftIcon(props: React.ComponentPropsWithoutRef<'svg'>) {
   return (
     <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" {...props}>
@@ -31,6 +39,11 @@ export function BlogLayout({
 }) {
   let router = useRouter()
   let { previousPathname } = useContext(AppContext)
+  const chips = [
+    blog.category ? (categoryLabels[blog.category] ?? blog.category) : null,
+    blog.series,
+    ...(blog.topics ?? []).slice(0, 4),
+  ].filter((chip): chip is string => Boolean(chip))
 
   return (
     <Container className="mt-16 lg:mt-32">
@@ -61,6 +74,18 @@ export function BlogLayout({
             <h1 className="mt-6 break-words text-4xl font-bold tracking-tight text-zinc-800 sm:text-5xl dark:text-zinc-100">
               {blog.title}
             </h1>
+            {chips.length > 0 ? (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {chips.map((chip) => (
+                  <span
+                    key={chip}
+                    className="rounded-md bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                  >
+                    {chip}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </header>
           <Prose className="mt-10 max-w-none text-[1.0625rem] leading-8" data-mdx-content>
             {children}

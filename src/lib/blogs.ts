@@ -11,6 +11,9 @@ export type BlogType = {
   date: string
   slug: string
   topics?: string[]
+  category?: string
+  series?: string
+  featured?: boolean
 }
 
 async function importBlog(

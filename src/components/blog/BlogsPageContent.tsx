@@ -12,6 +12,43 @@ import { type BlogType } from '@/lib/blogs'
 import { formatDate } from '@/lib/formatDate'
 import { BookOpenText, CalendarDays, Tags } from 'lucide-react'
 
+const categoryLabels: Record<string, string> = {
+  'engineering-deep-dive': 'Engineering Deep Dive',
+  'debugging-validation': 'Debugging & Validation',
+  'engineering-notes': 'Engineering Notes',
+  runbooks: 'Runbooks',
+  'reading-notes': 'Reading Notes',
+}
+
+function getCategoryLabel(category?: string) {
+  return category ? (categoryLabels[category] ?? category) : 'Engineering Notes'
+}
+
+function isSecondaryNote(blog: BlogType) {
+  return blog.category === 'runbooks' || blog.category === 'reading-notes'
+}
+
+function BlogMeta({ blog }: { blog: BlogType }) {
+  const chips = [
+    getCategoryLabel(blog.category),
+    blog.series,
+    ...(blog.topics ?? []).slice(0, 2),
+  ].filter((chip): chip is string => Boolean(chip))
+
+  return (
+    <div className="relative z-10 mt-4 flex flex-wrap gap-2">
+      {chips.map((chip) => (
+        <span
+          key={chip}
+          className="rounded-md bg-secondary px-2 py-1 text-xs font-medium text-muted-foreground"
+        >
+          {chip}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 function Blog({ blog, readBlog }: { blog: BlogType; readBlog: string }) {
   return (
     <article className="md:grid md:grid-cols-4 md:items-baseline">
@@ -26,6 +63,7 @@ function Blog({ blog, readBlog }: { blog: BlogType; readBlog: string }) {
           {formatDate(blog.date)}
         </Card.Eyebrow>
         <Card.Description>{blog.description}</Card.Description>
+        <BlogMeta blog={blog} />
         <Card.Cta>{readBlog}</Card.Cta>
       </Card>
       <Card.Eyebrow
@@ -36,6 +74,49 @@ function Blog({ blog, readBlog }: { blog: BlogType; readBlog: string }) {
         {formatDate(blog.date)}
       </Card.Eyebrow>
     </article>
+  )
+}
+
+function FeaturedBlog({ blog, readBlog }: { blog: BlogType; readBlog: string }) {
+  return (
+    <Card
+      as="article"
+      className="rounded-lg border border-border/70 bg-card/70 p-5 shadow-sm"
+    >
+      <Card.Eyebrow as="time" dateTime={blog.date}>
+        {formatDate(blog.date)}
+      </Card.Eyebrow>
+      <Card.Title href={`/blogs/${blog.slug}`}>{blog.title}</Card.Title>
+      <Card.Description>{blog.description}</Card.Description>
+      <BlogMeta blog={blog} />
+      <Card.Cta>{readBlog}</Card.Cta>
+    </Card>
+  )
+}
+
+function BlogSection({
+  title,
+  intro,
+  children,
+}: {
+  title: string
+  intro?: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="mt-16 min-w-0 first:mt-0">
+      <div className="max-w-3xl">
+        <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+          {title}
+        </h2>
+        {intro ? (
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            {intro}
+          </p>
+        ) : null}
+      </div>
+      <div className="mt-8">{children}</div>
+    </section>
   )
 }
 
@@ -244,6 +325,22 @@ function BlogsPageContentView({
       }),
     [blogs, selectedTopic, selectedYear],
   )
+  const hasActiveFilter = Boolean(selectedYear || selectedTopic)
+  const featuredBlogs = useMemo(
+    () => blogs.filter((blog) => blog.featured).slice(0, 6),
+    [blogs],
+  )
+  const recentEngineeringBlogs = useMemo(
+    () =>
+      blogs
+        .filter((blog) => !blog.featured && !isSecondaryNote(blog))
+        .slice(0, 8),
+    [blogs],
+  )
+  const secondaryBlogs = useMemo(
+    () => blogs.filter((blog) => isSecondaryNote(blog)).slice(0, 8),
+    [blogs],
+  )
 
   return (
     <Container className="mt-16 sm:mt-32">
@@ -258,22 +355,82 @@ function BlogsPageContentView({
             </p>
           </header>
 
-          <div className="mt-16 min-w-0 sm:mt-20 md:border-l md:border-zinc-100 md:pl-6 md:dark:border-zinc-700/40">
-            <div className="flex max-w-4xl flex-col space-y-16">
-              {filteredBlogs.length > 0 ? (
-                filteredBlogs.map((blog) => (
-                  <Blog
-                    key={blog.slug}
-                    blog={blog}
-                    readBlog={blogPage.readBlog}
-                  />
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {blogPage.readingMap.emptyFilter}
-                </p>
-              )}
-            </div>
+          <div className="mt-16 min-w-0 sm:mt-20">
+            {!hasActiveFilter ? (
+              <>
+                <BlogSection
+                  title={blogPage.sections.featuredTitle}
+                  intro={blogPage.sections.featuredIntro}
+                >
+                  <div className="grid gap-6 md:grid-cols-2">
+                    {featuredBlogs.map((blog) => (
+                      <FeaturedBlog
+                        key={blog.slug}
+                        blog={blog}
+                        readBlog={blogPage.readBlog}
+                      />
+                    ))}
+                  </div>
+                </BlogSection>
+
+                <BlogSection
+                  title={blogPage.sections.recentTitle}
+                  intro={blogPage.sections.recentIntro}
+                >
+                  <div className="md:border-l md:border-zinc-100 md:pl-6 md:dark:border-zinc-700/40">
+                    <div className="flex max-w-4xl flex-col space-y-12">
+                      {recentEngineeringBlogs.map((blog) => (
+                        <Blog
+                          key={blog.slug}
+                          blog={blog}
+                          readBlog={blogPage.readBlog}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </BlogSection>
+
+                <BlogSection
+                  title={blogPage.sections.notesTitle}
+                  intro={blogPage.sections.notesIntro}
+                >
+                  <div className="md:border-l md:border-zinc-100 md:pl-6 md:dark:border-zinc-700/40">
+                    <div className="flex max-w-4xl flex-col space-y-12">
+                      {secondaryBlogs.map((blog) => (
+                        <Blog
+                          key={blog.slug}
+                          blog={blog}
+                          readBlog={blogPage.readBlog}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </BlogSection>
+              </>
+            ) : null}
+
+            <BlogSection
+              title={blogPage.sections.archiveTitle}
+              intro={blogPage.sections.archiveIntro}
+            >
+              <div className="md:border-l md:border-zinc-100 md:pl-6 md:dark:border-zinc-700/40">
+                <div className="flex max-w-4xl flex-col space-y-12">
+                  {filteredBlogs.length > 0 ? (
+                    filteredBlogs.map((blog) => (
+                      <Blog
+                        key={blog.slug}
+                        blog={blog}
+                        readBlog={blogPage.readBlog}
+                      />
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {blogPage.readingMap.emptyFilter}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </BlogSection>
           </div>
         </div>
         <BlogReadingMap

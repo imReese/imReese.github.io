@@ -8,11 +8,41 @@ topics:
   - kv-cache
   - hicache
   - sglang
+category: 'engineering-deep-dive'
+series: 'SGLang Runtime Notes'
+featured: true
 ---
 
 HiCache 读路径回答的是：**请求来了以后，SGLang 怎么判断一段 prefix 能不能复用，以及这段 KV 要不要从 Host 或 Storage 拉回来。**
 
 这条链路不能简化成“storage 有 key 就命中”。真正参与推理的是 GPU KV slots，Storage 命中只说明数据可能可以被搬回 Host，再进一步 load back 到 GPU。
+
+读完这篇，应该能把一次 remote hit 拆成三个问题：L3 有没有 page、Host 是否被填充、GPU 是否真正 commit。普通源码笔记容易停在 `batch_get` 返回成功；这里更关心 scheduler 为什么不能为了远端 cache 无限等待。
+
+## Source Context
+
+本文基于 SGLang `v0.5.14` 的 HiCache 读路径阅读，主要入口：
+
+```text
+python/sglang/srt/mem_cache/unified_radix_cache.py
+python/sglang/srt/mem_cache/hicache_storage.py
+python/sglang/srt/mem_cache/storage/mooncake_store/mooncake_store.py
+```
+
+关键调用链：
+
+```text
+prefix match
+  -> prefetch_from_storage(...)
+  -> HiCacheStorage.batch_exists / batch_exists_v2
+  -> Host page allocation
+  -> HiCacheStorage.batch_get_v1/v2
+  -> Storage backend fills Host KV pages
+  -> load_back(...)
+  -> GPU KV slots become reusable
+```
+
+本文只分析 read path 的状态和边界，不覆盖 write-back 策略、attention kernel 执行，也不提供远端命中收益的 benchmark。
 
 ## 读路径的三种命中
 
@@ -253,10 +283,16 @@ request tokens
 
 只有第三个问题为真，推理计算才能真正跳过这段 prefill。
 
-## 读路径里不能混淆的点
+## Takeaway：Storage hit 只是候选命中
 
-- 为什么 storage prefetch 需要 page alignment？
-- `batch_exists_v2` 为什么要取多个 pool 的共同命中边界？
-- `load_back_threshold` 在防什么？
-- Storage->Host 成功后，为什么不能直接认为 attention 可以复用？
-- Mooncake backend 为什么需要把 object 级结果折回 page 级结果？
+读 HiCache 读路径时，最重要的不是问“Storage backend 有没有这个 key”，而是问这段 prefix 是否已经穿过完整复用链路：
+
+```text
+page exists in Storage
+  -> bytes arrive in Host pool
+  -> Host pages map back to the expected logical page
+  -> load_back passes threshold / quota / lock checks
+  -> GPU slots are committed
+```
+
+这也是 `batch_exists_v2`、`load_back_threshold` 和 page alignment 都不能跳过的原因。它们不是接口细节，而是在保护 scheduler：remote cache 可以提升吞吐，但不能把请求拖进一个不可控的等待路径。

@@ -10,15 +10,35 @@ topics:
   - hicache
   - mooncake
   - transfer-engine
+category: 'engineering-deep-dive'
+series: 'Mooncake / HiCache Internals'
+featured: true
 ---
 
-SGLang HiCache 和 Mooncake Store 分开看时，最容易断在中间。
+SGLang 接 Mooncake 的难点，不是找到一个叫 `MooncakeStore` 的 backend，而是证明一段 prefix KV Cache 真的从 SGLang runtime 走到了 Mooncake-backed Store path，又能按 HiCache 的语义走回来。
 
-SGLang 侧会说：HiCache 把 GPU KV Cache 扩成 L1/L2/L3，L3 可以接 `mooncake` storage backend。Mooncake 侧会说：Store 提供 object/slice/replica/metadata，Client 通过 Transfer Engine 搬数据。
+API 层看起来接上了，并不等于 runtime path 已经成立。SGLang 侧会说：HiCache 把 GPU KV Cache 扩成 L1/L2/L3，L3 可以接 `mooncake` storage backend。Mooncake 侧会说：Store 提供 object/slice/replica/metadata，Client 通过 Transfer Engine 搬数据。但这两句话中间还隔着 page key、Host pool、object expansion、zero-copy get/put 和 page-level result。
 
 真正关键的问题是：**SGLang 的一段 prefix KV Cache，什么时候会变成 Mooncake Store 里的 object？它又是怎么从 Mooncake Store 回到 SGLang 的 Host/GPU pool？**
 
-本文固定到 SGLang `v0.5.14`。源码入口：
+这篇文章不是介绍 Mooncake backend 支持哪些功能，而是沿着 page key、Host buffer pointer 和 Store object 三个身份一路追踪边界。读完以后，应该能判断一次 remote KV 是否真的跨过了 SGLang/Mooncake 的集成边界，而不是只看到配置里写了 `mooncake`。
+
+## Article Contract / Source Context
+
+本文固定到 SGLang `v0.5.14`。Mooncake 侧只引用下列源码路径和接口语义；当前博客仓库没有记录对应 upstream commit hash，所以这里不编造 commit。
+
+本文追踪的具体工程问题：
+
+```text
+SGLang runtime cache operation
+  -> 如何进入 HiCache L3 storage interface
+  -> 如何选择 MooncakeStore backend
+  -> 如何把 page key + Host KV pointer 翻译成 Store object
+  -> 如何从 Store object 回到 Host KV page
+  -> 为什么这还不等于 GPU KV 已经可复用
+```
+
+SGLang 入口：
 
 ```text
 python/sglang/srt/mem_cache/hicache_storage.py
@@ -26,6 +46,25 @@ python/sglang/srt/mem_cache/unified_radix_cache.py
 python/sglang/srt/mem_cache/storage/mooncake_store/mooncake_store.py
 python/sglang/srt/mem_cache/storage/backend_factory.py
 ```
+
+关键调用链：
+
+```text
+SGLang request / cache lifecycle
+  -> UnifiedRadixCache / HiCache controller
+  -> write_backup or prefetch_from_storage
+  -> HiCacheStorage.batch_get_v1/v2 or batch_set_v1/v2
+  -> MooncakeStore.batch_get / batch_set
+  -> logical page key expansion
+  -> Host KV page buffer pointer
+  -> Mooncake Store batch_get_into / batch_put_from
+  -> Store metadata / Transfer Engine data movement
+  -> page-level result returned to HiCache
+```
+
+本文覆盖 SGLang HiCache 到 Mooncake Store backend 的对象和 buffer 边界；不覆盖 attention kernel、完整 scheduler 策略、PD disaggregation 的所有 Transfer Engine 路径，也不提供 benchmark 结论。
+
+本文能证明的范围也有限：它能说明源码上哪些接口把 SGLang 的 page/pool 语义接到 Mooncake Store object 语义；它不能单独证明某个部署下 remote KV 一定有收益，也不能证明所有 hybrid cache 组合都被完整验证过。
 
 要跟住的主线是：
 
@@ -98,6 +137,8 @@ SGLang HiCache
 
 `--hicache-storage-backend mooncake` 只是告诉 `StorageBackendFactory`：这个 backend 用 `MooncakeStore` 类来实现这些接口。
 
+因此这一步的证据不是“配置里写了 mooncake”，而是 runtime 后续确实调用到了 `HiCacheStorage.batch_*`，并且 backend 实例把 page keys 和 Host indices 交给 MooncakeStore。没有这一步，Mooncake Store 的能力只是可用组件，不是当前请求实际走过的 cache path。
+
 ## 初始化时，Mooncake Store 接住的是 Host pool
 
 HiCache 的 L3 backend 不直接读 GPU KV。它读写的是 Host KV pool。
@@ -121,6 +162,8 @@ MooncakeStore.register_mem_pool_host
 
 这也是为什么 Mooncake backend 的关键不是普通 `get(key) -> tensor`，而是 zero-copy batch 接口。
 
+从可观察副作用看，这一步应该让后续 get/put 可以围绕 Host KV page pointer 工作。如果 Host buffer 没注册成功，后面即使 object key 和 metadata 都正确，zero-copy read/write 也没有稳定的目标地址。
+
 ## 写入路径：GPU 先回 Host，再写 Mooncake
 
 SGLang 的 KV Cache 先在 GPU 上。要写到 Mooncake Store，第一步不是直接从 GPU 进 Store，而是先进入 HiCache 的 L2 Host pool。
@@ -142,6 +185,8 @@ radix node on GPU
 Host 写入确认后，如果启用了 storage backend，`write_backup_storage` 会把这段 node 对应的 `host_value`、`hash_value`、`prefix_keys` 交给 `cache_controller.write_storage`。真正进入 Mooncake backend 时，走的是 `batch_set_v1` 或 `batch_set_v2`。
 
 这里要注意一个边界：Mooncake Store 并不知道 radix tree node 是什么，也不知道这个 prefix 在 scheduler 里怎么命中。它看到的是一批 keys 和 host buffer pointers。
+
+所以 “Store put 发生了” 只能证明 Host page 被翻译成一组 Store object 写入动作；它还不能证明这段 prefix 将来一定能被 scheduler 复用。复用还依赖 page key 是否稳定、object 组是否完整、读回时是否能折回 page 级成功，以及 Host->GPU load back 是否提交。
 
 ## page key 怎么变成 Mooncake object key
 
@@ -240,6 +285,8 @@ if p1_v missing:
 
 这才符合 prefix cache 的语义：中间断了，后面的 page 即使存在，也不能当作连续 prefix 直接使用。
 
+这里的核心判断有一个很朴素的证据：HiCache 的上层语义需要的是连续 prefix，不是无序对象集合。Mooncake Store 可以告诉 backend 哪些 object 存在，但 backend 必须把 object-level result 折回 page-level prefix length，否则 scheduler 会拿到一个不符合 prefix cache 语义的结果。
+
 ## 读取路径：Mooncake 先进 Host，再由 HiCache load back
 
 从 Mooncake Store 读回来时，也不是直接进 GPU。
@@ -336,6 +383,32 @@ Mooncake backend 会尝试从 parallel state 里拿已经初始化好的 `Moonca
 
 它们名字都叫 Mooncake，但不一定是同一条数据路径。共享 TE 是优化，不是语义前提。
 
+## Failure Modes / Debugging Heuristics
+
+调这条链路时，不要从“Mooncake 是否开启”直接跳到“remote KV 是否有效”。更稳的顺序是按语义边界拆：
+
+```text
+Symptom: 配置看起来启用了 Mooncake，但没有远端命中
+  -> 先查 StorageBackendFactory 是否真的选到 MooncakeStore
+  -> 再查 HiCache 是否产生 page keys 和 Host indices
+
+Symptom: batch_set 发生了，但后续 batch_exists 很短
+  -> 查 logical page key 是否稳定
+  -> 查 MHA/MLA/split heads 展开的 object 是否完整
+  -> 查 extra tag / rank suffix 是否让读写 key 不一致
+
+Symptom: batch_get_into 返回成功，但推理仍像重新 prefill
+  -> 查数据是否只回到了 Host pool
+  -> 查 HiCache load_back 是否分配并提交 GPU slots
+  -> 查 page-level result 是否被 scheduler 使用
+
+Symptom: shared Transfer Engine 没被复用
+  -> 先确认这是不是语义问题
+  -> shared TE 条件不满足时，Store client 独立 setup 可能仍然是正确路径
+```
+
+这类系统最容易混淆三种成功：backend 被创建、bytes 被搬完、prefix 被 runtime 复用。它们发生在不同层，不能互相替代。
+
 ## 这条链路的完整图
 
 把写入和读取放在一起，可以压成下面这张图：
@@ -407,6 +480,18 @@ Mooncake Store objects
 
 这里 SGLang 负责 prefix tree、page hash、Host/GPU pool、scheduler 等 runtime 状态；Mooncake Store 负责 object 存在性、zero-copy get/put、master metadata 和底层 Transfer Engine 数据搬运。
 
+## What this proves — and what it does not
+
+这条链路能证明的是：SGLang HiCache 和 Mooncake Store 的集成边界不是一个普通 library call，而是一组 runtime cache state 到 Store object state 的翻译。
+
+它不证明三件事：
+
+- 不证明某个 workload 下 remote KV 一定降低延迟；这需要固定 prompt、并发、page size、backend protocol 和设备拓扑。
+- 不证明 `batch_get_into` 成功后 attention 已经复用；数据还需要从 Host load back 到 GPU，并被 scheduler 接受。
+- 不证明 shared TE 是必要条件；它只是满足特定配置时的复用优化。
+
+所以公开讨论这条路径时，最可信的说法不是“Mooncake 处理完整 KV path”，而是：在这条源码路径中，SGLang 通过 HiCacheStorage 把 page key 和 Host KV pointer 交给 Mooncake Store backend；Mooncake Store 负责 object metadata 和 bytes movement；完整 KV reuse 还要回到 HiCache 的 page-level result 和 GPU load_back。
+
 ## 这条链路的边界
 
 SGLang 到 Mooncake Store 的技术边界，不是“把 KV Cache 放进 Mooncake”这么一句话。
@@ -420,10 +505,16 @@ SGLang 先把 prefix KV Cache page 化、hash 化，并把 GPU KV 降级到 Host
 
 理解这个边界以后，才不会把 Mooncake 当成普通远端 KV，也不会把 HiCache storage backend 误解成一层简单的 Python 字典。它们接起来，是为了让 prefix KV Cache 从单个 SGLang worker 的内存状态，变成可以跨节点查询、搬运和复用的系统资源。
 
-## 串 SGLang 和 Mooncake 时要对齐的点
+## Takeaway：shared TE 是优化，Host page 边界才是语义入口
+
+这条链路最值得带走的结论是：SGLang 和 Mooncake 的语义交接点不是 GPU tensor，也不是一个抽象的“KV Cache object”，而是 **page key + Host KV page pointer + backend result**。
+
+因此调试或设计类似系统时，先不要问“Mooncake 是否开启”，而要问：
 
 - `HiCacheStorage` 为什么是 SGLang 和 Mooncake Store 的分界线？
 - 一个 logical page key 在 MHA 下为什么会展开成 K/V object keys？
 - `batch_get_into` 为什么要接收 Host KV pointer，而不是返回 tensor？
 - `PoolTransfer` 如何让 side pools 参与同一个 prefix 的命中判断？
 - shared Mooncake Transfer Engine 为什么只是优化，不是语义前提？
+
+这些问题能把配置项、源码路径和运行时现象串起来。只要 Host page 没被正确注册、object key 没按 layout 展开、page 级结果没从 object 级结果折回，shared TE 再顺也只能说明 bytes 有机会被搬运，不能说明这段 prefix 已经被 SGLang runtime 复用。

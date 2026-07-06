@@ -8,6 +8,9 @@ topics:
   - kv-cache
   - mooncake
   - distributed-systems
+category: 'engineering-deep-dive'
+series: 'Mooncake / HiCache Internals'
+featured: false
 ---
 
 Mooncake Store 的 Get 也不是“向 master 要 value”。master 只返回可读 replica 和 lease，数据由 client 自己搬。

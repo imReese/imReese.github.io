@@ -8,9 +8,16 @@ topics:
   - kv-cache
   - hicache
   - sglang
+category: 'engineering-deep-dive'
+series: 'SGLang Runtime Notes'
+featured: true
 ---
 
 HiCache 写路径回答的是：**一段已经在 GPU 上算出来的 prefix KV Cache，什么时候、怎么离开 GPU，并且离开以后还保持可复用。**
+
+这个问题的坑在于，写路径里有两次“成功”：一次是 GPU KV 被备份到 Host，一次是 Host page 被写进 Storage backend。只看其中一次成功，就会误判后续请求能不能 remote hit。
+
+## Source Context
 
 在 SGLang `v0.5.14` 中，主线入口在：
 
@@ -26,6 +33,23 @@ python/sglang/srt/mem_cache/hicache_storage.py
 python/sglang/srt/mem_cache/storage/mooncake_store/mooncake_store.py
   MooncakeStore.batch_set_v1/v2
 ```
+
+关键调用链：
+
+```text
+write_backup(node)
+  -> collect GPU device_indices
+  -> build PoolTransfer
+  -> cache_controller.write(...)
+  -> commit_hicache_transfer(...)
+  -> node gains Host backup
+  -> write_backup_storage(...)
+  -> HiCacheStorage.batch_set_v1/v2
+  -> MooncakeStore.batch_set_v1/v2
+  -> Store object write result folds back to page result
+```
+
+本文只分析 HiCache 写路径和 Mooncake backend 的 page/object 边界，不覆盖完整 eviction policy、GPU kernel、分布式部署 benchmark，也不声称某种 write policy 在所有 workload 下更优。
 
 ## 写路径分两段
 
@@ -304,10 +328,16 @@ batch_put_from_multi_buffers(...)
 
 HiCache 通过 lock、ongoing operation 和 page 级结果尽量把失败限制在可回退状态，而不是把 radix tree 直接标成“全都可用”。
 
-## 写入路径里不能跳过的点
+## Takeaway：写入成功必须按 page 级语义提交
 
-- `write_backup` 为什么要求父节点先 backup？
-- D->H backup 成功后，node 一定已经写到 L3 了吗？
-- `node.hash_value` 和原始 token list 是什么关系？
-- 为什么 storage 写入期间 Host page 不能被释放？
-- v2 写路径为什么不能只看 KV pool 是否成功？
+HiCache 写路径最容易误读的地方，是把“某个 buffer 搬完”当成“这个 prefix 以后可复用”。更稳的读法是按 page 级语义看提交条件：
+
+```text
+parent prefix is recoverable
+  -> GPU page has Host backup
+  -> Host page stays locked during Storage write
+  -> every required pool/object reports success
+  -> logical page result is true
+```
+
+所以 `write_backup` 要关心父节点，`write_backup_storage` 要关心 Host page 生命周期，v2 写路径要关心 side pools 的共同结果。对 Mooncake backend 来说，写入的最终目标不是把一批 object 调用完 `put`，而是让一个 logical page 在后续 read path 中可以被完整地判断为 remote hit。

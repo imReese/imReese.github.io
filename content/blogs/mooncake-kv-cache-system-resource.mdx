@@ -8,9 +8,14 @@ topics:
   - kv-cache
   - hicache
   - mooncake
+category: 'engineering-deep-dive'
+series: 'Mooncake / HiCache Internals'
+featured: true
 ---
 
 这组文章的目标不是介绍 Mooncake 有多快，而是回答一个工程问题：**一段 prefix 的 KV Cache，怎样从单个 worker 的 GPU tensor，变成可以降级、查询、搬运、跨节点复用的系统资源。**
+
+这个问题值得单独拆开，是因为 remote KV cache 很容易被一句“接入 Mooncake”讲模糊。真正影响系统行为的不是一个 backend 名字，而是 runtime cache 状态、Store metadata 可见性和 Transfer Engine 数据搬运之间的边界。
 
 要把这条链路讲清楚，需要同时看三层：
 
@@ -52,7 +57,9 @@ Mooncake Transfer Engine
 
 这三层经常被一句“把 KV Cache 放到 Mooncake”糊在一起。实际读源码时必须拆开，否则很容易把 Store 当普通 KV 服务，或者把 Transfer Engine 当完整缓存系统。
 
-## 先定义三层边界
+## Source Context：先定义三层边界
+
+本文是 Mooncake / HiCache 系列的入口篇，基于 SGLang `v0.5.14` 的 HiCache 相关源码路径，以及 Mooncake Store / Transfer Engine 的公开源码路径阅读。当前博客仓库没有固定 Mooncake upstream commit hash，因此下文只写可复核的路径和层次，不写无法验证的 commit。
 
 HiCache 是 SGLang runtime 内部的缓存层级机制。它知道 request、prefix、radix node、token indices、GPU KV pool、Host KV pool，也知道调度器什么时候应该 prefetch 或 load back。它的核心边界在 SGLang 代码里，SGLang `v0.5.14` 主要入口包括：
 
@@ -81,6 +88,8 @@ mooncake-transfer-engine/include/transport/transport.h
 mooncake-transfer-engine/src/transfer_engine_impl.cpp
 mooncake-transfer-engine/src/multi_transport.cpp
 ```
+
+本文覆盖的是 KV Cache 从 runtime 状态进入 Store/Transfer 层的系统边界；不覆盖完整 benchmark、模型 kernel 执行细节，也不把 Mooncake 的长期愿景写成当前已完成能力。
 
 ## 一段 KV Cache 的生命周期
 
@@ -215,10 +224,14 @@ host_ref_counter  Host 侧引用保护
 
 读完以后，应该能画出一段 prefix KV Cache 从 GPU 写到远端、再从远端读回 GPU 的完整路径，并知道每个阶段该去哪个源码文件里验证。
 
-## 串全链路时要回答的点
+## Takeaway：remote KV cache 是三层状态机，不是一个远端字典
+
+理解 Mooncake / HiCache 的核心价值，不是记住某个 API 名字，而是能回答这几个边界问题：
 
 - HiCache 为什么不能直接把 GPU KV tensor 存进 Mooncake Store？
 - Mooncake Store 的 master 为什么不负责搬大块数据？
 - `PROCESSING` replica 和 `COMPLETE` replica 的读语义有什么区别？
 - Transfer Engine 为什么不需要知道 object key？
 - 一次 remote KV 命中为什么仍然需要 load back 到 GPU？
+
+这些问题背后的同一个原则是：**runtime 负责判断 KV 是否值得复用，Store 负责判断 object 是否可读，Transfer Engine 只负责把确定地址上的 bytes 搬完。** 把这三层混在一起，调试时就会把 metadata 命中、transport 成功和 GPU 可复用误认为同一件事。

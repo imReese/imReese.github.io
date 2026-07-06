@@ -8,6 +8,9 @@ topics:
   - kv-cache
   - mooncake
   - distributed-systems
+category: 'engineering-deep-dive'
+series: 'Mooncake / HiCache Internals'
+featured: false
 ---
 
 Mooncake Store 的主路径是 Put/Get，但真正容易出问题的是状态管理。大对象缓存系统最怕的不是“没有数据”，而是“读到一份看起来存在但其实不该读的数据”。

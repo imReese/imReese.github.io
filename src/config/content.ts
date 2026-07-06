@@ -92,6 +92,16 @@ export type BlogPageContent = {
   headline: string
   intro: string
   readBlog: string
+  sections: {
+    featuredTitle: string
+    featuredIntro: string
+    recentTitle: string
+    recentIntro: string
+    notesTitle: string
+    notesIntro: string
+    archiveTitle: string
+    archiveIntro: string
+  }
   readingMap: {
     title: string
     intro: string

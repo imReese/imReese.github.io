@@ -8,9 +8,18 @@ topics:
   - kv-cache
   - mooncake
   - distributed-systems
+category: 'engineering-deep-dive'
+series: 'Mooncake / HiCache Internals'
+featured: true
 ---
 
 Mooncake Store 的 Put 不是一次 RPC。它是一段控制面和数据面协作的状态机。
+
+这篇追踪的问题是：**一个 object 从调用方传进 Store 后，什么时候只是被 master 预留，什么时候才真正对读路径可见。** 这个边界决定了 HiCache 写入 Mooncake 后能不能被后续请求当作完整 remote hit，而不是只看见一次 `PutStart` 成功。
+
+## Source Context
+
+Mooncake upstream commit 未在当前博客仓库中固定，因此本文只记录源码路径和调用链，不写无法验证的 commit hash。
 
 核心链路：
 
@@ -33,6 +42,8 @@ mooncake-store/src/master_service.cpp
 mooncake-store/include/transfer_task.h
 mooncake-store/src/transfer_task.cpp
 ```
+
+本文只分析 Store Put / BatchPut 的 metadata 和 data-plane 边界；不覆盖完整 replica placement 策略、所有 transport backend，也不提供 page size 或 batch size 的 benchmark 结论。
 
 <SequenceDiagram
   title="Mooncake Store Put 的提交点不在 PutStart，而在 PutEnd"
@@ -245,14 +256,14 @@ Put 路径的成本来自三部分：
 - data transfer：local memcpy 或 Transfer Engine
 - memory registration 和 Segment open 的前置成本
 
-因此高性能场景通常依赖：
+因此性能敏感场景通常需要重点检查：
 
 - 批量写入，而不是单 object RPC。
 - Host buffer 预注册，减少写时注册。
 - page 粒度稳定，避免大量小对象。
 - 数据面和控制面分离，master 不经过大块 payload。
 
-如果 page 太小，metadata 和 transfer overhead 会压过复用收益。如果 page 太大，prefix 可复用粒度又会变粗。HiCache 的 page size 和 Mooncake object 粒度要一起看。
+如果 page 太小，metadata 和 transfer overhead 可能压过复用收益。如果 page 太大，prefix 可复用粒度又会变粗。这里是设计取舍，不是本文给出的 benchmark 结论；真实收益仍要结合 workload、page size、batch size、protocol 和设备拓扑验证。
 
 ## 从 HiCache 视角看写入
 
@@ -260,4 +271,15 @@ HiCache 写 Mooncake 时，真正想完成的不是“调用一次 put”，而�
 
 所以写路径要按两个层次理解：Store 负责把每个 object 的 replica 从 `PROCESSING` 推到 `COMPLETE`；HiCache backend 负责把多个 object 级结果折回 page 级结果。只要其中一个 object 写失败，这个 logical page 就不能被后续请求当成完整 remote hit。
 
-这也是 BatchPut 和 group id 的意义：它们不是为了接口好看，而是为了让大量 page object 的控制面开销、状态提交和后续 lease/eviction 更接近 HiCache 的真实使用粒度。
+## Takeaway：PutEnd 才是可读性的提交点
+
+这条写路径最值得带走的结论是：Mooncake Store 的写入正确性不靠一次“大 Put RPC”，而靠控制面和数据面的明确分工。
+
+```text
+PutStart reserves metadata
+  -> TransferSubmitter writes bytes
+  -> PutEnd publishes readable replicas
+  -> HiCache folds object results back to logical page result
+```
+
+这也是 BatchPut 和 group id 的意义：它们不是为了接口好看，而是为了让大量 page object 的控制面开销、状态提交和后续 lease/eviction 更接近 HiCache 的真实使用粒度。对上层 runtime 来说，只要一个 logical page 里的必要 object 没有全部从 `PROCESSING` 走到 `COMPLETE`，这段 prefix 就不应该被当作完整 remote hit。

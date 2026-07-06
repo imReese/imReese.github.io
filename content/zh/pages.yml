@@ -50,9 +50,18 @@ projectsPage:
   githubProfileLink: 查看 GitHub 主页
 
 blogPage:
-  headline: 技术笔记
-  intro: 读代码、看论文、折腾系统时留下的一些记录。
+  headline: 工程深挖与源码笔记
+  intro: 围绕 SGLang、Mooncake、KV Cache 系统和推理 Runtime 调试路径整理的源码级记录。
   readBlog: 阅读全文
+  sections:
+    featuredTitle: Featured Engineering Deep Dives
+    featuredIntro: "最值得优先阅读的长文：Mooncake、HiCache、SGLang 里的源码路径、Runtime 边界、Cache 生命周期和验证方法。"
+    recentTitle: Recent Engineering Posts
+    recentIntro: "最近的工程文章，保留源码上下文、系统取舍或验证价值。"
+    notesTitle: Notes / Runbooks
+    notesIntro: "工具命令、环境配置和经典材料学习笔记会保留在这里，但不会抢占工程深挖文章的位置。"
+    archiveTitle: Full Archive
+    archiveIntro: "所有文章仍按时间和主题保留在完整归档里；降级展示不改变原有 URL。"
   readingMap:
     title: 阅读索引
     intro: 按时间和主题快速扫一遍这些笔记。
