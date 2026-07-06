@@ -90,6 +90,41 @@ H->Storage backup:
 
 第一段让 GPU KV 可以被驱逐但不丢失。第二段让 Host KV 也可以释放，后续还可以从远端 storage prefetch 回来。
 
+<FlowDiagram
+  title="Write path overview: 写入发生到可复用之间还有提交边界"
+  caption="这条路径把 GPU 上已经 materialize 的 KV 逐层降级，但每层成功都只证明该层的事实。"
+  steps={[
+    {
+      label: 'Materialized GPU KV',
+      meta: 'node.value',
+      detail: 'prefix 已经在 GPU KV pool 中，可以被当前 runtime 直接使用。',
+      tone: 'teal',
+      items: ['device_indices', 'radix node', 'lock_ref'],
+    },
+    {
+      label: 'D->H backup',
+      meta: 'write_backup',
+      detail: 'Host pool 分配成功并提交 host_value，GPU 驱逐后才有本地恢复路径。',
+      tone: 'blue',
+      items: ['PoolTransfer', 'Host pages', 'commit_hicache_transfer'],
+    },
+    {
+      label: 'H->Storage write',
+      meta: 'write_backup_storage',
+      detail: 'storage backend 从 Host pointer 读取 page/object，并返回 page 级结果。',
+      tone: 'mauve',
+      items: ['node.hash_value', 'batch_set_v1/v2', 'ongoing_backup'],
+    },
+    {
+      label: 'Read-side reuse',
+      meta: 'future request',
+      detail: '后续还要经过 exists、prefetch、load_back；写入发生不等于复用完成。',
+      tone: 'green',
+      items: ['batch_exists', 'batch_get', 'load_back'],
+    },
+  ]}
+/>
+
 ## D->H：write_backup
 
 `write_backup(node)` 的输入是一个 radix node。这个 node 对应一段 prefix，它的 GPU KV indices 保存在 base component 的 `value` 中。
@@ -327,6 +362,35 @@ batch_put_from_multi_buffers(...)
 - Host lock 或 node split 处理不当，可能造成写入中的 node 状态不一致。
 
 HiCache 通过 lock、ongoing operation 和 page 级结果尽量把失败限制在可回退状态，而不是把 radix tree 直接标成“全都可用”。
+
+## What this proves — and what it does not
+
+<CompareCallout
+  title="Write-path evidence boundary"
+  caption="写路径最需要克制的表达是：一次写入调用发生了，不代表完整 KV reuse contract 已经闭环。"
+  columns={[
+    {
+      title: 'This article establishes',
+      tone: 'green',
+      items: [
+        'HiCache write path 先把 GPU KV 降级到 Host，再把 Host page 写入 storage backend。',
+        'Host lock 和 ongoing backup 是为了保护异步写入期间的 Host buffer 生命周期。',
+        'Mooncake backend 看到的是 Host pointer 和 object/page 结果，不是 GPU tensor。',
+        'v2 写路径需要把 KV 和 side pools 的结果折回共同可用边界。',
+      ],
+    },
+    {
+      title: 'This article does not prove',
+      tone: 'amber',
+      items: [
+        '不证明某个 page 调用 batch_set 后，后续请求一定能 remote hit。',
+        '不证明 Store object 写成功等价于完整 prefix 语义正确。',
+        '不证明 write-through 或 write-back 在所有 workload 下更优。',
+        '不覆盖生产环境中的 replica、lease、transport retry 或 benchmark 结论。',
+      ],
+    },
+  ]}
+/>
 
 ## Takeaway：写入成功必须按 page 级语义提交
 

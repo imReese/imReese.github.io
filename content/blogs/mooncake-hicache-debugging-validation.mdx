@@ -113,6 +113,56 @@ Symptom
 
 本文的判断标准是克制的：某个日志或状态只能证明它所在层的条件成立。只有配置、runtime path、Store metadata、bytes movement、Host->GPU commit 和 scheduler 行为连起来，才能接近“remote KV 真的命中”。
 
+<FlowDiagram
+  eyebrow="debugging flow"
+  title="从现象到分层定位：不要直接跳到 transport"
+  caption="这张图把 remote KV 不生效拆成六个检查层。每一层只能证明自己的边界。"
+  steps={[
+    {
+      label: 'Symptom',
+      meta: 'remote KV does not help',
+      detail: '先描述现象，不要先假设是 Mooncake 或 RDMA 问题。',
+      tone: 'surface',
+      items: ['no hit', 'short hit', 'recompute'],
+    },
+    {
+      label: 'Configuration',
+      meta: '--enable-hicache / backend',
+      detail: '确认配置允许进入 Mooncake-backed L3 path。',
+      tone: 'teal',
+      items: ['storage backend', 'Host layout'],
+    },
+    {
+      label: 'Runtime branch',
+      meta: 'write_backup_storage / prefetch',
+      detail: '确认请求真的产生 page key，并进入 write 或 prefetch path。',
+      tone: 'blue',
+      items: ['page key', 'Host indices'],
+    },
+    {
+      label: 'Store semantics',
+      meta: 'batch_set / batch_exists / batch_get',
+      detail: '检查 object expansion、COMPLETE replica 和连续 prefix 语义。',
+      tone: 'mauve',
+      items: ['K/V object', 'page result'],
+    },
+    {
+      label: 'Data movement',
+      meta: 'registered memory / TE status',
+      detail: '确认 bytes 是否围绕注册过的 Host buffer 读写。',
+      tone: 'amber',
+      items: ['buffer pointer', 'BatchID'],
+    },
+    {
+      label: 'Runtime commit',
+      meta: 'load_back / scheduler',
+      detail: '最后确认 Host page 是否进入 GPU slots 并被 scheduler 使用。',
+      tone: 'green',
+      items: ['GPU slots', 'reused prefix'],
+    },
+  ]}
+/>
+
 ## 先确认参数层
 
 SGLang 侧至少要确认：
@@ -317,6 +367,41 @@ Mooncake Store 层读写成功还依赖 Transfer Engine。
 
 这个顺序的价值在于，它把问题从“Mooncake 不工作”拆成配置、runtime、key、metadata、transport 和 cache semantics 六类。每一类都有不同证据，不能只靠一个成功日志跨层推断。
 
+<SystemBoundaryDiagram
+  title="检查顺序对应的系统层"
+  caption="这张图把纯文字 checklist 变成层级地图：先确认是否进路径，再确认对象语义，最后确认 GPU 可复用。"
+  groups={[
+    {
+      label: 'Config / setup',
+      detail: '决定路径有没有机会被走到',
+      tone: 'teal',
+      items: ['--enable-hicache', 'backend=mooncake', 'Host layout'],
+      signals: ['setup successfully', 'register_buffer'],
+    },
+    {
+      label: 'Runtime path',
+      detail: '决定当前请求是否真的进入远端缓存路径',
+      tone: 'blue',
+      items: ['write_backup_storage', 'prefetch_from_storage', 'page key'],
+      signals: ['batch_set', 'batch_exists'],
+    },
+    {
+      label: 'Store / transfer',
+      detail: '决定 object 是否存在，以及 bytes 是否搬完',
+      tone: 'mauve',
+      items: ['object expansion', 'batch_get_into', 'Transfer Engine'],
+      signals: ['object result', 'completed'],
+    },
+    {
+      label: 'Cache semantics',
+      detail: '决定 Host data 是否真的变成 runtime 可复用 prefix',
+      tone: 'green',
+      items: ['load_back', 'GPU slots', 'scheduler'],
+      signals: ['prefill reduced under fixed test'],
+    },
+  ]}
+/>
+
 ## 常见现象和定位方向
 
 ```text
@@ -367,6 +452,31 @@ Mooncake Store 层读写成功还依赖 Transfer Engine。
   ]}
 />
 
+<ExpandableNotes
+  title="Debugging heuristics"
+  caption="这些经验用于避免把单层成功误判成端到端命中。"
+  notes={[
+    {
+      title: 'Setup success is not a request-level signal',
+      detail: '`MooncakeStore setup successfully` 只能说明 backend 初始化接近成功；它不能说明当前请求产生了 page key 或进入 batch_get / batch_set。',
+      tone: 'teal',
+      items: ['setup', 'not request path'],
+    },
+    {
+      title: 'Store hit is not GPU reuse',
+      detail: '`batch_exists` 或 `batch_get_into` 说明 Store/key/data movement 层有进展；真正复用还要看 Host->GPU load_back 和 scheduler。',
+      tone: 'mauve',
+      items: ['Store->Host', 'Host->GPU'],
+    },
+    {
+      title: 'Transport completed is not cache correctness',
+      detail: 'Transfer Engine completed 只说明 bytes 搬完；object 可读性、page-level result、lease 和 runtime commit 仍然要分别确认。',
+      tone: 'amber',
+      items: ['bytes movement', 'not semantics'],
+    },
+  ]}
+/>
+
 ## 最小验证闭环
 
 做最小实验时，可以按下面顺序看：
@@ -388,12 +498,29 @@ Mooncake Store 层读写成功还依赖 Transfer Engine。
 
 这套验证链能证明的是：一次请求是否按预期经过了 Mooncake-backed HiCache path 的关键边界。它把单层信号拆开，避免把 setup、metadata hit、bytes transfer 和 GPU reuse 混成一个结论。
 
-它不证明：
-
-- 不证明 remote KV 在所有 prompt 分布下都有收益。
-- 不证明 Transfer Engine completed 等价于 cache 语义完整。
-- 不证明 `batch_exists` 命中后一定会省掉 prefill。
-- 不证明本地最小验证能覆盖真实多节点部署里的设备、NUMA、网络和资源竞争。
+<CompareCallout
+  title="验证链能证明什么，不能证明什么"
+  columns={[
+    {
+      title: 'This validation establishes',
+      tone: 'green',
+      items: [
+        '配置、runtime branch、Store metadata、bytes movement 和 load_back 是否逐层成立。',
+        '某个失败现象更可能属于 config、runtime、transport 还是 cache semantics。',
+        '单层成功日志不能跨层证明完整 remote hit。',
+      ],
+    },
+    {
+      title: 'This validation does not prove',
+      tone: 'amber',
+      items: [
+        'remote KV 在所有 prompt 分布下都有收益。',
+        'Transfer Engine completed 等价于 cache 语义完整。',
+        '本地最小验证覆盖真实多节点部署中的设备、NUMA、网络和资源竞争。',
+      ],
+    },
+  ]}
+/>
 
 因此更稳的结论应该是：这些观察点能逐层排除问题，直到你接近 end-to-end reuse；真正的性能收益仍然需要独立的 benchmark 和固定实验条件。
 

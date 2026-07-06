@@ -76,6 +76,49 @@ radix node hash_value
   -> Mooncake Store zero-copy batch API
 ```
 
+<FlowDiagram
+  eyebrow="path overview"
+  title="从 SGLang runtime 到 Mooncake-backed Store path"
+  caption="这张图只表达本文覆盖的源码路径：page key 和 Host pointer 怎么跨过 HiCacheStorage 边界。"
+  steps={[
+    {
+      label: 'Runtime cache lifecycle',
+      meta: 'UnifiedRadixCache / HiCache controller',
+      detail: '请求或 cache 生命周期先在 SGLang runtime 内部形成 page-level cache 操作。',
+      tone: 'teal',
+      items: ['write_backup', 'prefetch_from_storage'],
+    },
+    {
+      label: 'HiCache storage interface',
+      meta: 'HiCacheStorage.batch_*',
+      detail: 'L3 backend 只看到 page keys、Host indices 和可选 PoolTransfer。',
+      tone: 'blue',
+      items: ['batch_set_v1/v2', 'batch_get_v1/v2'],
+    },
+    {
+      label: 'Mooncake backend',
+      meta: 'MooncakeStore.batch_*',
+      detail: 'backend 把 logical page key 展开成 object keys，并收集 Host buffer pointer。',
+      tone: 'mauve',
+      items: ['key expansion', 'buffer meta'],
+    },
+    {
+      label: 'Store / transport boundary',
+      meta: 'batch_put_from / batch_get_into',
+      detail: 'Mooncake Store 处理 object metadata 和 bytes movement；结果再折回 page 级语义。',
+      tone: 'amber',
+      items: ['object result', 'page result'],
+    },
+    {
+      label: 'Observable side effect',
+      meta: 'Host page filled / Store object written',
+      detail: '这一步仍不是 GPU reuse；完整复用还要看 HiCache load back 和 scheduler。',
+      tone: 'green',
+      items: ['Host KV page', 'not GPU-ready yet'],
+    },
+  ]}
+/>
+
 <SequenceDiagram
   title="SGLang 和 Mooncake Store 的真正分界线"
   caption="SGLang 交出 page keys 和 Host buffer；Mooncake Store 接手 object key、metadata 和 zero-copy get/put。"
@@ -138,6 +181,31 @@ SGLang HiCache
 `--hicache-storage-backend mooncake` 只是告诉 `StorageBackendFactory`：这个 backend 用 `MooncakeStore` 类来实现这些接口。
 
 因此这一步的证据不是“配置里写了 mooncake”，而是 runtime 后续确实调用到了 `HiCacheStorage.batch_*`，并且 backend 实例把 page keys 和 Host indices 交给 MooncakeStore。没有这一步，Mooncake Store 的能力只是可用组件，不是当前请求实际走过的 cache path。
+
+<ExpandableNotes
+  title="Key function notes"
+  caption="这些说明不是新的事实来源，只是把正文里分散的函数边界收束到一起。"
+  notes={[
+    {
+      title: 'StorageBackendFactory',
+      detail: '`--hicache-storage-backend mooncake` 的意义是选择 backend 实现；它本身不证明当前请求已经产生 page key 或进入 get/put path。',
+      tone: 'blue',
+      items: ['backend selection', 'not a hit signal'],
+    },
+    {
+      title: 'HiCacheStorage.batch_get_v1/v2 and batch_set_v1/v2',
+      detail: '这是 SGLang runtime 和 L3 backend 的接口边界。SGLang 交出 page keys、Host indices 和 PoolTransfer，而不是直接交出 request 或 GPU tensor。',
+      tone: 'teal',
+      items: ['page keys', 'Host indices', 'PoolTransfer'],
+    },
+    {
+      title: 'MooncakeStore.batch_get / batch_set',
+      detail: 'Mooncake backend 在这里把 logical page key 展开成 Store object key，并把 Host KV page pointer 交给 zero-copy Store API。',
+      tone: 'mauve',
+      items: ['object keys', 'Host pointers', 'page result'],
+    },
+  ]}
+/>
 
 ## 初始化时，Mooncake Store 接住的是 Host pool
 
@@ -480,15 +548,68 @@ Mooncake Store objects
 
 这里 SGLang 负责 prefix tree、page hash、Host/GPU pool、scheduler 等 runtime 状态；Mooncake Store 负责 object 存在性、zero-copy get/put、master metadata 和底层 Transfer Engine 数据搬运。
 
+<SystemBoundaryDiagram
+  title="系统边界：哪一层负责什么，哪一层能观察到什么"
+  caption="这张图用来避免把 runtime 命中、Store metadata、transport completed 和 GPU 可复用混成一个结论。"
+  groups={[
+    {
+      label: 'SGLang runtime',
+      detail: '决定 prefix 是否值得复用',
+      tone: 'teal',
+      items: ['radix node', 'scheduler', 'page hash'],
+      signals: ['prefix match', 'page-level result'],
+    },
+    {
+      label: 'HiCache layer',
+      detail: '管理 GPU / Host / Storage tier',
+      tone: 'blue',
+      items: ['Host KV pool', 'GPU KV pool', 'PoolTransfer'],
+      signals: ['write_backup', 'load_back'],
+    },
+    {
+      label: 'Mooncake Store',
+      detail: '管理 object metadata 和 zero-copy get/put',
+      tone: 'mauve',
+      items: ['object key', 'replica', 'batch_get_into'],
+      signals: ['batch_exists', 'object result'],
+    },
+    {
+      label: 'Transport / resource',
+      detail: '只说明 bytes movement 和内存注册边界',
+      tone: 'amber',
+      items: ['registered buffer', 'Segment', 'Transfer Engine'],
+      signals: ['completed', 'failed', 'timeout'],
+    },
+  ]}
+/>
+
 ## What this proves — and what it does not
 
 这条链路能证明的是：SGLang HiCache 和 Mooncake Store 的集成边界不是一个普通 library call，而是一组 runtime cache state 到 Store object state 的翻译。
 
-它不证明三件事：
-
-- 不证明某个 workload 下 remote KV 一定降低延迟；这需要固定 prompt、并发、page size、backend protocol 和设备拓扑。
-- 不证明 `batch_get_into` 成功后 attention 已经复用；数据还需要从 Host load back 到 GPU，并被 scheduler 接受。
-- 不证明 shared TE 是必要条件；它只是满足特定配置时的复用优化。
+<CompareCallout
+  title="What this path establishes — and what stays out of scope"
+  columns={[
+    {
+      title: 'This article establishes',
+      tone: 'green',
+      items: [
+        'SGLang 通过 HiCacheStorage 把 page key 和 Host pointer 交给 Mooncake backend。',
+        'Mooncake backend 把 logical page 展开成 Store object，并把 object result 折回 page result。',
+        'shared TE 是满足特定条件时的优化路径，不是语义前提。',
+      ],
+    },
+    {
+      title: 'This article does not prove',
+      tone: 'amber',
+      items: [
+        '某个 workload 下 remote KV 一定降低延迟。',
+        '`batch_get_into` 成功后 attention 已经复用。',
+        '所有 hybrid cache 组合都已经被完整验证。',
+      ],
+    },
+  ]}
+/>
 
 所以公开讨论这条路径时，最可信的说法不是“Mooncake 处理完整 KV path”，而是：在这条源码路径中，SGLang 通过 HiCacheStorage 把 page key 和 Host KV pointer 交给 Mooncake Store backend；Mooncake Store 负责 object metadata 和 bytes movement；完整 KV reuse 还要回到 HiCache 的 page-level result 和 GPU load_back。
 

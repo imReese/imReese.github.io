@@ -53,14 +53,24 @@ blogPage:
   headline: 工程深挖与源码笔记
   intro: 围绕 SGLang、Mooncake、KV Cache 系统和推理 Runtime 调试路径整理的源码级记录。
   readBlog: 阅读全文
+  categories:
+    engineering-deep-dive: 工程深挖
+    debugging-validation: 排障与验证
+    engineering-notes: 工程笔记
+    runbooks: 操作手册
+    reading-notes: 阅读笔记
+    fallback: 工程笔记
+  article:
+    backToBlogs: 返回博客列表
+    descriptionLabel: 文章摘要
   sections:
-    featuredTitle: Featured Engineering Deep Dives
+    featuredTitle: 精选工程深挖
     featuredIntro: "最值得优先阅读的长文：Mooncake、HiCache、SGLang 里的源码路径、Runtime 边界、Cache 生命周期和验证方法。"
-    recentTitle: Recent Engineering Posts
+    recentTitle: 最近工程文章
     recentIntro: "最近的工程文章，保留源码上下文、系统取舍或验证价值。"
-    notesTitle: Notes / Runbooks
+    notesTitle: 笔记 / 操作手册
     notesIntro: "工具命令、环境配置和经典材料学习笔记会保留在这里，但不会抢占工程深挖文章的位置。"
-    archiveTitle: Full Archive
+    archiveTitle: 完整归档
     archiveIntro: "所有文章仍按时间和主题保留在完整归档里；降级展示不改变原有 URL。"
   readingMap:
     title: 阅读索引

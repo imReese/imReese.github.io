@@ -92,6 +92,11 @@ export type BlogPageContent = {
   headline: string
   intro: string
   readBlog: string
+  categories: Record<string, string>
+  article: {
+    backToBlogs: string
+    descriptionLabel: string
+  }
   sections: {
     featuredTitle: string
     featuredIntro: string

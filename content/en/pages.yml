@@ -53,6 +53,16 @@ blogPage:
   headline: Engineering deep dives and field notes.
   intro: Source-level notes on SGLang, Mooncake, KV-cache systems, and the debugging paths behind inference runtime work.
   readBlog: Read blog
+  categories:
+    engineering-deep-dive: Engineering Deep Dive
+    debugging-validation: Debugging & Validation
+    engineering-notes: Engineering Notes
+    runbooks: Runbooks
+    reading-notes: Reading Notes
+    fallback: Engineering Notes
+  article:
+    backToBlogs: Back to blogs
+    descriptionLabel: Article summary
   sections:
     featuredTitle: Featured Engineering Deep Dives
     featuredIntro: "The strongest long-form posts: source paths, runtime boundaries, cache lifecycle, and validation work around Mooncake, HiCache, and SGLang."

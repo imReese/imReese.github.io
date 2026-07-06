@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { type ReactNode } from 'react'
+import { type CSSProperties, type ReactNode } from 'react'
 
 type DiagramTone =
   | 'teal'
@@ -34,6 +34,29 @@ type StateItem = DiagramItem & {
 
 type MappingGroup = DiagramItem & {
   items: string[]
+}
+
+type FlowStep = DiagramItem & {
+  meta?: string
+  items?: string[]
+}
+
+type BoundaryGroup = DiagramItem & {
+  items: string[]
+  signals?: string[]
+}
+
+type CompareColumn = {
+  title: string
+  tone?: DiagramTone
+  items: string[]
+}
+
+type ExpandableNote = {
+  title: string
+  detail?: string
+  items?: string[]
+  tone?: DiagramTone
 }
 
 const toneClassNames: Record<
@@ -288,6 +311,263 @@ export function SequenceDiagram({
           )
         })}
       </ol>
+    </DiagramShell>
+  )
+}
+
+export function FlowDiagram({
+  eyebrow = 'flow',
+  title,
+  caption,
+  steps,
+}: {
+  eyebrow?: string
+  title?: string
+  caption?: string
+  steps: FlowStep[]
+}) {
+  return (
+    <DiagramShell eyebrow={eyebrow} title={title} caption={caption}>
+      <ol
+        className="grid gap-3 lg:grid-cols-[repeat(var(--flow-count),minmax(0,1fr))]"
+        style={{ '--flow-count': steps.length } as CSSProperties}
+      >
+        {steps.map((step, index) => {
+          const currentTone = tone(step.tone ?? 'teal')
+
+          return (
+            <li
+              key={`${step.label}-${index}`}
+              className="relative min-w-0"
+            >
+              <div
+                className={clsx(
+                  'h-full rounded-[8px] border p-4',
+                  currentTone.border,
+                  currentTone.bg,
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <span
+                    className={clsx(
+                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-[0.72rem] font-semibold',
+                      'bg-background/70',
+                      currentTone.text,
+                    )}
+                  >
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <p
+                      className={clsx(
+                        'text-sm font-semibold leading-6',
+                        currentTone.text,
+                      )}
+                    >
+                      {step.label}
+                    </p>
+                    {step.meta && (
+                      <p className="mt-1 font-mono text-[0.72rem] leading-5 text-muted-foreground">
+                        {step.meta}
+                      </p>
+                    )}
+                    {step.detail && (
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                        {step.detail}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {step.items && step.items.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {step.items.map((item) => (
+                      <Badge key={item}>{item}</Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {index < steps.length - 1 && (
+                <div className="hidden lg:block">
+                  <span className="absolute left-full top-1/2 h-px w-3 -translate-y-1/2 bg-border" />
+                  <span className={clsx('absolute left-[calc(100%+0.75rem)] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full', currentTone.line)} />
+                </div>
+              )}
+            </li>
+          )
+        })}
+      </ol>
+    </DiagramShell>
+  )
+}
+
+export function SystemBoundaryDiagram({
+  eyebrow = 'system boundary',
+  title,
+  caption,
+  groups,
+}: {
+  eyebrow?: string
+  title?: string
+  caption?: string
+  groups: BoundaryGroup[]
+}) {
+  return (
+    <DiagramShell eyebrow={eyebrow} title={title} caption={caption}>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {groups.map((group, index) => {
+          const currentTone = tone(group.tone ?? 'teal')
+
+          return (
+            <section
+              key={`${group.label}-${index}`}
+              className={clsx(
+                'rounded-[8px] border p-4',
+                currentTone.border,
+                currentTone.bg,
+              )}
+            >
+              <p
+                className={clsx(
+                  'text-sm font-semibold leading-6',
+                  currentTone.text,
+                )}
+              >
+                {group.label}
+              </p>
+              {group.detail && (
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  {group.detail}
+                </p>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {group.items.map((item) => (
+                  <Badge key={item}>{item}</Badge>
+                ))}
+              </div>
+              {group.signals && group.signals.length > 0 && (
+                <div className="mt-4 border-t border-border/60 pt-3">
+                  <p className="mb-2 font-mono text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                    observable
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {group.signals.map((signal) => (
+                      <Badge key={signal}>{signal}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )
+        })}
+      </div>
+    </DiagramShell>
+  )
+}
+
+export function CompareCallout({
+  eyebrow = 'evidence boundary',
+  title,
+  caption,
+  columns,
+}: {
+  eyebrow?: string
+  title?: string
+  caption?: string
+  columns: CompareColumn[]
+}) {
+  return (
+    <DiagramShell eyebrow={eyebrow} title={title} caption={caption}>
+      <div className="grid gap-4 md:grid-cols-2">
+        {columns.map((column, index) => {
+          const currentTone = tone(column.tone ?? (index === 0 ? 'green' : 'amber'))
+
+          return (
+            <section
+              key={`${column.title}-${index}`}
+              className={clsx(
+                'rounded-[8px] border p-4',
+                currentTone.border,
+                currentTone.soft,
+              )}
+            >
+              <p
+                className={clsx(
+                  'text-sm font-semibold leading-6',
+                  currentTone.text,
+                )}
+              >
+                {column.title}
+              </p>
+              <ul className="mt-3 space-y-2">
+                {column.items.map((item) => (
+                  <li key={item} className="flex gap-2 text-sm leading-6 text-muted-foreground">
+                    <span className={clsx('mt-2 h-1.5 w-1.5 shrink-0 rounded-full', currentTone.line)} />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        })}
+      </div>
+    </DiagramShell>
+  )
+}
+
+export function ExpandableNotes({
+  eyebrow = 'source notes',
+  title,
+  caption,
+  notes,
+}: {
+  eyebrow?: string
+  title?: string
+  caption?: string
+  notes: ExpandableNote[]
+}) {
+  return (
+    <DiagramShell eyebrow={eyebrow} title={title} caption={caption}>
+      <div className="space-y-3">
+        {notes.map((note, index) => {
+          const currentTone = tone(note.tone ?? 'surface')
+
+          return (
+            <details
+              key={`${note.title}-${index}`}
+              className={clsx(
+                'group rounded-[8px] border bg-background/55 p-4',
+                currentTone.border,
+              )}
+            >
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                <span
+                  className={clsx(
+                    'text-sm font-semibold leading-6',
+                    currentTone.text,
+                  )}
+                >
+                  {note.title}
+                </span>
+                <span className="font-mono text-xs text-muted-foreground transition group-open:rotate-45">
+                  +
+                </span>
+              </summary>
+              {note.detail && (
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                  {note.detail}
+                </p>
+              )}
+              {note.items && note.items.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {note.items.map((item) => (
+                    <Badge key={item}>{item}</Badge>
+                  ))}
+                </div>
+              )}
+            </details>
+          )
+        })}
+      </div>
     </DiagramShell>
   )
 }

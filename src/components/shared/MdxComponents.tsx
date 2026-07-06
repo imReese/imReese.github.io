@@ -5,10 +5,14 @@ import { type AnchorHTMLAttributes } from 'react'
 import clsx from 'clsx'
 import { CodeBlock } from './CodeBlock'
 import {
+  CompareCallout,
+  ExpandableNotes,
+  FlowDiagram,
   LayerDiagram,
   MappingDiagram,
   SequenceDiagram,
   StateDiagram,
+  SystemBoundaryDiagram,
 } from './TechDiagram'
 
 const linkClassName =
@@ -41,10 +45,14 @@ const CustomLink = ({
 }
 
 export const mdxComponents: MDXComponents = {
+  CompareCallout,
+  ExpandableNotes,
+  FlowDiagram,
   LayerDiagram,
   MappingDiagram,
   SequenceDiagram,
   StateDiagram,
+  SystemBoundaryDiagram,
   Image: ({ alt = '', className, ...props }: ImageProps) => (
     <Image
       {...props}

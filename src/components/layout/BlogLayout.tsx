@@ -6,15 +6,17 @@ import { useRouter } from 'next/navigation'
 import { AppContext } from '@/app/providers'
 import { Container } from '@/components/layout/Container'
 import { Prose } from '@/components/shared/Prose'
+import { useLanguage } from '@/components/shared/LanguageProvider'
+import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
+import { type BlogPageContent } from '@/config/content'
 import { type BlogType } from '@/lib/blogs'
 import { formatDate } from '@/lib/formatDate'
 
-const categoryLabels: Record<string, string> = {
-  'engineering-deep-dive': 'Engineering Deep Dive',
-  'debugging-validation': 'Debugging & Validation',
-  'engineering-notes': 'Engineering Notes',
-  runbooks: 'Runbooks',
-  'reading-notes': 'Reading Notes',
+function getCategoryLabel(
+  category: string | undefined,
+  labels: BlogPageContent['categories'],
+) {
+  return category ? (labels[category] ?? category) : labels.fallback
 }
 
 function ArrowLeftIcon(props: React.ComponentPropsWithoutRef<'svg'>) {
@@ -39,11 +41,19 @@ export function BlogLayout({
 }) {
   let router = useRouter()
   let { previousPathname } = useContext(AppContext)
+  const { locale } = useLanguage()
+  const { blogPage } = useLocalizedContent()
   const chips = [
-    blog.category ? (categoryLabels[blog.category] ?? blog.category) : null,
-    blog.series,
-    ...(blog.topics ?? []).slice(0, 4),
-  ].filter((chip): chip is string => Boolean(chip))
+    {
+      key: `category:${blog.category ?? 'fallback'}`,
+      label: getCategoryLabel(blog.category, blogPage.categories),
+    },
+    blog.series ? { key: `series:${blog.series}`, label: blog.series } : null,
+    ...(blog.topics ?? []).slice(0, 4).map((topic) => ({
+      key: `topic:${topic}`,
+      label: topic,
+    })),
+  ].filter((chip): chip is { key: string; label: string } => Boolean(chip))
 
   return (
     <Container className="mt-16 lg:mt-32">
@@ -55,7 +65,7 @@ export function BlogLayout({
                 <button
                   type="button"
                   onClick={() => router.back()}
-                  aria-label="Go back to blogs"
+                  aria-label={blogPage.article.backToBlogs}
                   className="group flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eff1f5] shadow-md shadow-[#4c4f69]/5 ring-1 ring-[#bcc0cc]/70 transition hover:ring-primary/30 dark:bg-[#313244] dark:ring-[#45475a]/80 dark:hover:ring-[#94e2d5]/30"
                 >
                   <ArrowLeftIcon className="h-4 w-4 stroke-muted-foreground transition group-hover:stroke-primary" />
@@ -66,7 +76,7 @@ export function BlogLayout({
                 className="ml-auto flex shrink-0 items-center text-base text-muted-foreground"
               >
                 <span className="h-4 w-0.5 rounded-full bg-border" />
-                <span className="ml-3">{formatDate(blog.date)}</span>
+                <span className="ml-3">{formatDate(blog.date, locale)}</span>
                 <span className="mx-2">·</span>
                 <span>{blog.author}</span>
               </time>
@@ -74,14 +84,20 @@ export function BlogLayout({
             <h1 className="mt-6 break-words text-4xl font-bold tracking-tight text-zinc-800 sm:text-5xl dark:text-zinc-100">
               {blog.title}
             </h1>
+            <p
+              aria-label={blogPage.article.descriptionLabel}
+              className="mt-5 max-w-3xl text-base leading-7 text-muted-foreground"
+            >
+              {blog.description}
+            </p>
             {chips.length > 0 ? (
               <div className="mt-5 flex flex-wrap gap-2">
                 {chips.map((chip) => (
                   <span
-                    key={chip}
+                    key={chip.key}
                     className="rounded-md bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground"
                   >
-                    {chip}
+                    {chip.label}
                   </span>
                 ))}
               </div>

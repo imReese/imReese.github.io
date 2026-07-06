@@ -7,49 +7,67 @@ import clsx from 'clsx'
 import { Card } from '@/components/shared/Card'
 import { Container } from '@/components/layout/Container'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
+import { useLanguage } from '@/components/shared/LanguageProvider'
 import { type BlogPageContent } from '@/config/content'
 import { type BlogType } from '@/lib/blogs'
 import { formatDate } from '@/lib/formatDate'
 import { BookOpenText, CalendarDays, Tags } from 'lucide-react'
 
-const categoryLabels: Record<string, string> = {
-  'engineering-deep-dive': 'Engineering Deep Dive',
-  'debugging-validation': 'Debugging & Validation',
-  'engineering-notes': 'Engineering Notes',
-  runbooks: 'Runbooks',
-  'reading-notes': 'Reading Notes',
-}
-
-function getCategoryLabel(category?: string) {
-  return category ? (categoryLabels[category] ?? category) : 'Engineering Notes'
+function getCategoryLabel(
+  category: string | undefined,
+  labels: BlogPageContent['categories'],
+) {
+  return category ? (labels[category] ?? category) : labels.fallback
 }
 
 function isSecondaryNote(blog: BlogType) {
   return blog.category === 'runbooks' || blog.category === 'reading-notes'
 }
 
-function BlogMeta({ blog }: { blog: BlogType }) {
+function BlogMeta({
+  blog,
+  categoryLabels,
+}: {
+  blog: BlogType
+  categoryLabels: BlogPageContent['categories']
+}) {
   const chips = [
-    getCategoryLabel(blog.category),
-    blog.series,
-    ...(blog.topics ?? []).slice(0, 2),
-  ].filter((chip): chip is string => Boolean(chip))
+    {
+      key: `category:${blog.category ?? 'fallback'}`,
+      label: getCategoryLabel(blog.category, categoryLabels),
+    },
+    blog.series ? { key: `series:${blog.series}`, label: blog.series } : null,
+    ...(blog.topics ?? []).slice(0, 2).map((topic) => ({
+      key: `topic:${topic}`,
+      label: topic,
+    })),
+  ].filter((chip): chip is { key: string; label: string } => Boolean(chip))
 
   return (
     <div className="relative z-10 mt-4 flex flex-wrap gap-2">
       {chips.map((chip) => (
         <span
-          key={chip}
+          key={chip.key}
           className="rounded-md bg-secondary px-2 py-1 text-xs font-medium text-muted-foreground"
         >
-          {chip}
+          {chip.label}
         </span>
       ))}
     </div>
   )
 }
 
-function Blog({ blog, readBlog }: { blog: BlogType; readBlog: string }) {
+function Blog({
+  blog,
+  readBlog,
+  categoryLabels,
+  locale,
+}: {
+  blog: BlogType
+  readBlog: string
+  categoryLabels: BlogPageContent['categories']
+  locale: 'en' | 'zh'
+}) {
   return (
     <article className="md:grid md:grid-cols-4 md:items-baseline">
       <Card className="md:col-span-3">
@@ -60,10 +78,10 @@ function Blog({ blog, readBlog }: { blog: BlogType; readBlog: string }) {
           className="md:hidden"
           decorate
         >
-          {formatDate(blog.date)}
+          {formatDate(blog.date, locale)}
         </Card.Eyebrow>
         <Card.Description>{blog.description}</Card.Description>
-        <BlogMeta blog={blog} />
+        <BlogMeta blog={blog} categoryLabels={categoryLabels} />
         <Card.Cta>{readBlog}</Card.Cta>
       </Card>
       <Card.Eyebrow
@@ -71,24 +89,34 @@ function Blog({ blog, readBlog }: { blog: BlogType; readBlog: string }) {
         dateTime={blog.date}
         className="mt-1 hidden md:block"
       >
-        {formatDate(blog.date)}
+        {formatDate(blog.date, locale)}
       </Card.Eyebrow>
     </article>
   )
 }
 
-function FeaturedBlog({ blog, readBlog }: { blog: BlogType; readBlog: string }) {
+function FeaturedBlog({
+  blog,
+  readBlog,
+  categoryLabels,
+  locale,
+}: {
+  blog: BlogType
+  readBlog: string
+  categoryLabels: BlogPageContent['categories']
+  locale: 'en' | 'zh'
+}) {
   return (
     <Card
       as="article"
       className="rounded-lg border border-border/70 bg-card/70 p-5 shadow-sm"
     >
       <Card.Eyebrow as="time" dateTime={blog.date}>
-        {formatDate(blog.date)}
+        {formatDate(blog.date, locale)}
       </Card.Eyebrow>
       <Card.Title href={`/blogs/${blog.slug}`}>{blog.title}</Card.Title>
       <Card.Description>{blog.description}</Card.Description>
-      <BlogMeta blog={blog} />
+      <BlogMeta blog={blog} categoryLabels={categoryLabels} />
       <Card.Cta>{readBlog}</Card.Cta>
     </Card>
   )
@@ -169,11 +197,13 @@ function BlogReadingMap({
   copy,
   selectedYear,
   selectedTopic,
+  locale,
 }: {
   blogs: BlogType[]
   copy: BlogPageContent['readingMap']
   selectedYear: string | null
   selectedTopic: string | null
+  locale: 'en' | 'zh'
 }) {
   const latestBlog = blogs[0]
   const years = getBlogYears(blogs)
@@ -208,7 +238,7 @@ function BlogReadingMap({
               dateTime={latestBlog.date}
               className="mt-2 block font-mono text-xs text-muted-foreground"
             >
-              {formatDate(latestBlog.date)}
+              {formatDate(latestBlog.date, locale)}
             </time>
           </div>
         ) : null}
@@ -311,6 +341,7 @@ function BlogsPageContentView({
   selectedTopic: string | null
 }) {
   const { blogPage } = useLocalizedContent()
+  const { locale } = useLanguage()
   const filteredBlogs = useMemo(
     () =>
       blogs.filter((blog) => {
@@ -344,18 +375,18 @@ function BlogsPageContentView({
 
   return (
     <Container className="mt-16 sm:mt-32">
-      <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_19rem] xl:grid-cols-[minmax(0,1fr)_21rem]">
-        <div className="min-w-0">
-          <header className="w-[calc(100vw-4rem)] min-w-0 max-w-4xl sm:w-full">
-            <h1 className="break-words text-4xl font-bold tracking-tight text-zinc-800 dark:text-zinc-100 sm:text-5xl">
-              {blogPage.headline}
-            </h1>
-            <p className="mt-6 max-w-3xl break-words text-base text-zinc-600 dark:text-zinc-400">
-              {blogPage.intro}
-            </p>
-          </header>
+      <header className="max-w-4xl">
+        <h1 className="break-words text-4xl font-bold tracking-tight text-zinc-800 dark:text-zinc-100 sm:text-5xl">
+          {blogPage.headline}
+        </h1>
+        <p className="mt-6 max-w-3xl break-words text-base leading-7 text-zinc-600 dark:text-zinc-400">
+          {blogPage.intro}
+        </p>
+      </header>
 
-          <div className="mt-16 min-w-0 sm:mt-20">
+      <div className="mt-12 grid gap-12 lg:grid-cols-[minmax(0,1fr)_19rem] xl:grid-cols-[minmax(0,1fr)_21rem]">
+        <div className="order-2 min-w-0 lg:order-1">
+          <div className="min-w-0">
             {!hasActiveFilter ? (
               <>
                 <BlogSection
@@ -368,6 +399,8 @@ function BlogsPageContentView({
                         key={blog.slug}
                         blog={blog}
                         readBlog={blogPage.readBlog}
+                        categoryLabels={blogPage.categories}
+                        locale={locale}
                       />
                     ))}
                   </div>
@@ -384,6 +417,8 @@ function BlogsPageContentView({
                           key={blog.slug}
                           blog={blog}
                           readBlog={blogPage.readBlog}
+                          categoryLabels={blogPage.categories}
+                          locale={locale}
                         />
                       ))}
                     </div>
@@ -401,6 +436,8 @@ function BlogsPageContentView({
                           key={blog.slug}
                           blog={blog}
                           readBlog={blogPage.readBlog}
+                          categoryLabels={blogPage.categories}
+                          locale={locale}
                         />
                       ))}
                     </div>
@@ -421,6 +458,8 @@ function BlogsPageContentView({
                         key={blog.slug}
                         blog={blog}
                         readBlog={blogPage.readBlog}
+                        categoryLabels={blogPage.categories}
+                        locale={locale}
                       />
                     ))
                   ) : (
@@ -433,12 +472,15 @@ function BlogsPageContentView({
             </BlogSection>
           </div>
         </div>
-        <BlogReadingMap
-          blogs={blogs}
-          copy={blogPage.readingMap}
-          selectedYear={selectedYear}
-          selectedTopic={selectedTopic}
-        />
+        <div className="order-1 lg:order-2">
+          <BlogReadingMap
+            blogs={blogs}
+            copy={blogPage.readingMap}
+            selectedYear={selectedYear}
+            selectedTopic={selectedTopic}
+            locale={locale}
+          />
+        </div>
       </div>
     </Container>
   )

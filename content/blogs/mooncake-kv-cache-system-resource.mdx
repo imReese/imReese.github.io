@@ -163,6 +163,48 @@ Mooncake Store object
 
 第二，Mooncake Store 存的不是“一个请求”，而是 SGLang 按 page 组织出来的 cache object。MHA 通常会拆成 K/V 两类 object，MLA 又是另一套 key 和 buffer 组织方式。
 
+<FlowDiagram
+  title="Resource lifecycle: 一段 KV 从计算结果变成系统资源"
+  caption="这篇总览更关心生命周期和所有权边界，而不是某个函数调用是否漂亮。"
+  steps={[
+    {
+      label: 'Materialize',
+      meta: 'GPU KV pool',
+      detail: 'prefill 产生的 KV 先属于 runtime 的 device slots。',
+      tone: 'teal',
+      items: ['device memory', 'radix node', 'request context'],
+    },
+    {
+      label: 'Demote',
+      meta: 'Host KV pool',
+      detail: 'HiCache 把可恢复 prefix 降级到 Host，并用引用保护生命周期。',
+      tone: 'blue',
+      items: ['host_value', 'host_ref_counter', 'PoolTransfer'],
+    },
+    {
+      label: 'Publish',
+      meta: 'Store metadata',
+      detail: 'Store 把 object/slice/replica 状态推进到可读边界。',
+      tone: 'mauve',
+      items: ['object key', 'PROCESSING', 'COMPLETE'],
+    },
+    {
+      label: 'Move bytes',
+      meta: 'Transfer Engine',
+      detail: 'TE 只搬已知地址上的 bytes，不判断 KV 语义。',
+      tone: 'green',
+      items: ['Segment', 'offset', 'length', 'transport'],
+    },
+    {
+      label: 'Recover',
+      meta: 'Host -> GPU',
+      detail: '读回后还要由 HiCache load_back，才重新成为 attention 可用资源。',
+      tone: 'amber',
+      items: ['batch_get_into', 'load_back', 'device commit'],
+    },
+  ]}
+/>
+
 ## 为什么不能只看 Store 或只看 Transfer Engine
 
 Store 解决的是“这份数据是否存在、在哪里、能不能读”。它需要维护：
@@ -223,6 +265,43 @@ host_ref_counter  Host 侧引用保护
 7. 排障验证篇，确认 remote KV 是否真的命中。
 
 读完以后，应该能画出一段 prefix KV Cache 从 GPU 写到远端、再从远端读回 GPU 的完整路径，并知道每个阶段该去哪个源码文件里验证。
+
+## Ownership / Boundary
+
+<SystemBoundaryDiagram
+  title="KV cache resource ownership is split across runtime, metadata, and transport"
+  caption="每一层都有自己的所有权和失败语义。把它们混成一个 cache service，会让调试结论过度外推。"
+  groups={[
+    {
+      label: 'Runtime owns reuse decisions',
+      detail: 'SGLang / HiCache',
+      tone: 'teal',
+      items: ['prefix match', 'GPU slots', 'Host pages', 'load_back'],
+      signals: ['radix node state', 'threshold / quota checks'],
+    },
+    {
+      label: 'Store owns visibility',
+      detail: 'Mooncake Store',
+      tone: 'blue',
+      items: ['object metadata', 'replica state', 'lease', 'group id'],
+      signals: ['PROCESSING', 'COMPLETE', 'GetReplicaList'],
+    },
+    {
+      label: 'Transport owns byte movement',
+      detail: 'Transfer Engine',
+      tone: 'mauve',
+      items: ['Segment', 'registered memory', 'READ / WRITE', 'BatchID'],
+      signals: ['transfer status', 'open segment', 'transport error'],
+    },
+    {
+      label: 'Article boundary',
+      detail: 'what not to infer',
+      tone: 'amber',
+      items: ['no benchmark claim', 'no production proof', 'no full failure model'],
+      signals: ['requires logs', 'requires source snapshot'],
+    },
+  ]}
+/>
 
 ## Takeaway：remote KV cache 是三层状态机，不是一个远端字典
 

@@ -45,6 +45,41 @@ mooncake-store/src/transfer_task.cpp
 
 本文只分析 Store Put / BatchPut 的 metadata 和 data-plane 边界；不覆盖完整 replica placement 策略、所有 transport backend，也不提供 page size 或 batch size 的 benchmark 结论。
 
+<FlowDiagram
+  title="Put path overview: metadata reserve, data write, visibility commit"
+  caption="Put 的关键不是 API 名字，而是哪一步只预留、哪一步搬数据、哪一步让 Get 能读。"
+  steps={[
+    {
+      label: 'Reserve',
+      meta: 'PutStart',
+      detail: 'master 为 object 分配 replica 位置，并把它们放进 PROCESSING 状态。',
+      tone: 'blue',
+      items: ['object key', 'slice', 'replica descriptor'],
+    },
+    {
+      label: 'Write bytes',
+      meta: 'SubmitTransfers',
+      detail: 'client 把 slice 写入本地或远端 Segment，master 不经过大块 payload。',
+      tone: 'mauve',
+      items: ['TransferSubmitter', 'Segment', 'WRITE'],
+    },
+    {
+      label: 'Commit visibility',
+      meta: 'PutEnd',
+      detail: '数据面成功后，master 才把 replica 推进到 COMPLETE。',
+      tone: 'green',
+      items: ['COMPLETE', 'read candidate', 'BatchPutEnd'],
+    },
+    {
+      label: 'Fold to cache semantics',
+      meta: 'HiCache backend',
+      detail: '上层还要把多个 object 级结果折回 logical page 是否完整。',
+      tone: 'amber',
+      items: ['K / V objects', 'side pools', 'page result'],
+    },
+  ]}
+/>
+
 <SequenceDiagram
   title="Mooncake Store Put 的提交点不在 PutStart，而在 PutEnd"
   caption="PutStart 只让 master 预留 replica；数据面写完后，PutEnd 才把 replica 推成 COMPLETE。"
@@ -270,6 +305,35 @@ Put 路径的成本来自三部分：
 HiCache 写 Mooncake 时，真正想完成的不是“调用一次 put”，而是把一个 logical page 的所有 object 都变成可读。对 MHA 来说，K object 和 V object 必须一起成功；对 hybrid pool 来说，side state 也要进入同一组逻辑边界。
 
 所以写路径要按两个层次理解：Store 负责把每个 object 的 replica 从 `PROCESSING` 推到 `COMPLETE`；HiCache backend 负责把多个 object 级结果折回 page 级结果。只要其中一个 object 写失败，这个 logical page 就不能被后续请求当成完整 remote hit。
+
+## What this proves — and what it does not
+
+<CompareCallout
+  title="Put-path evidence boundary"
+  caption="Store Put 能证明 object 可见性边界；完整 KV cache reuse 还需要上层 page 语义和读回链路闭环。"
+  columns={[
+    {
+      title: 'Put path can establish',
+      tone: 'green',
+      items: [
+        'PutStart 之后 replica 只是 PROCESSING，不能当成可读副本。',
+        'TransferSubmitter 负责把 Store replica 翻译成数据面写入任务。',
+        'PutEnd / BatchPutEnd 是 Store 层可读性的提交点。',
+        'BatchPut 和 group id 更接近 HiCache 大量 page object 的使用粒度。',
+      ],
+    },
+    {
+      title: 'Put path cannot establish alone',
+      tone: 'amber',
+      items: [
+        '不能证明 SGLang 后续请求一定命中并复用这段 prefix。',
+        '不能证明 K/V object、side pools 和 logical page 语义全部闭环。',
+        '不能证明 Get、lease refresh、replica eviction 或 load_back 全部正常。',
+        '不能替代端到端 remote hit 验证和真实 workload benchmark。',
+      ],
+    },
+  ]}
+/>
 
 ## Takeaway：PutEnd 才是可读性的提交点
 

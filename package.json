@@ -48,6 +48,7 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "eslint": "^8.56.0",
     "eslint-config-next": "14.2.18",
     "prettier": "^3.3.3",

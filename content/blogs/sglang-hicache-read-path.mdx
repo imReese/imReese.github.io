@@ -44,6 +44,41 @@ prefix match
 
 本文只分析 read path 的状态和边界，不覆盖 write-back 策略、attention kernel 执行，也不提供远端命中收益的 benchmark。
 
+<FlowDiagram
+  title="Read path overview: 从 prefix match 到 GPU commit"
+  caption="读路径不是一次 lookup，而是先判断 prefix 所在层级，再决定是否值得把远端 page 拉回 runtime。"
+  steps={[
+    {
+      label: 'Prefix match',
+      meta: 'radix tree',
+      detail: '先找到已有 prefix，并区分 GPU、Host、Storage candidate。',
+      tone: 'teal',
+      items: ['node.value', 'node.host_value', 'hash keys'],
+    },
+    {
+      label: 'Storage probe',
+      meta: 'batch_exists',
+      detail: '按 page key 查询连续可用边界，hybrid cache 还要合并 side pools。',
+      tone: 'blue',
+      items: ['page aligned', 'v1 / v2', 'usable prefix'],
+    },
+    {
+      label: 'Prefetch to Host',
+      meta: 'batch_get',
+      detail: 'backend 把命中的 page 写回 Host KV pool，而不是直接写 GPU。',
+      tone: 'mauve',
+      items: ['Host allocation', 'Storage->Host', 'ongoing_prefetch'],
+    },
+    {
+      label: 'Load back',
+      meta: 'commit device slots',
+      detail: '调度器仍要检查 quota、threshold 和 lock，成功后才能复用。',
+      tone: 'green',
+      items: ['mem_quota', 'load_back_threshold', 'node.value'],
+    },
+  ]}
+/>
+
 ## 读路径的三种命中
 
 一次 prefix match 以后，HiCache 要区分三类命中：
@@ -282,6 +317,35 @@ request tokens
 - 对应 Host page 是否已经 load back 到 GPU？
 
 只有第三个问题为真，推理计算才能真正跳过这段 prefill。
+
+## What this proves — and what it does not
+
+<CompareCallout
+  title="Read-path evidence boundary"
+  caption="这篇文章能建立 read path 的状态转换模型，但不能把源码路径直接外推成性能或生产正确性结论。"
+  columns={[
+    {
+      title: 'This article establishes',
+      tone: 'green',
+      items: [
+        'SGLang HiCache read path 至少分成 prefix match、storage probe、Storage->Host prefetch 和 Host->GPU load_back。',
+        'Storage hit 只说明存在可尝试拉回的 page，不等价于 attention 已经能复用 GPU KV slots。',
+        'batch_exists_v2 和 side pools 会影响最终可用 prefix 边界。',
+        'threshold、quota 和 lock 是调度边界，不是可省略的接口细节。',
+      ],
+    },
+    {
+      title: 'This article does not prove',
+      tone: 'amber',
+      items: [
+        '不证明任意 workload 下 remote KV 一定降低延迟。',
+        '不证明某次 batch_get 成功后，后续请求一定会复用这段 prefix。',
+        '不覆盖完整分布式失效、lease 过期、replica placement 或 transport 重试语义。',
+        '不替代端到端日志、metrics、trace 和 benchmark 验证。',
+      ],
+    },
+  ]}
+/>
 
 ## Takeaway：Storage hit 只是候选命中
 
