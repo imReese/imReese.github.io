@@ -109,7 +109,7 @@ Symptom
   -> check scheduler-visible reuse signal
 ```
 
-本文覆盖调试顺序、观察点和失败分层；不覆盖完整 benchmark，也不证明某个 workload 下 remote KV 一定降低延迟。Mooncake upstream commit 未在当前博客仓库中固定，因此本文不写具体 commit hash。
+本文覆盖调试顺序、观察点和失败分层；不覆盖完整 benchmark，也不证明某个 workload 下 remote KV 一定降低延迟。Mooncake 侧参考 `kvcache-ai/Mooncake` 的稳定 release tag `v0.3.11.post1`（commit `e9c61075720039bcfc5fffd19f847608402be3d0`），以公开源码路径和接口语义为阅读边界。
 
 本文的判断标准是克制的：某个日志或状态只能证明它所在层的条件成立。只有配置、runtime path、Store metadata、bytes movement、Host->GPU commit 和 scheduler 行为连起来，才能接近“remote KV 真的命中”。
 
@@ -297,7 +297,7 @@ prefetch_from_storage
 - `_batch_postprocess` 是否把 object 级结果折成 page 级成功。
 - 失败后 Host buffer 是否被释放。
 
-如果 batch_get 成功数低，但 Mooncake Store 里 key 明明存在，优先检查 key expansion、buffer pointer、buffer size 和 group/tag 配置。
+如果 batch_get 成功数低，但 Mooncake Store 里 key 明明存在，优先检查 key expansion、buffer pointer、buffer size 和 tag 配置。group semantics 只在安装的 Mooncake 包支持 `ReplicateConfig.group_ids` 时才会参与；在 Mooncake `v0.3.11.post1` 这个稳定版本边界下，不应把它当作默认排障前提。
 
 这一层开始接近数据面，但仍然只是 Storage->Host。Host page 被填充后，attention kernel 仍然不能直接使用它。
 
@@ -418,7 +418,7 @@ Mooncake Store 层读写成功还依赖 Transfer Engine。
 优先查: page size、batch size、memory registration、transport、NIC/NUMA
 
 现象: 偶现旧数据
-优先查: PutEnd、lease、local hot cache token、group semantics
+优先查: PutEnd、lease、local hot cache token；如果使用的 Mooncake 包支持 group_ids，再查 group semantics
 ```
 
 <LayerDiagram

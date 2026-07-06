@@ -25,7 +25,7 @@ API 层看起来接上了，并不等于 runtime path 已经成立。SGLang 侧�
 
 ## Article Contract / Source Context
 
-本文固定到 SGLang `v0.5.14`。Mooncake 侧只引用下列源码路径和接口语义；当前博客仓库没有记录对应 upstream commit hash，所以这里不编造 commit。
+本文固定到 SGLang `v0.5.14`。Mooncake 侧参考 `kvcache-ai/Mooncake` 的稳定 release tag `v0.3.11.post1`（commit `e9c61075720039bcfc5fffd19f847608402be3d0`），阅读边界是 Store、Transfer Engine 和 SGLang backend 接口路径。
 
 本文追踪的具体工程问题：
 
@@ -420,7 +420,7 @@ Mooncake backend 的 v2 路径会做三件事：
 
 MHA 下一个 logical page 会展开成多个 Mooncake object。split heads 或 sidecar pools 会让 object 数量更多。
 
-如果 Mooncake Store 支持 `ReplicateConfig.group_ids`，SGLang backend 可以启用 group semantics。它会给同一个 logical page 展开的多个 object 设置相同 group id：
+如果安装的 Mooncake Python 包支持 `ReplicateConfig.group_ids`，SGLang backend 可以启用 group semantics。它会给同一个 logical page 展开的多个 object 设置相同 group id：
 
 ```text
 sglang-hicache:{logical_page_key}
@@ -428,7 +428,7 @@ sglang-hicache:{logical_page_key}
 
 这样做的目的不是改变 SGLang 的 page key，而是告诉 Mooncake Store：这些 object 属于同一个逻辑缓存单元。后续复制、管理、去重或一致性语义就有机会按 group 理解，而不是只看到一堆独立 object key。
 
-如果安装的 Mooncake 包不支持 `group_ids`，SGLang 会 fallback 到原来的 `batch_put_from` 路径。这也是一处很现实的兼容性边界：SGLang backend 要适配不同版本 Mooncake 的 Python API。
+本文参考的 Mooncake 稳定 tag `v0.3.11.post1` 中，`ReplicateConfig` 没有 `group_ids` 字段。SGLang `v0.5.14` 的 backend 因此会在运行时探测这个能力：安装包不支持时，就 fallback 到原来的 `batch_put_from` 路径。这也是一处很现实的兼容性边界：SGLang backend 要适配不同版本 Mooncake 的 Python API。
 
 ## 共享 Mooncake Transfer Engine 的条件很严格
 

@@ -181,7 +181,7 @@ page_v: COMPLETE + lease valid + transfer success
 - lease 是否过期。
 - local hot cache 是否命中过期内容。
 - K/V object 是否只有部分存在。
-- group id 是否让一组 object 的管理边界一致。
+- 如果使用的 Mooncake 包支持 `group_ids`，再看 group semantics 是否让一组 object 的管理边界一致。
 
 不要一上来只查 transport。transport 成功只能证明 bytes 搬过了，不能证明这份 bytes 应该被读。
 

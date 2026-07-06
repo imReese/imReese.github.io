@@ -185,10 +185,11 @@ preferred_nof_segments
 prefer_alloc_in_same_node
 with_soft_pin
 with_hard_pin
-group_ids
 ```
 
-其中 `group_ids` 对 SGLang/Mooncake 接入很有用。一个 logical KV page 可能展开成 K object、V object 或 side pool object。它们虽然是多个 object key，但属于同一逻辑缓存单元。group id 可以让 Store 在 metadata routing、lease refresh、eviction 上按组理解这些 object。
+对 SGLang/Mooncake 接入来说，还要额外注意版本边界：SGLang 的 Mooncake backend 会探测安装的 Mooncake Python 包是否支持 `ReplicateConfig.group_ids`。如果支持，它可以把同一个 logical KV page 展开的 K object、V object 或 side pool object 绑定到同一个 group；如果不支持，就退回普通 object 级 `batch_put_from` 路径。
+
+在本文参考的 Mooncake 稳定 tag `v0.3.11.post1` 里，`ReplicateConfig` 还没有 `group_ids` 字段。因此这里不能把 group semantics 当作这个稳定版本的 Store 基础字段；它更像是 SGLang adapter 为不同 Mooncake 包版本预留的兼容能力。
 
 ## 和 HiCache 的映射
 

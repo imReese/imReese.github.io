@@ -19,7 +19,7 @@ Mooncake Store 的 Put 不是一次 RPC。它是一段控制面和数据面协�
 
 ## Source Context
 
-Mooncake upstream commit 未在当前博客仓库中固定，因此本文只记录源码路径和调用链，不写无法验证的 commit hash。
+本文参考 `kvcache-ai/Mooncake` 的稳定 release tag `v0.3.11.post1`（commit `e9c61075720039bcfc5fffd19f847608402be3d0`），以 Mooncake Store 的源码路径和调用链为阅读边界。
 
 核心链路：
 
@@ -266,7 +266,7 @@ BatchPutEnd
 
 这和 SGLang 的 `batch_set_v1/v2` 对得上。HiCache 以 page 为单位提交，Mooncake Store 以 object 为单位批量写入。
 
-## group_ids 让多个 object 共享逻辑身份
+## group semantics 是版本相关的可选能力
 
 SGLang 一个 logical page 在 Mooncake 中可能对应：
 
@@ -275,13 +275,15 @@ page_key_rank_k
 page_key_rank_v
 ```
 
-如果启用 group semantics，backend 可以给它们相同 group id：
+SGLang 的 Mooncake backend 会探测当前安装的 Mooncake 包是否支持 `ReplicateConfig.group_ids`。如果支持，backend 可以给同一个 logical page 展开的多个 object 设置相同 group id：
 
 ```text
 sglang-hicache:<logical_page_key>
 ```
 
-这样 Store 看到多个 object key 时，仍然能知道它们属于同一个逻辑缓存单元。后续 metadata routing、lease refresh、eviction 等行为可以按组优化。
+这样 Store 看到多个 object key 时，仍然有机会知道它们属于同一个逻辑缓存单元。后续 metadata routing、lease refresh、eviction 等行为才可能按组优化。
+
+但这不是本文参考的 Mooncake 稳定 tag `v0.3.11.post1` 的基础字段：该版本的 `ReplicateConfig` 没有 `group_ids`。因此在这个版本边界下，HiCache 写入仍应按 object 级 batch put 和 page-level postprocess 来理解；group semantics 只能作为 adapter 面向新包版本的可选优化，而不是 Put path 正确性的前提。
 
 ## 写路径的性能边界
 
@@ -319,7 +321,7 @@ HiCache 写 Mooncake 时，真正想完成的不是“调用一次 put”，而�
         'PutStart 之后 replica 只是 PROCESSING，不能当成可读副本。',
         'TransferSubmitter 负责把 Store replica 翻译成数据面写入任务。',
         'PutEnd / BatchPutEnd 是 Store 层可读性的提交点。',
-        'BatchPut 和 group id 更接近 HiCache 大量 page object 的使用粒度。',
+        'BatchPut 更接近 HiCache 大量 page object 的使用粒度；group id 只能在 Mooncake 包支持时作为可选优化。',
       ],
     },
     {
@@ -346,4 +348,4 @@ PutStart reserves metadata
   -> HiCache folds object results back to logical page result
 ```
 
-这也是 BatchPut 和 group id 的意义：它们不是为了接口好看，而是为了让大量 page object 的控制面开销、状态提交和后续 lease/eviction 更接近 HiCache 的真实使用粒度。对上层 runtime 来说，只要一个 logical page 里的必要 object 没有全部从 `PROCESSING` 走到 `COMPLETE`，这段 prefix 就不应该被当作完整 remote hit。
+这也是 BatchPut 的意义：它不是为了接口好看，而是为了让大量 page object 的控制面开销和状态提交更接近 HiCache 的真实使用粒度。group id 如果在安装的 Mooncake 包里可用，可以继续帮助后续 lease/eviction 等逻辑按组理解这些 object；但对上层 runtime 来说，最基本的正确性仍然是：只要一个 logical page 里的必要 object 没有全部从 `PROCESSING` 走到 `COMPLETE`，这段 prefix 就不应该被当作完整 remote hit。
