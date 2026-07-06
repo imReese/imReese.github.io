@@ -262,7 +262,7 @@ host_ref_counter  Host 侧引用保护
 4. Store Put/Get，理解 metadata 控制面和数据面如何分离。
 5. Transfer Engine，理解 Segment、memory registration、BatchTransfer。
 6. SGLang 到 Mooncake Store 串联篇，把 page key 和 zero-copy batch API 接起来。
-7. 排障验证篇，确认 remote KV 是否真的命中。
+7. 共享 Transfer Engine 和部署边界，理解哪些是性能优化，哪些才是 cache 语义。
 
 读完以后，应该能画出一段 prefix KV Cache 从 GPU 写到远端、再从远端读回 GPU 的完整路径，并知道每个阶段该去哪个源码文件里验证。
 

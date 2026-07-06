@@ -19,6 +19,10 @@ function getCategoryLabel(
   return category ? (labels[category] ?? category) : labels.fallback
 }
 
+function getTopicLabel(topic: string, copy: BlogPageContent['readingMap']) {
+  return copy.topics.find((item) => item.value === topic)?.label ?? topic
+}
+
 function ArrowLeftIcon(props: React.ComponentPropsWithoutRef<'svg'>) {
   return (
     <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" {...props}>
@@ -51,59 +55,58 @@ export function BlogLayout({
     blog.series ? { key: `series:${blog.series}`, label: blog.series } : null,
     ...(blog.topics ?? []).slice(0, 4).map((topic) => ({
       key: `topic:${topic}`,
-      label: topic,
+      label: getTopicLabel(topic, blogPage.readingMap),
     })),
   ].filter((chip): chip is { key: string; label: string } => Boolean(chip))
 
   return (
-    <Container className="mt-16 lg:mt-32">
-      <div className="mx-auto max-w-[1440px]">
+    <Container className="mt-14 sm:mt-24">
+      <div className="mx-auto max-w-3xl">
         <article className="min-w-0">
           <header className="flex flex-col">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-4 border-b border-border/70 pb-6">
               {previousPathname && (
                 <button
                   type="button"
                   onClick={() => router.back()}
                   aria-label={blogPage.article.backToBlogs}
-                  className="group flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eff1f5] shadow-md shadow-[#4c4f69]/5 ring-1 ring-[#bcc0cc]/70 transition hover:ring-primary/30 dark:bg-[#313244] dark:ring-[#45475a]/80 dark:hover:ring-[#94e2d5]/30"
+                  className="group flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/70 text-muted-foreground transition hover:border-primary/40 hover:text-primary"
                 >
-                  <ArrowLeftIcon className="h-4 w-4 stroke-muted-foreground transition group-hover:stroke-primary" />
+                  <ArrowLeftIcon className="h-4 w-4 stroke-current" />
                 </button>
               )}
               <time
                 dateTime={blog.date}
-                className="ml-auto flex shrink-0 items-center text-base text-muted-foreground"
+                className="ml-auto flex shrink-0 items-center font-mono text-xs text-muted-foreground"
               >
-                <span className="h-4 w-0.5 rounded-full bg-border" />
-                <span className="ml-3">{formatDate(blog.date, locale)}</span>
+                <span>{formatDate(blog.date, locale)}</span>
                 <span className="mx-2">·</span>
                 <span>{blog.author}</span>
               </time>
             </div>
-            <h1 className="mt-6 break-words text-4xl font-bold tracking-tight text-zinc-800 sm:text-5xl dark:text-zinc-100">
+            <h1 className="mt-10 break-words font-serif text-[2.2rem] font-semibold leading-tight tracking-tight text-foreground sm:text-[3.35rem]">
               {blog.title}
             </h1>
             <p
               aria-label={blogPage.article.descriptionLabel}
-              className="mt-5 max-w-3xl text-base leading-7 text-muted-foreground"
+              className="mt-6 text-base leading-8 text-muted-foreground sm:text-lg"
             >
               {blog.description}
             </p>
             {chips.length > 0 ? (
-              <div className="mt-5 flex flex-wrap gap-2">
-                {chips.map((chip) => (
-                  <span
-                    key={chip.key}
-                    className="rounded-md bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground"
-                  >
-                    {chip.label}
+              <div className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs leading-5 text-muted-foreground">
+                {chips.map((chip, index) => (
+                  <span key={chip.key} className="inline-flex items-center gap-x-2">
+                    {index > 0 ? (
+                      <span className="h-1 w-1 rounded-full bg-muted-foreground/35" />
+                    ) : null}
+                    <span>{chip.label}</span>
                   </span>
                 ))}
               </div>
             ) : null}
           </header>
-          <Prose className="mt-10 max-w-none text-[1.0625rem] leading-8" data-mdx-content>
+          <Prose className="mt-12 max-w-none text-[1.0625rem] leading-8" data-mdx-content>
             {children}
           </Prose>
         </article>
