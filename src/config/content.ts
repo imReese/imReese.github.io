@@ -172,12 +172,37 @@ export type ProfileContent = {
 export type ProjectsContent = {
   headline: string
   intro: string
+  overview?: Array<{
+    label: string
+    value: string
+    description: string
+  }>
+  focus?: {
+    title: string
+    intro: string
+    items: Array<{
+      title: string
+      description: string
+      tags: string[]
+    }>
+  }
   items: Array<{
     name: string
     description: string
     href: string
     label: string
     tags: string[]
+  }>
+  workSections?: Array<{
+    title: string
+    intro: string
+    items: Array<{
+      name: string
+      description: string
+      href: string
+      label: string
+      tags: string[]
+    }>
   }>
   githubItems: Array<{
     name: string

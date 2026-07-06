@@ -1,5 +1,16 @@
-headline: 项目
-intro: 一些和 SGLang Runtime、后端系统、自动化工具相关的项目——能跑的代码比 PPT 更有说服力。
+headline: 系统工作
+intro: 不硬凑项目数，重点展示和大模型推理系统相关的真实工作：自建项目、开源系统阅读/改造，以及能支撑判断的工程深挖。
+
+overview:
+  - label: Runtime
+    value: SGLang
+    description: 调度边界、请求生命周期、Prefill/Decode 路径和异构后端调优。
+  - label: KV Platform
+    value: NexusKV
+    description: 面向 LLM 推理的 KV Cache 平台，拆分控制面、数据面和引擎适配层。
+  - label: Integration
+    value: Mooncake TE
+    description: 梳理 Transfer Engine 接入方式、资源边界和跨节点传输规划。
 
 items:
   - name: SGLang Rust Runtime
@@ -12,24 +23,101 @@ items:
       - KV Cache
       - Mooncake TE
       - Scheduling
-  - name: 轻量级 C++ Web Server
-    description: 用 C++ 手搓的 Web Server——线程池、非阻塞 Socket + Epoll、HTTP 状态机解析、数据库登录注册，以及同步/异步日志。麻雀虽小，五脏俱全。
-    href: https://github.com/imReese
-    label: github.com/imReese
+  - name: NexusKV
+    description: 从小型 Go 原型演进而来的 KV Cache 平台：目标是把控制面、数据面和引擎适配层拆清楚，服务 SGLang/vLLM 这类 LLM 推理场景。
+    href: https://github.com/imReese/NexusKV
+    label: github.com/imReese/NexusKV
     tags:
-      - C++
-      - Linux
-      - epoll
-      - HTTP
-      - MySQL
-  - name: LeetCode Automation Manager
-    description: 算法刷题的自动化管家——自动解析题目、生成代码模板和测试用例、跑 GitHub Actions 工作流，省掉重复劳动。
-    href: https://github.com/imReese
-    label: github.com/imReese
-    tags:
+      - Go
+      - Rust
       - Python
-      - C++
-      - Automation
-      - GitHub Actions
+      - KV Cache
+      - LLM Serving
+
+workSections:
+  - title: 开源系统工作
+    intro: 这些不是拿来凑数的“项目”，而是我长期跟踪、阅读或改造的推理系统组件。
+    items:
+      - name: SGLang
+        description: 高性能 LLM/VLM serving framework，重点关注 scheduler、runtime path、HiCache 和 PD 传输边界。
+        href: https://github.com/imReese/sglang
+        label: github.com/imReese/sglang
+        tags:
+          - Serving
+          - Scheduler
+          - HiCache
+      - name: Mooncake
+        description: 面向大模型服务的数据面/存储/传输基础设施，重点关注 Store、Transfer Engine 和 KV Cache 接入边界。
+        href: https://github.com/imReese/Mooncake
+        label: github.com/imReese/Mooncake
+        tags:
+          - Store
+          - Transfer Engine
+          - KV Cache
+      - name: xgrammar
+        description: 结构化生成相关组件，适合放在推理系统路径里理解 tokenizer、grammar 和 runtime 之间的接口。
+        href: https://github.com/imReese/xgrammar
+        label: github.com/imReese/xgrammar
+        tags:
+          - Structured Generation
+          - Runtime
+          - Parser
+  - title: 工程深挖
+    intro: 笔记不算项目，但它们能证明我确实在把系统路径读透、拆透、验证清楚。
+    items:
+      - name: SGLang 到 Mooncake Store 的 KV Cache 路径
+        description: 沿着 page key、Host KV pointer 和 Store object 追踪 remote KV 是否真的跨过集成边界。
+        href: /blogs/sglang-to-mooncake-store-kv-cache-path
+        label: blogs/sglang-to-mooncake-store-kv-cache-path
+        tags:
+          - SGLang
+          - Mooncake
+          - KV Cache
+      - name: HiCache 读写路径
+        description: 拆解 Storage hit、Host load back 和 GPU KV 可复用之间的边界，避免把“命中”说得太宽。
+        href: /blogs/sglang-hicache-read-path
+        label: blogs/sglang-hicache-read-path
+        tags:
+          - HiCache
+          - Read Path
+          - Validation
+      - name: Mooncake KV Cache 资源模型
+        description: 把 runtime、Store metadata 和 Transfer Engine 三层状态拆开，看清 remote KV cache 的真实职责。
+        href: /blogs/mooncake-kv-cache-system-resource
+        label: blogs/mooncake-kv-cache-system-resource
+        tags:
+          - Resource Model
+          - Store
+          - Transfer
+
+focus:
+  title: 工程拆解
+  intro: 不把笔记塞进项目列表，而是展示这些项目内部真正有工程分量的切面。
+  items:
+    - title: SGLang request lifecycle
+      description: 追踪请求从入口、队列、调度到输出的路径，明确每一层该承担什么职责。
+      tags:
+        - Router
+        - Scheduler
+        - Lifecycle
+    - title: Scheduler / Router boundary
+      description: 梳理路由、调度、批处理和后端执行之间的边界，减少隐藏状态和跨层耦合。
+      tags:
+        - Scheduling
+        - Batching
+        - Runtime
+    - title: NexusKV platform layers
+      description: 把控制面、数据面、状态索引和引擎适配层拆开，让 KV Cache 不再是一个单体服务。
+      tags:
+        - Control Plane
+        - Data Plane
+        - Adapter
+    - title: KV transfer integration
+      description: 规划 Mooncake TE 接入点、资源生命周期和 PD 架构下的跨节点 KV 传输路径。
+      tags:
+        - KV Cache
+        - Mooncake
+        - Transfer
+        - PD Serving
 
 githubItems: []

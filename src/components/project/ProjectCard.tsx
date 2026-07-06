@@ -1,43 +1,42 @@
 "use client"
 
-import { ArrowRightIcon, HashIcon } from 'lucide-react'
-import Image from 'next/image'
+import { HashIcon } from 'lucide-react'
 import { ArrowUpRight } from '@phosphor-icons/react'
 import { ProjectItemType } from '@/config/infoConfig'
 import { utm_source } from '@/config/siteConfig'
 import Link from 'next/link'
-import { OptimizedFavicon } from '@/components/shared/OptimizedFavicon'
+import { CustomIcon } from '@/components/shared/CustomIcon'
 
 export function ProjectCard({ project, titleAs }: { project: ProjectItemType, titleAs?: keyof JSX.IntrinsicElements }) {
   const utmLink = `https://${project.link.href}?utm_source=${utm_source}`
   let Component = titleAs ?? 'h2'
   return (
     <li className='group relative flex flex-col items-start h-full'>
-      <div className="relative flex flex-col justify-between h-full w-full p-4 rounded-2xl border border-muted-foreground/20 shadow-sm transition-all group-hover:scale-[1.03] group-hover:shadow-md group-hover:bg-muted/5">
+      <div className="relative flex h-full w-full flex-col justify-between rounded-lg border border-muted-foreground/20 bg-background/60 p-5 shadow-sm transition-all group-hover:-translate-y-0.5 group-hover:border-primary/30 group-hover:shadow-md group-hover:bg-muted/5">
         <div className=''>
-          <div className='flex flex-col sm:flex-row justify-center sm:justify-start items-start sm:items-center gap-4'>
-            <div className="relative z-10 flex h-12 w-12 items-center justify-center rounded-full">
-              <OptimizedFavicon url={project.link.href} size={36} />
+          <div className='flex items-start gap-3 pr-7'>
+            <div className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-muted bg-muted/20">
+              <CustomIcon name={project.link.href.includes('github.com') ? 'github' : 'cpu'} size={24} />
             </div>
-            <Component className="break-words text-base font-semibold">
+            <Component className="break-words text-base font-semibold leading-6">
               {project.name}
             </Component>
           </div>
-          <p className="relative z-10 ml-2 mt-2 break-words text-sm text-muted-foreground">
+          <p className="relative z-10 mt-4 break-words text-sm leading-6 text-muted-foreground">
             {project.description}
           </p>
         </div>
 
-        <div className="relative z-10 mt-auto pt-4 ml-1">
+        <div className="relative z-10 mt-auto pt-5">
           {project.tags && project.tags.length > 0 && (
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               {project.tags.map((tag, index) => (
                 <div
                   key={index}
-                  className="flex items-center justify-center space-x-0.5 group"
+                  className="flex items-center justify-center space-x-0.5"
                 >
                   <HashIcon className="w-3 h-3 text-muted-foreground icon-scale" />
-                  <span className="break-words text-xs tracking-tighter text-muted-foreground">
+                  <span className="break-words text-xs text-muted-foreground">
                     {tag}
                   </span>
                 </div>
@@ -50,7 +49,7 @@ export function ProjectCard({ project, titleAs }: { project: ProjectItemType, ti
           target='_blank'
           rel='noopener noreferrer'
           className='absolute inset-0 z-20'>
-          <ArrowUpRight size={32} weight="duotone" className="absolute top-4 right-4 h-4 w-4 group-hover:text-primary group-hover:cursor-pointer" />
+          <ArrowUpRight size={32} weight="duotone" className="absolute top-5 right-5 h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:cursor-pointer" />
         </Link>
       </div>
     </li>

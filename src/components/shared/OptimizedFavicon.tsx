@@ -13,7 +13,7 @@ export function OptimizedFavicon({ url, size = 36, alt }: OptimizedFaviconProps)
   const [imageError, setImageError] = useState(false)
   
   try {
-    const domain = url.startsWith('http') ? new URL(url).hostname : url
+    const domain = new URL(url.startsWith('http') ? url : `https://${url}`).hostname
     const faviconUrl = `https://icons.duckduckgo.com/ip3/${domain}.ico`
     const customAlt = alt || `${domain} favicon`
 

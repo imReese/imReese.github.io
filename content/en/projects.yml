@@ -1,5 +1,16 @@
-headline: Systems Projects
-intro: SGLang runtime work, backend systems, and practical tooling.
+headline: Systems Work
+intro: "A compact view of real LLM-serving systems work: self-built projects, open-source systems reading and adaptation, and engineering deep dives that make the work inspectable."
+
+overview:
+  - label: Runtime
+    value: SGLang
+    description: Scheduling boundaries, request lifecycle, prefill/decode paths, and accelerator backend tuning.
+  - label: KV Platform
+    value: NexusKV
+    description: A KV cache platform for LLM inference with separated control-plane, data-plane, and engine-adapter layers.
+  - label: Integration
+    value: Mooncake TE
+    description: Transfer Engine attachment points, resource boundaries, and cross-node KV movement planning.
 
 items:
   - name: SGLang Rust Runtime
@@ -12,24 +23,101 @@ items:
       - KV Cache
       - Mooncake TE
       - Scheduling
-  - name: Lightweight C++ Web Server
-    description: C++ web server using thread pools, non-blocking sockets, epoll, HTTP state machines, database-backed login/register flow, and sync/async logging.
-    href: https://github.com/imReese
-    label: github.com/imReese
+  - name: NexusKV
+    description: A KV cache platform for LLM inference evolving from a small Go prototype into separated control-plane, data-plane, and engine-adapter layers across Go, Rust, and Python.
+    href: https://github.com/imReese/NexusKV
+    label: github.com/imReese/NexusKV
     tags:
-      - C++
-      - Linux
-      - epoll
-      - HTTP
-      - MySQL
-  - name: LeetCode Automation Manager
-    description: Automation that parses problem statements, generates descriptions, code templates, tests, and GitHub Actions workflows for algorithm practice.
-    href: https://github.com/imReese
-    label: github.com/imReese
-    tags:
+      - Go
+      - Rust
       - Python
-      - C++
-      - Automation
-      - GitHub Actions
+      - KV Cache
+      - LLM Serving
+
+workSections:
+  - title: Open-source systems work
+    intro: These are not filler projects. They are the inference-system components I track, read, and adapt over time.
+    items:
+      - name: SGLang
+        description: A high-performance LLM/VLM serving framework, with current attention on scheduler behavior, runtime paths, HiCache, and PD transfer boundaries.
+        href: https://github.com/imReese/sglang
+        label: github.com/imReese/sglang
+        tags:
+          - Serving
+          - Scheduler
+          - HiCache
+      - name: Mooncake
+        description: Serving infrastructure around data movement, storage, and transfer paths, with emphasis on Store, Transfer Engine, and KV-cache integration boundaries.
+        href: https://github.com/imReese/Mooncake
+        label: github.com/imReese/Mooncake
+        tags:
+          - Store
+          - Transfer Engine
+          - KV Cache
+      - name: xgrammar
+        description: Structured generation infrastructure that fits into the serving path around tokenizer, grammar, and runtime interfaces.
+        href: https://github.com/imReese/xgrammar
+        label: github.com/imReese/xgrammar
+        tags:
+          - Structured Generation
+          - Runtime
+          - Parser
+  - title: Related deep dives
+    intro: Notes are not projects, but they make the systems work concrete and inspectable.
+    items:
+      - name: SGLang to Mooncake Store KV-cache path
+        description: Traces page keys, Host KV pointers, and Store objects to check whether remote KV really crosses the integration boundary.
+        href: /blogs/sglang-to-mooncake-store-kv-cache-path
+        label: blogs/sglang-to-mooncake-store-kv-cache-path
+        tags:
+          - SGLang
+          - Mooncake
+          - KV Cache
+      - name: HiCache read/write paths
+        description: Separates storage hits, Host load-back, and GPU KV reuse so cache-hit claims stay precise.
+        href: /blogs/sglang-hicache-read-path
+        label: blogs/sglang-hicache-read-path
+        tags:
+          - HiCache
+          - Read Path
+          - Validation
+      - name: Mooncake KV-cache resource model
+        description: Splits runtime, Store metadata, and Transfer Engine state to show what remote KV cache actually owns.
+        href: /blogs/mooncake-kv-cache-system-resource
+        label: blogs/mooncake-kv-cache-system-resource
+        tags:
+          - Resource Model
+          - Store
+          - Transfer
+
+focus:
+  title: Engineering tracks
+  intro: Notes stay out of the project list; this section shows the real engineering tracks inside these projects.
+  items:
+    - title: SGLang request lifecycle
+      description: Trace requests from ingress through queues, scheduling, backend execution, and output so each layer has a clear job.
+      tags:
+        - Router
+        - Scheduler
+        - Lifecycle
+    - title: Scheduler / Router boundary
+      description: Separate routing, scheduling, batching, and backend execution responsibilities to reduce hidden state and cross-layer coupling.
+      tags:
+        - Scheduling
+        - Batching
+        - Runtime
+    - title: NexusKV platform layers
+      description: Separate control-plane, data-plane, state/index, and engine-adapter concerns so the KV cache is not treated as one monolithic service.
+      tags:
+        - Control Plane
+        - Data Plane
+        - Adapter
+    - title: KV transfer integration
+      description: Plan Mooncake TE attachment points, resource lifecycle, and cross-node KV movement under PD-style serving.
+      tags:
+        - KV Cache
+        - Mooncake
+        - Transfer
+        - PD Serving
 
 githubItems: []
