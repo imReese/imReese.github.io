@@ -1,78 +1,272 @@
 "use client"
 
-import { ArrowUpRight } from "@phosphor-icons/react"
-import { CustomIcon } from "@/components/shared/CustomIcon"
+import { ArrowUpRight } from "lucide-react"
+
 import GitHubSnake from "@/components/home/GitHubSnake"
-import { GithubProjectCard } from "@/components/project/GithubProjectCard"
-import { ProjectCard } from "@/components/project/ProjectCard"
-import { SimpleLayout } from "@/components/layout/SimpleLayout"
-import { cn } from "@/lib/utils"
+import { Container } from "@/components/layout/Container"
+import { CustomIcon } from "@/components/shared/CustomIcon"
 import { useLocalizedContent } from "@/components/shared/useLocalizedContent"
+import { utm_source } from "@/config/siteConfig"
+
+type WorkItem = {
+  name: string
+  description: string
+  href: string
+  label: string
+  tags: string[]
+}
 
 type WorkSection = {
   title: string
   intro: string
-  items: Array<{
-    name: string
-    description: string
-    href: string
-    label: string
-    tags: string[]
-  }>
+  items: WorkItem[]
 }
 
-function WorkLinkSection({ section }: { section: WorkSection }) {
+function hrefWithUtm(href: string) {
+  if (!/^https?:\/\//.test(href)) {
+    return href
+  }
+
+  const separator = href.includes("?") ? "&" : "?"
+  return `${href}${separator}utm_source=${utm_source}`
+}
+
+function isExternalHref(href: string) {
+  return /^https?:\/\//.test(href)
+}
+
+function LinkArrow() {
   return (
-    <section className="pb-10">
-      <div className="mb-5 max-w-2xl">
-        <h2 className="text-xl font-semibold tracking-tight md:text-2xl">
-          {section.title}
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          {section.intro}
-        </p>
+    <ArrowUpRight
+      className="mt-1 h-4 w-4 shrink-0 text-muted-foreground transition group-hover:text-primary"
+      aria-hidden="true"
+    />
+  )
+}
+
+function TagLine({ tags }: { tags: string[] }) {
+  if (tags.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs leading-5 text-muted-foreground">
+      {tags.map((tag, index) => (
+        <span key={tag} className="inline-flex items-center gap-x-2">
+          {index > 0 ? (
+            <span className="h-1 w-1 rounded-full bg-muted-foreground/35" />
+          ) : null}
+          <span>{tag}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function SectionHeader({
+  title,
+  intro,
+}: {
+  title: string
+  intro: string
+}) {
+  return (
+    <div className="border-b border-border/70 pb-4">
+      <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+        {title}
+      </h2>
+      <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
+        {intro}
+      </p>
+    </div>
+  )
+}
+
+function OverviewIndex({
+  items,
+}: {
+  items: Array<{ label: string; value: string; description: string }>
+}) {
+  if (items.length === 0) {
+    return null
+  }
+
+  return (
+    <section className="border-y border-border/70 py-6">
+      <div className="grid gap-6 md:grid-cols-3 md:gap-10">
+        {items.map((item) => (
+          <div key={item.label} className="min-w-0">
+            <p className="font-mono text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-primary">
+              {item.label}
+            </p>
+            <p className="mt-3 text-lg font-semibold tracking-tight text-foreground">
+              {item.value}
+            </p>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              {item.description}
+            </p>
+          </div>
+        ))}
       </div>
-      <div className="grid gap-3 md:grid-cols-3">
-        {section.items.map((item) => {
-          const isExternal = /^https?:\/\//.test(item.href)
+    </section>
+  )
+}
+
+function FeaturedSystems({ items }: { items: WorkItem[] }) {
+  if (items.length === 0) {
+    return null
+  }
+
+  return (
+    <section className="mt-12">
+      <ul role="list" className="divide-y divide-border/70 border-y border-border/70">
+        {items.map((item) => {
+          const isExternal = isExternalHref(item.href)
 
           return (
-            <a
-              key={item.name}
-              href={item.href}
-              target={isExternal ? "_blank" : undefined}
-              rel={isExternal ? "noopener noreferrer" : undefined}
-              className="group min-w-0 rounded-lg border border-muted-foreground/20 bg-background/60 p-4 transition hover:-translate-y-0.5 hover:border-primary/30 hover:bg-muted/5 hover:shadow-md"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <h3 className="text-base font-semibold leading-6">
-                  {item.name}
-                </h3>
-                <ArrowUpRight
-                  size={16}
-                  weight="duotone"
-                  className="mt-1 shrink-0 text-muted-foreground group-hover:text-primary"
-                />
-              </div>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                {item.description}
-              </p>
-              <p className="mt-3 truncate text-xs text-muted-foreground/80">
-                {item.label}
-              </p>
-              <div className="mt-4 flex flex-wrap gap-x-2 gap-y-1">
-                {item.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="text-xs leading-5 text-muted-foreground"
-                  >
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            </a>
+            <li key={item.name}>
+              <a
+                href={hrefWithUtm(item.href)}
+                target={isExternal ? "_blank" : undefined}
+                rel={isExternal ? "noopener noreferrer" : undefined}
+                className="group grid gap-5 py-7 transition hover:bg-muted/20 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)] sm:px-3"
+              >
+                <div className="flex min-w-0 items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h2 className="text-2xl font-semibold leading-tight tracking-tight text-foreground transition group-hover:text-primary">
+                      {item.name}
+                    </h2>
+                    <p className="mt-3 truncate font-mono text-xs text-muted-foreground">
+                      {item.label}
+                    </p>
+                  </div>
+                  <LinkArrow />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    {item.description}
+                  </p>
+                  <TagLine tags={item.tags} />
+                </div>
+              </a>
+            </li>
           )
         })}
+      </ul>
+    </section>
+  )
+}
+
+function WorkSectionList({ section }: { section: WorkSection }) {
+  return (
+    <section className="mt-16">
+      <SectionHeader title={section.title} intro={section.intro} />
+      <ul role="list" className="divide-y divide-border/70">
+        {section.items.map((item) => {
+          const isExternal = isExternalHref(item.href)
+
+          return (
+            <li key={item.name}>
+              <a
+                href={hrefWithUtm(item.href)}
+                target={isExternal ? "_blank" : undefined}
+                rel={isExternal ? "noopener noreferrer" : undefined}
+                className="group grid gap-4 py-5 transition hover:bg-muted/20 sm:grid-cols-[12rem_minmax(0,1fr)_1rem] sm:px-3"
+              >
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold leading-6 text-foreground transition group-hover:text-primary">
+                    {item.name}
+                  </h3>
+                  <p className="mt-2 truncate font-mono text-xs text-muted-foreground">
+                    {item.label}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    {item.description}
+                  </p>
+                  <TagLine tags={item.tags} />
+                </div>
+                <LinkArrow />
+              </a>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
+function FocusTracks({
+  focus,
+}: {
+  focus:
+    | {
+        title: string
+        intro: string
+        items: Array<{ title: string; description: string; tags: string[] }>
+      }
+    | undefined
+}) {
+  if (!focus || focus.items.length === 0) {
+    return null
+  }
+
+  return (
+    <section className="mt-16">
+      <SectionHeader title={focus.title} intro={focus.intro} />
+      <div className="grid gap-x-10 sm:grid-cols-2">
+        {focus.items.map((item) => (
+          <article key={item.title} className="border-b border-border/70 py-5">
+            <h3 className="text-base font-semibold leading-6 text-foreground">
+              {item.title}
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {item.description}
+            </p>
+            <TagLine tags={item.tags} />
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function GitHubActivity({
+  title,
+  intro,
+  href,
+  linkLabel,
+}: {
+  title: string
+  intro: string
+  href: string
+  linkLabel: string
+}) {
+  return (
+    <section className="mt-16 border-t border-border/70 pt-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-xl font-semibold tracking-tight text-foreground">
+            <CustomIcon name="github" size={22} />
+            <h2>{title}</h2>
+          </div>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
+            {intro}
+          </p>
+        </div>
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-primary transition hover:text-primary/80"
+        >
+          {linkLabel}
+          <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+        </a>
+      </div>
+      <div className="mt-6 border-y border-border/70 py-4">
+        <GitHubSnake />
       </div>
     </section>
   )
@@ -83,124 +277,42 @@ export function ProjectsPageContent() {
   const overviewItems = projects.overview ?? []
   const focus = projects.focus
   const workSections = projects.workSections ?? []
-  const projectItems = projects.items.map((project) => ({
+  const featuredSystems = projects.items.map((project) => ({
     name: project.name,
     description: project.description,
-    link: { href: project.href.replace(/^https?:\/\//, ""), label: project.label },
+    href: project.href,
+    label: project.label,
     tags: project.tags,
   }))
-  const hasGithubProjects = projects.githubItems.length > 0
 
   return (
-    <SimpleLayout title={projects.headline} intro={projects.intro}>
-      {overviewItems.length > 0 && (
-        <section className="mb-10 grid gap-3 border-y border-muted py-5 sm:grid-cols-3">
-          {overviewItems.map((item) => (
-            <div key={item.label} className="min-w-0 py-1">
-              <p className="text-xs font-medium uppercase text-muted-foreground">
-                {item.label}
-              </p>
-              <p className="mt-1 text-lg font-semibold tracking-tight text-foreground">
-                {item.value}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {item.description}
-              </p>
-            </div>
-          ))}
-        </section>
-      )}
+    <Container className="mt-16 sm:mt-24">
+      <header className="max-w-4xl border-b border-border/70 pb-10">
+        <h1 className="max-w-3xl break-words text-[2.35rem] font-semibold leading-tight tracking-tight text-foreground sm:text-[3.75rem]">
+          {projects.headline}
+        </h1>
+        <p className="mt-6 max-w-2xl break-words text-base leading-8 text-muted-foreground">
+          {projects.intro}
+        </p>
+      </header>
 
-      <ul
-        role="list"
-        className={cn(
-          "grid max-w-full grid-cols-1 gap-x-5 gap-y-5 pb-10",
-          projectItems.length > 1 ? "sm:grid-cols-2" : "max-w-3xl",
-        )}
-      >
-        {projectItems.map((project) => (
-          <ProjectCard key={project.name} project={project} />
+      <div className="mt-12">
+        <OverviewIndex items={overviewItems} />
+        <FeaturedSystems items={featuredSystems} />
+
+        {workSections.map((section) => (
+          <WorkSectionList key={section.title} section={section} />
         ))}
-      </ul>
 
-      {workSections.map((section) => (
-        <WorkLinkSection key={section.title} section={section} />
-      ))}
+        <FocusTracks focus={focus} />
 
-      {focus && focus.items.length > 0 && (
-        <section className="pb-10">
-          <div className="mb-5 max-w-2xl">
-            <h2 className="text-xl font-semibold tracking-tight md:text-2xl">
-              {focus.title}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {focus.intro}
-            </p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {focus.items.map((item) => (
-              <div
-                key={item.title}
-                className="min-w-0 rounded-lg border border-muted-foreground/20 bg-background/60 p-4"
-              >
-                <h3 className="text-base font-semibold leading-6">
-                  {item.title}
-                </h3>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  {item.description}
-                </p>
-                <div className="mt-4 flex flex-wrap gap-x-2 gap-y-1">
-                  {item.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="text-xs leading-5 text-muted-foreground"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section className="mx-auto my-4 flex w-full max-w-xl min-w-0 flex-col gap-5 border-t border-muted py-8 lg:max-w-none">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="flex flex-row items-center justify-start gap-2 text-xl font-semibold tracking-tight opacity-80 md:text-3xl">
-              <CustomIcon name="github" size={28} />
-              {projectsPage.githubActivityTitle}
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              {projectsPage.githubActivityIntro}
-            </p>
-          </div>
-          <a
-            href={`https://github.com/${site.githubUsername}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm font-medium text-primary transition hover:text-primary/80"
-          >
-            {projectsPage.githubProfileLink}
-          </a>
-        </div>
-
-        <div className="overflow-hidden rounded-2xl border border-muted-foreground/20 bg-background/70 p-4 shadow-sm">
-          <GitHubSnake />
-        </div>
-
-        {hasGithubProjects && (
-          <ul
-            role="list"
-            className="grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-2 md:grid-cols-3"
-          >
-            {projects.githubItems.map((project) => (
-              <GithubProjectCard key={project.name} project={project} titleAs="h3" />
-            ))}
-          </ul>
-        )}
-      </section>
-    </SimpleLayout>
+        <GitHubActivity
+          title={projectsPage.githubActivityTitle}
+          intro={projectsPage.githubActivityIntro}
+          href={`https://github.com/${site.githubUsername}`}
+          linkLabel={projectsPage.githubProfileLink}
+        />
+      </div>
+    </Container>
   )
 }
