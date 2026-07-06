@@ -70,8 +70,8 @@ blogPage:
     recentIntro: "最近的工程文章，保留源码上下文、系统取舍或验证价值。"
     notesTitle: 笔记 / 操作手册
     notesIntro: "工具命令、环境配置和经典材料学习笔记会保留在这里，但不会抢占工程深挖文章的位置。"
-    archiveTitle: 完整归档
-    archiveIntro: "所有文章仍按时间和主题保留在完整归档里；降级展示不改变原有 URL。"
+    archiveTitle: 全部文章
+    archiveIntro: "所有文章按时间排序放在这里。"
   readingMap:
     title: 阅读索引
     intro: 按时间和主题快速扫一遍这些笔记。

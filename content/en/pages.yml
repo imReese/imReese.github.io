@@ -70,8 +70,8 @@ blogPage:
     recentIntro: Newer systems notes that still carry engineering judgment, source context, or validation value.
     notesTitle: Notes / Runbooks
     notesIntro: "Practical command references, environment notes, and reading notes. Useful, but intentionally secondary to the engineering deep dives."
-    archiveTitle: Full Archive
-    archiveIntro: Every post remains available here by date and topic; URLs stay stable even when a post is demoted from the main feature area.
+    archiveTitle: All Posts
+    archiveIntro: Every article in one date-sorted list.
   readingMap:
     title: Reading map
     intro: Follow the notes by recency, year, or recurring systems themes.
