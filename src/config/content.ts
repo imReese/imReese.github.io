@@ -52,6 +52,7 @@ export type HomePageContent = {
   hero: {
     viewProjects: string
     readNotes: string
+    visitStatsLabel: string
   }
   systemsPanel: {
     workspaceTitle: string

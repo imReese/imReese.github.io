@@ -1,0 +1,47 @@
+name: Homepage Stats
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    env:
+      PLAUSIBLE_STATS_API_KEY: ${{ secrets.PLAUSIBLE_STATS_API_KEY }}
+      PLAUSIBLE_SITE_ID: ${{ secrets.PLAUSIBLE_SITE_ID }}
+      PLAUSIBLE_API_URL: ${{ vars.PLAUSIBLE_API_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Refresh homepage stats
+        run: node .github/scripts/update-homepage-stats.mjs
+
+      - name: Commit refreshed stats
+        run: |
+          if [ ! -f public/stats.json ]; then
+            echo "No stats file generated."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/stats.json
+
+          if git diff --cached --quiet; then
+            echo "Homepage stats are unchanged."
+            exit 0
+          fi
+
+          git commit -m "chore: refresh homepage stats"
+          git push
