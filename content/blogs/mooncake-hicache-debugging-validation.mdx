@@ -27,6 +27,56 @@ HiCache enabled
   -> scheduler 使用这段 GPU KV
 ```
 
+<SequenceDiagram
+  title="确认 remote KV 命中，需要沿着 Storage->Host->GPU 一路看完"
+  caption="Mooncake Store 命中只覆盖 remote object 到 Host buffer。真正省掉 prefill，还要看 HiCache load back 和 scheduler 是否使用 GPU KV。"
+  actors={['SGLang scheduler', 'HiCache', 'Mooncake Store', 'Transfer Engine', 'Host KV pool', 'GPU KV pool']}
+  steps={[
+    {
+      from: 'SGLang scheduler',
+      to: 'HiCache',
+      label: 'match prefix',
+      detail: '先确定这次请求有哪些 page 可以尝试复用',
+      tone: 'teal',
+    },
+    {
+      from: 'HiCache',
+      to: 'Mooncake Store',
+      label: 'batch_exists(page keys)',
+      detail: '检查连续 page prefix 是否存在',
+      tone: 'blue',
+    },
+    {
+      from: 'Mooncake Store',
+      to: 'Transfer Engine',
+      label: 'batch_get_into',
+      detail: '把 COMPLETE replica 读入 Host KV page pointer',
+      tone: 'mauve',
+    },
+    {
+      from: 'Transfer Engine',
+      to: 'Host KV pool',
+      label: 'fill host pages',
+      detail: 'Storage->Host 完成，仍不能直接给 attention 用',
+      tone: 'green',
+    },
+    {
+      from: 'HiCache',
+      to: 'GPU KV pool',
+      label: 'load_back + commit',
+      detail: 'Host->GPU 成功后，node.value 才能指向 device slots',
+      tone: 'amber',
+    },
+    {
+      from: 'SGLang scheduler',
+      to: 'GPU KV pool',
+      label: 'use reused prefix',
+      detail: '最终表现为 prefill token 减少或 latency 改善',
+      tone: 'teal',
+    },
+  ]}
+/>
+
 少任何一环，都不能说 remote KV 真的帮上忙了。
 
 ## 先确认参数层
@@ -214,7 +264,38 @@ Mooncake Store 层读写成功还依赖 Transfer Engine。
 优先查: PutEnd、lease、local hot cache token、group semantics
 ```
 
-## 一条最小验证闭环
+<LayerDiagram
+  title="从现象反推是哪一层断了"
+  caption="不要一看到 remote hit 不工作就先看 transport。很多问题其实停在策略、key 展开或 Host->GPU load back。"
+  layers={[
+    {
+      label: 'policy and setup',
+      detail: '根本没有进入远端缓存路径',
+      tone: 'surface',
+      items: ['write policy', 'threshold', 'backend config', 'Host layout'],
+    },
+    {
+      label: 'key and metadata',
+      detail: 'Store 里没有完整 logical page',
+      tone: 'blue',
+      items: ['page key', 'K/V expansion', 'extra tag', 'COMPLETE replica', 'lease'],
+    },
+    {
+      label: 'data transfer',
+      detail: 'object 存在但 bytes 没搬回来',
+      tone: 'mauve',
+      items: ['registered buffer', 'open Segment', 'BatchID', 'transport status'],
+    },
+    {
+      label: 'runtime commit',
+      detail: 'Host 有数据但 GPU 没真正复用',
+      tone: 'green',
+      items: ['load_back', 'mem quota', 'GPU slots', 'commit_hicache_transfer'],
+    },
+  ]}
+/>
+
+## 最小验证闭环
 
 做最小实验时，可以按下面顺序看：
 
@@ -231,10 +312,10 @@ Mooncake Store 层读写成功还依赖 Transfer Engine。
 
 如果第 5 步命中但第 7 步没有成功，说明 Mooncake Store 已经工作，问题在 HiCache load back 或 scheduler 边界。
 
-## 验证 remote KV 时要盯住什么
+## 最后看结果，不只看日志
 
-- 为什么看到 MooncakeStore setup 成功还不能说明 remote KV 命中？
-- `batch_exists` 返回短前缀时，应该先查 key 还是 transport？
-- Storage->Host 成功后，为什么还要验证 load back？
-- Transfer Engine completed 和 Store replica COMPLETE 有什么区别？
-- remote KV 慢时，page size 和 memory registration 为什么要一起看？
+验证 remote KV 的终点不是某一行日志，而是运行时行为变了：相同 prefix 的请求能拿到连续命中，Host pages 被填充，load back 提交到 GPU，最终 prefill token 数下降或者端到端延迟改善。
+
+如果只看到 `MooncakeStore setup successfully`，只能说明 backend 初始化成功；如果只看到 Transfer Engine completed，只能说明 bytes 搬完；如果只看到 `batch_exists` 返回命中，只能说明 Store metadata 和 object key 对上了。它们都还不是完整命中。
+
+最可靠的排障方式是沿着 page 级语义走：一个 logical page 展开成哪些 object，这些 object 是否都存在且可读，读回 Host 后是否被折回 page 级成功，最后是否 load back 到 GPU 并被调度器使用。这样定位会慢一点，但不会被某一层的“成功日志”误导。

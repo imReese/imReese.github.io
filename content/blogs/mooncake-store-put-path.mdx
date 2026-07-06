@@ -34,6 +34,56 @@ mooncake-store/include/transfer_task.h
 mooncake-store/src/transfer_task.cpp
 ```
 
+<SequenceDiagram
+  title="Mooncake Store Put 的提交点不在 PutStart，而在 PutEnd"
+  caption="PutStart 只让 master 预留 replica；数据面写完后，PutEnd 才把 replica 推成 COMPLETE。"
+  actors={['caller', 'Store client', 'master', 'TransferSubmitter', 'Segment']}
+  steps={[
+    {
+      from: 'caller',
+      to: 'Store client',
+      label: 'Put / BatchPut(keys, slices)',
+      detail: '上层传入 object key 和本地 buffer',
+      tone: 'teal',
+    },
+    {
+      from: 'Store client',
+      to: 'master',
+      label: 'PutStart / BatchPutStart',
+      detail: '申请 replica 位置和写入配额',
+      tone: 'blue',
+    },
+    {
+      from: 'master',
+      to: 'Store client',
+      label: 'PROCESSING replicas',
+      detail: '返回 Segment、offset、length，但还不可读',
+      tone: 'amber',
+    },
+    {
+      from: 'Store client',
+      to: 'TransferSubmitter',
+      label: 'SubmitTransfers',
+      detail: '把 slice + replica 翻译成数据面任务',
+      tone: 'mauve',
+    },
+    {
+      from: 'TransferSubmitter',
+      to: 'Segment',
+      label: 'WRITE bytes',
+      detail: 'local memcpy、Transfer Engine 或 offload backend',
+      tone: 'green',
+    },
+    {
+      from: 'Store client',
+      to: 'master',
+      label: 'PutEnd / BatchPutEnd',
+      detail: '数据写完后提交可见性',
+      tone: 'blue',
+    },
+  ]}
+/>
+
 ## PutStart 只是开始，不是完成
 
 PutStart 的作用是让 master 为 object 分配写入位置。master 会根据 object key、slice size、replica config、tenant quota、Segment 状态和 allocation strategy 选择 replica。
@@ -121,6 +171,36 @@ INITIALIZED
        -> REMOVED / FAILED on PutRevoke or cleanup
 ```
 
+<StateDiagram
+  title="Put 路径里的 replica 状态变化"
+  caption="PROCESSING 是隔离半成品的中间态。只有 PutEnd 成功之后，GetReplicaList 才应该把这个副本返回给读者。"
+  states={[
+    {
+      label: 'INITIALIZED',
+      detail: 'object 或 replica 记录刚创建',
+      tone: 'surface',
+      next: 'PutStart allocates space',
+    },
+    {
+      label: 'PROCESSING',
+      detail: 'metadata 预留完成，数据面写入中',
+      tone: 'amber',
+      next: 'TransferSubmitter finishes WRITE',
+    },
+    {
+      label: 'COMPLETE',
+      detail: 'PutEnd 提交后可读',
+      tone: 'green',
+      next: 'GetReplicaList candidate',
+    },
+    {
+      label: 'REMOVED / FAILED',
+      detail: 'PutRevoke、cleanup 或传输失败',
+      tone: 'rose',
+    },
+  ]}
+/>
+
 这也是为什么 Store 不是普通 KV map。它的每次写入都要让 metadata 状态和数据面结果保持一致。
 
 ## BatchPut 的价值
@@ -174,10 +254,10 @@ Put 路径的成本来自三部分：
 
 如果 page 太小，metadata 和 transfer overhead 会压过复用收益。如果 page 太大，prefix 可复用粒度又会变粗。HiCache 的 page size 和 Mooncake object 粒度要一起看。
 
-## 写路径要追的几个点
+## 从 HiCache 视角看写入
 
-- PutStart 后 replica 为什么不能读？
-- TransferSubmitter 为什么需要同时看 slice 和 replica？
-- PutEnd 的提交语义是什么？
-- BatchPut 对 HiCache page 写入有什么价值？
-- group id 为什么适合 SGLang logical page？
+HiCache 写 Mooncake 时，真正想完成的不是“调用一次 put”，而是把一个 logical page 的所有 object 都变成可读。对 MHA 来说，K object 和 V object 必须一起成功；对 hybrid pool 来说，side state 也要进入同一组逻辑边界。
+
+所以写路径要按两个层次理解：Store 负责把每个 object 的 replica 从 `PROCESSING` 推到 `COMPLETE`；HiCache backend 负责把多个 object 级结果折回 page 级结果。只要其中一个 object 写失败，这个 logical page 就不能被后续请求当成完整 remote hit。
+
+这也是 BatchPut 和 group id 的意义：它们不是为了接口好看，而是为了让大量 page object 的控制面开销、状态提交和后续 lease/eviction 更接近 HiCache 的真实使用粒度。

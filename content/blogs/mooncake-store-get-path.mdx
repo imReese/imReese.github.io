@@ -23,6 +23,56 @@ Client::Get / Client::BatchGet
   -> 数据写入 caller slices
 ```
 
+<SequenceDiagram
+  title="Mooncake Store Get：master 返回可读位置，client 自己搬数据"
+  caption="Get 的 payload 不经过 master。master 给的是 COMPLETE replica 和 lease；真正的数据由 local hot cache、memcpy 或 Transfer Engine 写入 caller slices。"
+  actors={['caller / HiCache', 'Store client', 'master', 'hot cache', 'Transfer Engine', 'caller slices']}
+  steps={[
+    {
+      from: 'caller / HiCache',
+      to: 'Store client',
+      label: 'Get / BatchGet(keys, dst slices)',
+      detail: '目标 buffer 通常是 Host KV page pointer',
+      tone: 'teal',
+    },
+    {
+      from: 'Store client',
+      to: 'master',
+      label: 'Query / GetReplicaList',
+      detail: '查 object metadata 和可读 replica',
+      tone: 'blue',
+    },
+    {
+      from: 'master',
+      to: 'Store client',
+      label: 'COMPLETE replicas + lease',
+      detail: 'metadata 有时间边界，不能无限复用',
+      tone: 'green',
+    },
+    {
+      from: 'Store client',
+      to: 'hot cache',
+      label: 'try local hot cache',
+      detail: '命中则少一次远端读取',
+      tone: 'amber',
+    },
+    {
+      from: 'Store client',
+      to: 'Transfer Engine',
+      label: 'READ Segment',
+      detail: '未命中本地缓存时从 replica 所在 Segment 读',
+      tone: 'mauve',
+    },
+    {
+      from: 'Transfer Engine',
+      to: 'caller slices',
+      label: 'fill local buffer',
+      detail: 'Mooncake 写到上层传入的目标地址',
+      tone: 'green',
+    },
+  ]}
+/>
+
 ## Get 先查 metadata
 
 Get 的第一步是向 master 查询 object metadata。master 需要判断：
@@ -155,10 +205,10 @@ Get 失败可以发生在几层：
 
 因此 backend 需要把 object 级状态折回 page 级命中边界。
 
-## 读路径要追的几个点
+## 从 HiCache 视角看读取
 
-- Get 为什么必须先查 metadata？
-- lease 解决的是什么问题？
-- Local hot cache 为什么不能代替 master？
-- READ TransferRequest 里的本地 buffer 和远端 Segment 怎么对应？
-- BatchGet 中一个 object 失败为什么会让 logical page 失败？
+HiCache 读 Mooncake 时，目标不是把 object 放进 Python，而是把 remote KV page 直接填回 Host KV pool。`batch_get_into` 里的 pointer 指向 Host pool page；Mooncake Store 负责把 remote replica 的 bytes 写到这些地址；之后 HiCache 还要再做 Host->GPU load back。
+
+因此一次 remote hit 至少跨过三道边界：master metadata 必须返回可读 replica，数据面必须把 object 读回 Host buffer，HiCache 必须把 Host page commit 回 GPU KV pool。前两步成功只能说明 Mooncake Store 工作正常，不能自动说明 attention kernel 已经能复用这段 KV。
+
+object 级和 page 级也要分清。Mooncake 只能告诉你某个 object get 成功；SGLang 要把 K/V object、split head object、side pool object 合并成一个 logical page 的结果。只要这组对象里有一个失败，这个 page 就应该当成未命中处理。

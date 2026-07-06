@@ -28,6 +28,37 @@ python/sglang/srt/mem_cache/pool_host.py
 python/sglang/srt/mem_cache/storage/backend_factory.py
 ```
 
+<LayerDiagram
+  title="HiCache 把 prefix KV Cache 拆成 L1/L2/L3 三层资源"
+  caption="L1 能直接喂给 attention；L2 是结构化 Host KV memory；L3 通过 HiCacheStorage 接入 Mooncake、3FS、NIXL 或 file backend。"
+  layers={[
+    {
+      label: 'L1: GPU KV pool',
+      detail: 'attention 直接使用',
+      tone: 'teal',
+      items: ['TokenToKVPool', 'node.value', 'device indices', 'evict / lock_ref'],
+    },
+    {
+      label: 'L2: Host KV pool',
+      detail: 'GPU 和 Storage 之间的结构化缓冲层',
+      tone: 'green',
+      items: ['host_value', 'page layout', 'host_ref_counter', 'D->H / H->D'],
+    },
+    {
+      label: 'L3: HiCacheStorage',
+      detail: '远端或本地持久化 backend',
+      tone: 'blue',
+      items: ['hash_value', 'batch_exists', 'batch_get', 'batch_set', 'PoolTransfer'],
+    },
+    {
+      label: 'backend implementations',
+      detail: '只接 L3，不接管 scheduler',
+      tone: 'mauve',
+      items: ['Mooncake Store', '3FS', 'NIXL', 'file'],
+    },
+  ]}
+/>
+
 ## L1 不是 request table，而是 KV pool
 
 SGLang runtime 里和 KV cache 相关的结构至少有两类。
@@ -199,10 +230,10 @@ batch_get_v1/v2
 
 Mooncake 只接住 L3 这一段。prefix tree、请求调度、GPU slot 管理仍然在 SGLang。
 
-## 读 HiCache 时要对上的关系
+## 把 HiCache 当成 runtime 状态机
 
-- `ReqToTokenPool` 和 `TokenToKVPool` 的职责有什么区别？
-- radix node 的 `value`、`host_value`、`hash_value` 分别指向什么？
-- 为什么 L3 backend 的读写对象是 Host pool，而不是 GPU pool？
-- `PoolTransfer` 解决了 v1 接口处理不了的什么问题？
-- 为什么 storage hit 不能直接等价于 attention 可复用？
+HiCache 难读，是因为它不是一个独立 KV store，而是嵌在 SGLang runtime 里的状态机。radix node 同时保存 GPU、Host、Storage 三层位置：`value` 指向 GPU token indices，`host_value` 指向 Host pool indices，`hash_value` 指向 L3 page key。
+
+这也解释了为什么 L3 backend 的读写对象是 Host pool，而不是 GPU pool。Storage 负责把 page 写入或读出 Host buffer；Host->GPU 的 load back 仍然由 HiCache 和 cache controller 处理。storage hit 只是“远端可能有数据”，不是“attention 已经能复用”。
+
+读代码时可以沿着一个 page 走：GPU 上生成 KV，必要时 backup 到 Host，再 batch_set 到 Storage；下一次请求先查 radix tree，再 batch_exists/prefetch 到 Host，最后 load_back 到 GPU。把这条路径连起来，Mooncake backend 才不会看起来像凭空插进来的黑盒。

@@ -21,6 +21,36 @@ TransferRequest
   -> RDMA / TCP / EFA / NVLink / device backend
 ```
 
+<MappingDiagram
+  title="MultiTransport 的选择输入不是只有 protocol"
+  caption="transport 选择要同时看 Segment metadata、已安装 backend、本地 buffer 注册状态和路径本地性。"
+  source={{
+    label: 'TransferRequest',
+    detail: 'opcode、local addr、target id、offset 和 length',
+    tone: 'teal',
+  }}
+  groups={[
+    {
+      label: 'segment metadata',
+      detail: '目标位置和协议提示',
+      tone: 'blue',
+      items: ['protocol', 'te_endpoint', 'segment id', 'same endpoint?'],
+    },
+    {
+      label: 'installed transports',
+      detail: '运行时真正可用的 backend',
+      tone: 'mauve',
+      items: ['tcp', 'rdma', 'efa', 'nvlink', 'vendor backend'],
+    },
+    {
+      label: 'chosen path',
+      detail: '最终执行的搬运方式',
+      tone: 'green',
+      items: ['local memcpy', 'RDMA READ/WRITE', 'TCP transfer', 'device path'],
+    },
+  ]}
+/>
+
 ## installTransport 决定可用 backend
 
 TransferEngine 暴露：
@@ -142,10 +172,10 @@ transport 层常见瓶颈包括：
 
 这些问题最终会表现为 HiCache remote hit 变慢，甚至比重新 prefill 还慢。
 
-## 看 transport 时要落到哪里
+## transport 成功只是链路的一段
 
-- MultiTransport 和具体 transport 的分工是什么？
-- 为什么 memory registration 的成本和 backend 强相关？
-- Segment 里的 protocol/endpoint 如何影响 transport 选择？
-- 为什么同机路径不一定应该走 TCP？
-- transport 成功为什么不能证明 HiCache 命中可用？
+排查 Mooncake + HiCache 时，transport 层要回答的是“这批 bytes 能不能以合适成本搬完”，不是“这段 remote KV 能不能被 attention 复用”。前者需要看 backend 是否安装、Segment protocol 是否匹配、本地 buffer 是否注册、设备和 NUMA 是否合理；后者还要继续看 Store replica、lease、page key 展开和 HiCache load back。
+
+同机路径尤其容易误判。能走 TCP 不代表应该走 TCP；如果本地 memcpy 就能完成，绕一圈协议栈只会把数据面变复杂。反过来，跨节点 RDMA 路径如果 device 选错，即使功能正确，tail latency 也可能把 remote hit 的收益吃掉。
+
+所以 transport 层的结论通常不是“成功/失败”这么粗，而是：当前这条路径是否符合部署预期，是否避开了热路径注册，是否让 batch 里的 page object 被足够高效地聚合。

@@ -24,6 +24,37 @@ mooncake-store/src/client_service.cpp
 mooncake-store/src/master_service.cpp
 ```
 
+<LayerDiagram
+  title="Mooncake Store 的对象模型：控制面记录事实，数据面搬 bytes"
+  caption="object key 是上层名字；slice 是本地 buffer；replica 才是落到 Segment 上的可读副本。master 只维护这些关系，不参与大块数据传输。"
+  layers={[
+    {
+      label: 'caller view',
+      detail: '上层看到 key 和本地 buffer',
+      tone: 'teal',
+      items: ['object key', 'Slice(ptr, size)', 'BatchPut / BatchGet'],
+    },
+    {
+      label: 'master metadata',
+      detail: '事实表和可见性',
+      tone: 'blue',
+      items: ['object metadata', 'replica list', 'lease', 'allocation', 'quota'],
+    },
+    {
+      label: 'replica placement',
+      detail: '真正能读写的位置',
+      tone: 'green',
+      items: ['Segment id', 'offset', 'length', 'PROCESSING', 'COMPLETE'],
+    },
+    {
+      label: 'client data plane',
+      detail: '把 metadata 翻译成传输任务',
+      tone: 'mauve',
+      items: ['TransferSubmitter', 'local memcpy', 'Transfer Engine', 'hot cache'],
+    },
+  ]}
+/>
+
 ## object 不是简单 value
 
 Store 对外是 object key，但内部不会假设 value 必须是一块连续内存。写入时，caller 传入的是 `Slice` 列表：
@@ -168,14 +199,38 @@ HiCache logical page key
   -> Segment + offset + length
 ```
 
+<MappingDiagram
+  title="HiCache logical page 到 Store object 的展开"
+  caption="Mooncake Store 不知道 request 和 radix tree。它只看到展开后的 object key，并为每个 object 维护副本状态。"
+  source={{
+    label: 'HiCache logical page',
+    detail: 'SGLang runtime 里的 page 级缓存单元',
+    tone: 'teal',
+  }}
+  groups={[
+    {
+      label: 'Mooncake object keys',
+      detail: 'Store 可寻址对象',
+      tone: 'blue',
+      items: ['page hash', 'rank / TP suffix', 'page_k', 'page_v', 'side pool object'],
+    },
+    {
+      label: 'Store replicas',
+      detail: '可见性和位置',
+      tone: 'green',
+      items: ['COMPLETE replica', 'lease', 'Segment', 'offset / length'],
+    },
+  ]}
+/>
+
 MHA 通常一个 logical page 会展开成 K/V 两个 object；MLA 通常是一个 object；hybrid pool 还会继续展开 side state object。
 
 所以 Store 看到的是一批 object，不知道它们属于哪个 request，也不知道 SGLang 的 radix tree 结构。这个边界必须守住。
 
-## 读对象模型时要盯住的点
+## 把对象模型串起来
 
-- Store object 和 Slice 是什么关系？
-- Segment 为什么要带 `te_endpoint` 和 `protocol`？
-- 为什么 `PROCESSING` replica 不能直接读？
-- master 为什么不应该参与大块数据传输？
-- HiCache logical page 为什么可能对应多个 Store object？
+读 Mooncake Store 时，可以把它当成一条翻译链：上层给 object key 和本地 slice，master 把 key 翻成一组 replica 事实，client 再把 replica 翻成 Segment 上的 offset/length，最后由本地 memcpy、Transfer Engine 或其他 backend 真正搬数据。
+
+这条链里最容易混的是 `Slice` 和 `replica`。`Slice` 描述 caller 当前这次读写用的本地 buffer；`replica` 描述 Store 内部已经分配或已经提交的一份对象副本。它们在 Put/Get 时会被配对，但不是同一个东西。
+
+另一个关键点是状态。`PROCESSING` replica 说明 master 预留了位置，不说明数据已经完成；`COMPLETE` replica 才是读路径能选择的对象。只要记住这两个边界，后面的 PutStart、PutEnd、GetReplicaList 和 lease 就会自然很多。
