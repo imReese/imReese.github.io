@@ -126,7 +126,7 @@ function LeadFeaturedBlog({
       >
         {formatDate(blog.date, locale)}
       </time>
-      <h3 className="mt-5 max-w-xl font-serif text-[1.55rem] font-semibold leading-tight text-foreground transition group-hover:text-primary sm:text-[2.08rem]">
+      <h3 className="mt-5 max-w-xl text-[1.55rem] font-semibold leading-tight text-foreground transition group-hover:text-primary sm:text-[2.08rem]">
         <Link href={`/blogs/${blog.slug}`}>
           <span className="absolute inset-0" />
           {blog.title}
@@ -247,7 +247,7 @@ function BlogSection({
   return (
     <section className="mt-20 min-w-0 first:mt-0">
       <div className="border-b border-border/70 pb-4">
-        <h2 className="font-serif text-2xl font-semibold tracking-tight text-foreground">
+        <h2 className="text-2xl font-semibold tracking-tight text-foreground">
           {title}
         </h2>
         {intro ? (
@@ -478,7 +478,7 @@ function BlogsPageContentView({
   return (
     <Container className="mt-16 sm:mt-24">
       <header className="max-w-4xl border-b border-border/70 pb-10">
-        <h1 className="max-w-3xl break-words font-serif text-[2.35rem] font-semibold leading-tight tracking-tight text-foreground sm:text-[3.75rem]">
+        <h1 className="max-w-3xl break-words text-[2.35rem] font-semibold leading-tight tracking-tight text-foreground sm:text-[3.75rem]">
           {blogPage.headline}
         </h1>
         <p className="mt-6 max-w-2xl break-words text-base leading-8 text-muted-foreground">

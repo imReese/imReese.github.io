@@ -84,7 +84,7 @@ export function BlogLayout({
                 <span>{blog.author}</span>
               </time>
             </div>
-            <h1 className="mt-10 break-words font-serif text-[2.2rem] font-semibold leading-tight tracking-tight text-foreground sm:text-[3.35rem]">
+            <h1 className="mt-10 break-words text-[2.2rem] font-semibold leading-tight tracking-tight text-foreground sm:text-[3.35rem]">
               {blog.title}
             </h1>
             <p
