@@ -1,6 +1,6 @@
 ---
-title: 'LSM Tree 学习笔记：写入很快，代价不会消失'
-description: '一篇存储引擎学习笔记：从 memtable、WAL、SSTable、compaction 和读放大理解 LSM Tree。'
+title: 'LSM Tree 笔记：一个 key 从写入到 compaction 的生命周期'
+description: '从 WAL、memtable、SSTable、L0、compaction picker、tombstone 和 write stall 看 LSM Tree 为什么把写入代价转移到后台。'
 author: 'Reese'
 date: '2023-05-14'
 topics:
@@ -10,202 +10,266 @@ series: 'Storage Systems Notes'
 featured: false
 ---
 
-我第一次看 LSM Tree 时，最容易记住的是一句话：写入快。
+LSM Tree 最容易被一句“写入快”讲扁。
 
-但这句话如果停在这里，就会误导自己。LSM Tree 的写入快，不是因为系统不用付代价，而是因为它把随机写变成顺序写，把前台写入压力转移到后台 compaction、读路径和空间放大上。
+更准确的说法是：LSM Tree 把随机原地更新改成顺序追加和后台整理。前台写入变轻了，但代价没有消失，而是转移到 read amplification、write amplification、space amplification、compaction debt 和 write stall 上。
 
-所以我更愿意这样理解：
-
-```text
-LSM Tree
-  -> 前台写入尽量简单
-  -> 数据先进入内存和顺序日志
-  -> 后台逐步整理成有序文件
-  -> 用读放大、写放大、空间放大换写入吞吐
-```
-
-这不是免费午餐，只是把账记在了别的地方。
-
-## 写入路径
-
-一个典型 LSM 写入路径大概是：
+我现在更愿意沿着一个 key 的生命周期看 LSM，而不是按名词背 memtable、SSTable、compaction。
 
 ```text
-client write
-  -> append WAL
-  -> update memtable
-  -> return success
-  -> memtable full
-  -> flush to SSTable
-  -> background compaction
+write key=a
+  -> WAL records intent
+  -> memtable holds latest version
+  -> flush creates L0 SSTable
+  -> compaction moves it down levels
+  -> later update/delete creates newer versions
+  -> old versions are removed only when safe
 ```
 
-WAL 负责崩溃恢复，memtable 负责内存里的有序结构。memtable 满了以后会变成 immutable memtable，然后 flush 成磁盘上的 SSTable。
+这条线能解释 LSM 为什么快，也能解释它为什么会突然慢。
 
-这里最关键的是：前台写入不需要立刻在磁盘上找到某个位置原地修改。它只要追加日志，再改内存结构。追加写对磁盘和 SSD 都友好得多。
+<FlowDiagram
+  title="一个 key 在 LSM 里的生命周期"
+  caption="写入路径尽量短；后台路径负责把旧版本、tombstone 和重叠文件逐步整理掉。"
+  steps={[
+    {
+      label: 'WAL',
+      detail: '写入先成为可恢复事实',
+      tone: 'teal',
+      items: ['append', 'sequence number', 'group commit'],
+    },
+    {
+      label: 'MemTable',
+      detail: '内存有序结构接住最新版本',
+      tone: 'blue',
+      items: ['mutable', 'immutable', 'skiplist / arena'],
+    },
+    {
+      label: 'L0 SSTable',
+      detail: 'flush 输出不可变文件，range 可能重叠',
+      tone: 'amber',
+      items: ['overlap', 'bloom filter', 'block index'],
+    },
+    {
+      label: 'Compaction',
+      detail: '合并 run，丢弃被覆盖版本和安全 tombstone',
+      tone: 'green',
+      items: ['picker', 'merge iterator', 'manifest edit'],
+    },
+  ]}
+/>
 
-这也是 LSM 适合高写入吞吐场景的原因。
+## 前台写入只做能快速确认的事
 
-## SSTable 是不可变文件
-
-SSTable 通常是 sorted string table。文件内部按 key 排序，并且写出后不再原地修改。
-
-不可变文件有几个好处：
-
-- 写出时顺序写。
-- 并发读不需要担心文件内容被修改。
-- 可以配合 index 和 bloom filter 加速查找。
-- compaction 可以生成新文件，然后原子替换元数据。
-
-但不可变也带来问题：更新和删除不会立刻覆盖旧值。
-
-如果 key `a` 写了三次，磁盘上可能有多个版本：
+一次写入通常会被拆成两步：
 
 ```text
-L0 file 3: a -> v3
-L1 file 2: a -> v2
-L2 file 1: a -> v1
+append WAL
+  -> insert into memtable
 ```
 
-读取时要找到最新版本。删除也不是直接删旧文件里的 key，而是写一个 tombstone，等 compaction 时再清理旧数据。
+WAL 是恢复边界。memtable 是查询边界。只要 WAL 策略允许，前台不需要去磁盘上找到旧 value 的位置，也不需要更新某个 B+Tree page。它追加日志，再把新版本放进内存结构。
 
-## 读路径为什么会变复杂
+这就是 LSM 的写入优势。
 
-LSM 写入简单，读就会复杂一点。
+但这个优势建立在一个前提上：后面有人会收拾旧版本。否则系统只是把垃圾堆到了未来。
 
-一次 point lookup 可能要查：
+## SSTable 的不可变性让后台整理变得可控
+
+memtable 满了以后会变成 immutable memtable，然后 flush 成 SSTable。SSTable 写出后不再原地修改。
+
+不可变文件有几个工程好处：
+
+- 读线程不需要担心文件内容被改。
+- 文件可以带 block index、filter block、range metadata。
+- compaction 可以写新文件，再通过 manifest/version edit 原子切换。
+- 崩溃恢复时可以靠文件编号、校验、manifest 判断哪些文件有效。
+
+代价是更新不会覆盖旧值。
 
 ```text
-memtable
-immutable memtable
-L0 SSTables
-L1 SSTables
-L2 SSTables
-...
+seq=30 key=a value=v3  in L0
+seq=20 key=a value=v2  in L1
+seq=10 key=a value=v1  in L3
 ```
 
-如果每层、每个文件都去读，代价会很高。所以系统会用：
+读路径必须找当前 snapshot 可见的最新版本。删除也一样，只是写入一个更新的 tombstone，而不是立刻从所有低层文件里抹掉旧值。
 
-- bloom filter 判断某个 key 是否可能在文件里。
-- block index 定位数据块。
-- block cache 缓存热数据块。
-- manifest/metadata 管理文件范围。
+## L0 是 LSM 的交通事故现场
 
-这就是 LSM 的读放大。数据不是只有一个位置，读路径要在多个层级和多个文件之间找最新值。
+L0 和其它层不同。flush 出来的文件直接进入 L0，不同文件的 key range 可能互相重叠。
 
-对于范围扫描，问题又不一样。因为每层都有有序数据，扫描时需要 merge iterator，把多个来源按 key 顺序合并，并处理覆盖和 tombstone。
-
-## L0 是最容易变乱的地方
-
-LSM 的层级里，L0 通常最特别。
-
-flush 出来的 SSTable 会先进 L0。由于不同 memtable flush 出来的 key range 可能重叠，L0 文件之间也可能互相重叠。
-
-这会让读路径变贵。查一个 key 时，L0 里多个文件都可能包含它，所以要查多个文件。
-
-后续 compaction 会把 L0 文件合并到更低层，让低层文件尽量保持 key range 不重叠。这样 point lookup 可以更快判断某个 key 应该在哪个文件范围内。
-
-所以 L0 文件数量过多，经常是 LSM 系统里一个危险信号。它意味着后台整理跟不上前台写入，读放大和写停顿风险都会变高。
-
-## Compaction 是核心，也是麻烦来源
-
-Compaction 做的是整理：
+这对 point lookup 很不友好。低层如果 range 不重叠，系统可以根据 key range 快速定位少数文件；L0 重叠时，一个 key 可能需要查多个 L0 文件。
 
 ```text
-pick input files
-  -> merge sorted records
-  -> drop overwritten old values
-  -> drop expired tombstones
-  -> write new SSTables
-  -> update metadata
-  -> delete obsolete files
+L0:
+  file A: key range [a, z]
+  file B: key range [b, y]
+  file C: key range [a, m]
+
+lookup key=k
+  -> A/B/C may all need checking
 ```
 
-它让读路径重新变得可控，也回收旧版本和删除标记。但它会消耗 I/O、CPU、内存和后台线程。
+所以 L0 file count 是很重要的健康信号。它升高时，通常说明 flush 速度大于 compaction 消化速度，后面可能出现：
 
-Compaction 相关问题经常表现成：
+- point lookup 变慢。
+- bloom/filter/index 查询次数增加。
+- compaction 被迫更激进。
+- write stall 开始出现。
 
-- 写放大变高。
-- 后台 I/O 抢占前台读写。
-- p99 延迟出现毛刺。
-- L0 文件堆积。
-- 空间暂时膨胀。
-- tombstone 长时间清不掉。
+LSM 的很多 tail latency 毛刺，不在写入入口，而在 L0 backlog。
 
-所以调 LSM 系统时，不要只看前台 QPS。后台 compaction 的节奏决定了系统能不能长期稳定。
+## compaction picker 决定系统在还哪笔债
 
-## 三个放大
+Compaction 不是简单后台 merge。它要先决定还哪笔债。
 
-我会用三个放大来记 LSM 的代价。
+一个 compaction picker 通常会考虑：
 
-第一，写放大。
+- L0 文件数量。
+- level size 是否超过目标。
+- 文件 range 是否和下一层重叠。
+- tombstone 是否有机会清掉。
+- compaction score。
+- 是否有正在运行的 compaction。
+- trivial move 是否可行。
 
-一条数据写入后，可能会在 compaction 中被反复读出、合并、写入下一层。最终磁盘写入量大于用户写入量。
-
-第二，读放大。
-
-读取一个 key，可能要查多层文件、多个 bloom filter、多个 block。范围扫描还要 merge 多路 iterator。
-
-第三，空间放大。
-
-旧版本、tombstone、compaction 临时输出文件都会让磁盘占用大于逻辑数据量。
+被选中的文件会进入 merge iterator：
 
 ```text
-write amplification
-read amplification
-space amplification
+input files from level N
+  + overlapping files from level N+1
+  -> merge by key + sequence number
+  -> keep newest visible version
+  -> drop obsolete versions
+  -> output new SSTables
+  -> install manifest edit
 ```
 
-LSM 的调优，本质上经常是在这三者之间找平衡。
+这里最关键的是“visible”。如果还有 snapshot 需要旧 sequence number，compaction 不能把旧版本随便删掉。
 
-## Leveling 和 Tiering
+这也是为什么快照、长 iterator、事务读会影响 compaction 回收。旧 reader 越久，旧版本和 tombstone 越难清。
 
-Compaction 策略里常见两种方向。
+## tombstone 是删除事实，不是空间回收
 
-Leveling 更积极地把数据整理到分层结构里，低层文件范围尽量不重叠。它通常读放大更低，但写放大更高。
+LSM 删除一个 key，通常写 tombstone：
 
-Tiering 更倾向于先积累多个 run，再一起合并。它写放大可能更低，但读放大和空间放大可能更高。
+```text
+seq=40 key=a tombstone
+seq=30 key=a value=v3
+seq=20 key=a value=v2
+```
 
-没有绝对更好的策略，取决于 workload：
+读路径看到可见 tombstone，就认为 key 不存在。但磁盘空间未必立刻下降。只有 compaction 确认低层旧值都被覆盖，并且没有 snapshot 需要旧版本时，tombstone 和旧 value 才能一起丢。
 
-- 写多读少，可以接受更多读放大。
-- 读多写少，希望读路径更短。
-- 范围查询多，要关注文件布局和 merge 成本。
-- TTL/tombstone 多，要关注删除回收是否及时。
+大量 delete-heavy workload 的危险就在这里：
 
-这也是为什么存储引擎参数不能脱离 workload 单独讨论。
+- tombstone 本身增加写入。
+- point lookup 可能一路查到 tombstone。
+- range scan 要跳过大量删除标记。
+- 空间回收依赖 compaction 是否及时。
 
-## WAL 和 LSM 的关系
+所以“删除了很多数据，磁盘为什么没降”不是 bug 的第一嫌疑，先看 compaction 是否走到了能清 tombstone 的层级。
 
-WAL 不只是数据库课本里的一个名词。对 LSM 来说，它是前台写入能快速返回的关键。
+## 三个放大是同一个账本的不同列
 
-写入先 append WAL，然后更新 memtable。如果进程在 memtable flush 前崩溃，重启时可以 replay WAL 恢复内存状态。
+LSM 的代价常被分成三个放大：
 
-这条路径有几个重要问题：
+```text
+write amplification:
+  user write bytes -> actual disk write bytes
 
-- WAL 是否 fsync，何时 fsync。
-- group commit 如何批量摊平落盘成本。
-- WAL 文件何时可以删除。
-- replay 时间是否可控。
-- WAL 和 memtable flush 的边界如何记录。
+read amplification:
+  one logical read -> multiple structures/files/blocks
 
-如果只看 memtable/SSTable，会漏掉崩溃恢复这条主线。真正的存储系统不是只在正常运行时正确，还要在掉电、进程崩溃、部分文件写入成功时仍然能恢复到一致状态。
+space amplification:
+  logical live data -> physical bytes on disk
+```
 
-## 我会怎样读一个 LSM 实现
+它们不是孤立指标。
 
-如果让我读一个 LSM 存储引擎，我会按这条路线：
+更 aggressive 的 leveling 可以降低读放大和空间放大，但会提高写放大。更 lazy 的 tiering 可以降低写放大，但读路径和空间占用会更重。
 
-1. 写入入口：请求如何进入 WAL 和 memtable。
-2. memtable：用什么内存结构，何时变 immutable。
-3. flush：如何生成 SSTable，文件格式是什么。
-4. manifest：系统如何记录当前有哪些文件。
-5. read path：point lookup 和 iterator 如何找最新值。
-6. compaction picker：如何选择要合并的文件。
-7. compaction output：如何处理覆盖、删除和 range tombstone。
-8. recovery：崩溃后如何从 manifest 和 WAL 恢复。
+```text
+leveling:
+  lower read amplification
+  lower space amplification
+  higher write amplification
 
-这条路线能避免一开始陷进某个参数。先把数据生命周期走完，再看 tuning。
+tiering:
+  lower write amplification
+  higher read amplification
+  higher temporary space amplification
+```
 
-## 数据生命周期这条线
+所以 LSM 参数不能离开 workload 讨论。写多读少、读多写少、range scan 多、TTL/tombstone 多，对应的最优点完全不同。
 
-LSM Tree 的核心不是“写入快”四个字，而是把数据从内存、日志、有序文件、后台整理一路推过去。每一步都在延迟某个成本，也都必须在后面某个地方还回来。
+## write stall 是后台债务影响前台的时刻
+
+LSM 的设计看起来把 compaction 放到了后台，但后台债务最终会回到前台。
+
+常见触发包括：
+
+- memtable 太多，flush 追不上。
+- L0 文件数超过 soft/hard threshold。
+- pending compaction bytes 过高。
+- 磁盘空间不足。
+- 后台 I/O 被限速或抢占。
+
+这时系统会减慢甚至暂停写入，让 compaction 追债。
+
+```text
+foreground writes
+  -> generate WAL + memtable
+  -> flush creates L0
+  -> compaction cannot catch up
+  -> L0 grows
+  -> write stall
+```
+
+所以线上看 LSM，不要只看 QPS 和平均延迟。至少要看 L0 files、pending compaction bytes、stall micros、flush/compaction throughput、block cache hit rate。
+
+## 我会怎么读一个 LSM 实现
+
+读 RocksDB/LevelDB 这类实现时，我会按生命周期找入口：
+
+```text
+write path:
+  DBImpl::Write / WriteBatch
+  WAL writer
+  memtable insert
+
+flush path:
+  immutable memtable
+  table builder
+  L0 file install
+
+read path:
+  memtable lookup
+  version / file picker
+  bloom filter
+  block cache
+  iterator merge
+
+compaction path:
+  compaction picker
+  merge iterator
+  output table builder
+  version edit / manifest
+
+recovery path:
+  CURRENT
+  manifest replay
+  WAL replay
+  obsolete file cleanup
+```
+
+具体函数名会随实现变化，但边界不会变：谁把写入变成可恢复事实，谁把内存变成不可变文件，谁把旧文件替换成新版本，谁在崩溃后确认当前历史。
+
+## LSM 的核心不是写入快，而是债务管理
+
+LSM Tree 的前台写入路径很克制：append WAL，更新 memtable，尽快返回。
+
+真正决定系统能不能长期稳定的，是后台能否持续还债：L0 能不能压住，旧版本能不能清掉，tombstone 能不能回收，compaction 能不能在不打爆前台 tail latency 的情况下推进。
+
+写入快只是第一眼。债务管理才是 LSM 的工程核心。

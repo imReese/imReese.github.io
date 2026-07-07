@@ -1,6 +1,6 @@
 ---
-title: 'WAL、Compaction 和恢复：存储系统怎样处理崩溃'
-description: '一篇数据存储学习笔记：从 WAL、manifest、flush、compaction 和 tombstone 理解崩溃恢复与后台整理。'
+title: 'WAL、Manifest 和 Compaction：崩溃后哪些写入算数'
+description: '沿着 WAL append、memtable flush、manifest edit、compaction install、tombstone 和 recovery 入口看存储系统如何确认崩溃前的历史。'
 author: 'Reese'
 date: '2023-11-26'
 topics:
@@ -10,206 +10,277 @@ series: 'Storage Systems Notes'
 featured: false
 ---
 
-存储系统最容易被忽略的问题，是崩溃。
+存储系统最麻烦的问题，不是正常路径写入成功，而是崩溃后怎么回答一句话：**哪些写入已经算数，哪些只是半成品。**
 
-正常运行时，写入成功、读取成功、后台整理成功，很多设计都看起来没问题。但真正麻烦的是这些时刻：
+几个崩溃点放在一起看，会比单独背 WAL、manifest、compaction 更有用：
 
 ```text
-WAL 写了一半进程挂了
-memtable 还没 flush 机器掉电
-SSTable 写完但 manifest 没更新
-compaction 输出了新文件但旧文件还没删
-delete 写进去了但旧值还在低层
+WAL record 写了一半
+WAL 写完但 memtable 还没更新
+memtable flush 生成了 SSTable，但 manifest 没记录
+manifest 记录了新文件，但旧文件还没删
+compaction 输出了一半
+delete tombstone 写入了，但低层旧值还在
 ```
 
-所以我后来读存储引擎，会把问题拆成两条线：前台如何写得快，系统如何在崩溃后知道哪些写入算数。
+恢复逻辑的本质，就是在一堆文件和日志里重新确认正式历史。
 
-## WAL 是写入的事实入口
+<SequenceDiagram
+  title="恢复时真正关心的是提交边界"
+  actors={['Write Path', 'WAL', 'SSTable', 'Manifest', 'Recovery']}
+  steps={[
+    {
+      from: 'Write Path',
+      to: 'WAL',
+      label: 'append record',
+      detail: '写入先进入可 replay 的事实来源',
+      tone: 'teal',
+    },
+    {
+      from: 'Write Path',
+      to: 'SSTable',
+      label: 'flush immutable memtable',
+      detail: '内存状态变成不可变文件',
+      tone: 'blue',
+    },
+    {
+      from: 'SSTable',
+      to: 'Manifest',
+      label: 'install version edit',
+      detail: '文件被记录后才属于当前版本',
+      tone: 'green',
+    },
+    {
+      from: 'Recovery',
+      to: 'Manifest',
+      label: 'replay metadata history',
+      detail: '重启后确认 live files 和 WAL replay 边界',
+      tone: 'amber',
+    },
+  ]}
+/>
 
-WAL，全称 write-ahead log。名字已经把原则讲出来了：数据进入内存结构之前，先写日志。
+## 写入成功的边界在 WAL 策略里
 
-一个简化写入路径是：
+WAL 的原则是 write-ahead：数据进入内存结构前，先把日志写下来。
+
+简化路径：
 
 ```text
 append WAL record
-  -> maybe fsync
+  -> maybe fsync / group commit
   -> update memtable
   -> return success
 ```
 
-如果进程在 memtable flush 前挂了，memtable 会丢。但 WAL 还在，重启后可以 replay。
+这里有一个必须说清楚的边界：系统什么时候对客户端返回成功？
 
-这就引出一个边界：什么时候可以对客户端说写入成功？
-
-如果写入只进了内存，没有落 WAL，崩溃后就没法恢复。严格一点的系统要等 WAL 持久化后再返回成功。为了性能，系统又会做 group commit，把多个写入一起 fsync，摊平成本。
-
-这里没有免费选择。更强的持久性意味着更多同步 I/O，更低的延迟往往意味着接受某些窗口内的数据丢失风险。
-
-## WAL 不是越多越安全
-
-WAL 的作用是恢复还没进入稳定文件的数据。它不是永久存档。
-
-当 memtable flush 成 SSTable，并且这个 SSTable 已经被 manifest 记录后，对应 WAL 就可以被删除或截断。
-
-否则 WAL 会越来越多，重启 replay 时间越来越长。
-
-我会把 WAL 生命周期理解成：
+如果返回前 WAL 没有持久化，崩溃后这次写入可能消失。很多系统会用 group commit 在多个写入之间摊 fsync 成本：
 
 ```text
-active WAL
-  -> memtable accepts writes
-  -> memtable becomes immutable
-  -> flush writes SSTable
-  -> manifest records SSTable
-  -> old WAL can be recycled
+write 1
+write 2
+write 3
+  -> one fsync
+  -> all return
 ```
 
-这里 manifest 很关键。如果 SSTable 文件写出来了，但 manifest 没记录，崩溃恢复时系统不能假装它一定有效。文件存在不等于进入了数据库的正式版本。
+这不是免费优化。它改变的是延迟、吞吐和持久性窗口之间的取舍。
 
-## Manifest 是元数据历史
+## WAL record 要能识别半条记录
 
-LSM 系统里，数据文件很多，层级也会变化。系统需要知道当前哪些 SSTable 是有效的，它们在哪一层，key range 是什么。
+WAL 写了一半进程挂掉，是恢复里非常具体的问题。
 
-这个元数据通常由 manifest 或类似机制维护。
+一个稳的 WAL 格式通常需要：
 
-Compaction 时会发生这样的变化：
+- record length。
+- type / batch boundary。
+- checksum。
+- sequence number。
+- fragmentation handling。
+
+恢复时读到坏 checksum 或半条 record，不能把后面的随机字节解释成写入。它要能停在最后一条完整有效记录。
 
 ```text
-old files: A, B, C
-new files: D, E
-
-manifest edit:
-  delete A, B, C
-  add D, E
+valid record seq=101
+valid record seq=102
+partial record seq=103
+  -> ignore / truncate from here
 ```
 
-只有 manifest edit 成功后，新文件才成为当前版本的一部分。旧文件也不能在 edit 成功前随便删。
+所以 WAL 格式不是文件格式洁癖。它直接决定崩溃后能不能找到最后的可信边界。
 
-这是一种很典型的“先写新文件，再原子切换元数据”的思路。它避免了在原文件上做危险的原地修改。
+## flush 完成不等于文件进入历史
 
-## Flush 也要考虑崩溃点
+memtable flush 会生成 SSTable。但 SSTable 文件存在，不代表它已经属于数据库当前版本。
 
-memtable flush 看起来简单：把内存里的有序数据写成 SSTable。
-
-但它也有几个崩溃点：
-
-- SSTable 文件写到一半挂了。
-- SSTable 写完但校验信息不完整。
-- 文件写完但没有 fsync。
-- manifest 还没更新。
-- manifest 更新了但旧 WAL 还没清理。
-
-一个稳的系统要能在重启时识别这些状态。
-
-比如未被 manifest 引用的临时文件可以清理；manifest 已引用的文件必须能校验和打开；旧 WAL 是否需要 replay，要看对应 memtable 是否已经被持久化记录覆盖。
-
-这也是为什么存储系统里文件命名、临时文件后缀、版本号、sequence number 都很重要。它们不是洁癖，而是恢复时的证据。
-
-## Compaction 不是后台小事
-
-Compaction 经常被说成后台整理，但它其实影响系统长期健康。
-
-它要处理：
-
-- 多个 SSTable 的有序归并。
-- 相同 key 的多版本覆盖。
-- tombstone 删除标记。
-- snapshot 可见性。
-- 输出文件切分。
-- manifest 更新。
-- 旧文件回收。
-
-如果系统有 snapshot 或事务读取，compaction 还不能简单地把旧版本都丢掉。某些旧 reader 可能仍然需要看到旧 sequence number 对应的数据。
-
-所以 compaction 既是空间回收机制，也是版本可见性维护机制。
-
-## Tombstone 是延迟删除
-
-LSM 里删除一个 key，通常不是立刻把所有层里的旧值找出来删掉，而是写一条 tombstone。
+常见边界是 manifest/version edit：
 
 ```text
-delete key=a
-  -> write tombstone(a)
-  -> future reads see tombstone
-  -> compaction eventually drops old values
+write table file 000123.sst
+fsync table file / directory
+append manifest edit: add file 000123 at L0
+maybe recycle old WAL
 ```
 
-这个设计让删除也能走顺序写路径。但 tombstone 会带来读放大和空间问题。
+如果崩溃发生在 SSTable 写完、manifest edit 之前，恢复时这个文件通常只能当 orphan / pending output 处理，不能直接纳入 live set。
 
-如果低层还有旧值，tombstone 就必须保留，否则未来读可能又读到旧数据。只有当 compaction 能证明旧值已经被覆盖，且没有 snapshot 还需要旧版本时，tombstone 才能被清理。
+这条规则很关键：**文件存在不是事实，metadata 承认才是事实。**
 
-这解释了为什么大量删除后，磁盘空间不一定立刻下降。删除只是写入了“删除事实”，真正回收要等 compaction。
+## manifest 是数据文件的时间线
 
-## Sequence number 是时间线
+LSM 里真正描述当前版本的，不是目录里有哪些 `.sst` 文件，而是 manifest replay 后得到的 Version。
 
-存储引擎通常会给写入分配递增 sequence number。
-
-读取时，系统不是简单找 key 最新文件，而是找对当前 read snapshot 可见的最新版本。
+compaction 会产生类似 edit：
 
 ```text
-key=a seq=101 value=v3
-key=a seq=88  tombstone
-key=a seq=42  value=v1
+delete file A from L1
+delete file B from L1
+add file C to L2
+add file D to L2
 ```
 
-如果当前 snapshot 是 90，就不能看到 seq=101 的值。它应该看到 seq=88 的 tombstone，从而认为 key 不存在。
+只有这个 edit 成功安装以后，新文件才可见，旧文件才可以进入 obsolete cleanup。
 
-这条线对理解 MVCC、snapshot read、compaction 都很关键。没有 sequence number，旧读和新写之间的边界会很难维护。
+如果 manifest 写成功后崩溃，旧文件可能还在目录里，但恢复时它们不再属于 live files。反过来，如果新文件写出来但 manifest 没写成功，恢复时不能把它们当 live files。
 
-## 崩溃恢复的入口
+这就是为什么恢复入口通常先读 `CURRENT`，找到 manifest，再 replay manifest edits，而不是直接扫描所有 SSTable 猜状态。
 
-一个简化恢复过程可能是：
+## compaction 的原子性靠“新文件 + manifest edit”
+
+Compaction 不会原地改旧文件。它会读旧文件，写新文件，然后安装 metadata edit。
+
+```text
+inputs:
+  L1: A, B
+  L2: X, Y
+
+outputs:
+  L2: C, D
+
+install:
+  delete A, B, X, Y
+  add C, D
+```
+
+崩溃点有三类：
+
+第一，输出文件没写完。恢复时应该清理。
+
+第二，输出文件写完但 manifest 没安装。恢复时仍然不能使用这些新文件。
+
+第三，manifest 已安装但旧文件没删。恢复时 live set 已经指向新版本，旧文件只是垃圾，后续 cleanup 可以删。
+
+这个设计把危险的原地修改变成了可恢复的版本切换。
+
+## tombstone 不是删除完成
+
+删除在 LSM 里通常写 tombstone：
+
+```text
+seq=200 key=a tombstone
+seq=150 key=a value=v2
+seq=100 key=a value=v1
+```
+
+读路径看到当前 snapshot 可见的 tombstone，就认为 key 不存在。但低层旧值仍然可能在磁盘上。
+
+tombstone 什么时候能被清掉，取决于：
+
+- 是否已经覆盖所有可能包含旧值的更低层。
+- 是否还有 snapshot 需要旧 sequence number。
+- 是否有 range tombstone 或 merge operand 之类复杂语义。
+
+如果 snapshot 长时间不释放，compaction 可能不能丢旧版本。于是删除很多数据后，空间仍然不降。
+
+## sequence number 是恢复和可见性的共同语言
+
+sequence number 把写入排成一条时间线。
+
+```text
+seq=105 key=a value=v3
+seq=101 key=b value=x
+seq=98  key=a tombstone
+seq=70  key=a value=v1
+```
+
+读取时要按 snapshot sequence 判断可见性。恢复时也要知道 WAL replay 从哪里开始、哪些 memtable 已经 flush、哪些 sequence 已进入 SSTable。
+
+没有这条时间线，系统就很难同时处理：
+
+- 新写覆盖旧写。
+- snapshot read。
+- tombstone 清理。
+- WAL replay。
+- compaction 丢弃旧版本。
+
+这也是为什么 sequence number 通常会贯穿 WAL、memtable、SSTable 和 manifest 相关逻辑。
+
+## 恢复入口不是“读所有文件”
+
+一个典型恢复流程更像：
 
 ```text
 read CURRENT
-  -> find latest manifest
+  -> locate manifest
   -> replay manifest edits
-  -> know live SSTables
-  -> find WALs newer than flushed state
-  -> replay WAL records into memtable
-  -> cleanup obsolete temp files
+  -> build live file set
+  -> identify WAL files needing replay
+  -> replay valid WAL records
+  -> rebuild memtables
+  -> cleanup obsolete / orphan files
 ```
 
-这里的每一步都在回答：系统上次崩溃前，哪些状态已经成为正式历史，哪些只是半成品。
+这里每一步都在缩小不确定性：
 
-恢复不是“把所有文件都读一遍”。它依赖元数据日志、文件编号、sequence number、WAL 边界和校验信息。设计越清楚，恢复越可控。
+- manifest 告诉你哪些 SSTable 属于正式版本。
+- WAL 告诉你哪些写入还没进入 SSTable。
+- checksum / record boundary 告诉你日志读到哪里可信。
+- obsolete cleanup 处理崩溃留下的旧文件和半成品。
 
-## Benchmark 里要看恢复成本
+恢复越依赖明确 metadata，越不需要靠猜。
 
-很多存储 benchmark 只看运行时吞吐和延迟，但我觉得恢复成本也应该看。
+## Benchmark 不该只看正常运行
 
-比如：
+存储系统 benchmark 经常只看吞吐、平均延迟、p99。但恢复成本也是可用性的一部分。
+
+我会额外测：
 
 - 写入高峰后重启要 replay 多久。
-- 大量 WAL 残留时恢复是否可控。
-- compaction backlog 很大时重启会不会变慢。
-- manifest 很大时打开数据库要多久。
-- 崩溃后有没有需要清理的大量临时文件。
+- WAL 堆积很多时 open database 要多久。
+- manifest 很大时 replay 是否变慢。
+- compaction backlog 很高时重启是否有额外清理成本。
+- 大量 tombstone 后空间何时回收。
+- 崩溃注入后是否有 orphan 文件残留。
 
-线上系统最怕的是“平时看起来还行，一重启恢复半小时”。对存储系统来说，恢复时间也是可用性的一部分。
+线上最怕的是：正常跑的时候指标漂亮，一重启恢复几十分钟。
 
-## 我会怎样读恢复逻辑
+## 我会怎样做故障注入
 
-读一个存储引擎时，我会专门找这些文件或模块：
+读或验证一个存储引擎时，我更喜欢按崩溃点打断：
 
-1. WAL record 格式。
-2. manifest/version edit 格式。
-3. memtable flush 入口。
-4. compaction install 入口。
-5. recovery/open database 入口。
-6. obsolete file cleanup。
-7. snapshot/sequence number 规则。
+```text
+after WAL append, before memtable insert
+after memtable insert, before client return
+after SSTable file write, before manifest edit
+after manifest edit, before obsolete cleanup
+during compaction output
+after tombstone write, before compaction
+```
 
-然后我会问几个故障注入问题：
+然后检查：
 
-- WAL append 后、memtable update 前挂了怎么办。
-- SSTable 写完、manifest 前挂了怎么办。
-- manifest 成功、旧文件删除前挂了怎么办。
-- compaction 半途中挂了怎么办。
-- delete 后、compaction 前读旧 snapshot 怎么办。
+- 重启后数据是否符合持久性承诺。
+- 半写 WAL 是否被截断。
+- orphan SSTable 是否被清理。
+- live file set 是否只来自 manifest。
+- old snapshot 语义是否保持。
+- 空间回收是否最终发生。
 
-如果这些问题能说清楚，这个存储引擎的生命线基本就摸到了。
+如果这些点都能解释清楚，WAL、manifest、compaction 和 recovery 才真的连成了一个存储系统。
 
-## 写入历史要能恢复
+## 崩溃恢复是在确认历史，不是在修文件
 
-WAL 解决“写入成功后不能凭空消失”，compaction 解决“历史垃圾不能无限堆积”，recovery 解决“崩溃后如何重新确认历史”。这三件事放在一起，才像一个完整的存储系统。
+WAL 记录尚未稳定成 SSTable 的写入，manifest 记录哪些 SSTable 属于当前版本，compaction 用新文件和 metadata edit 替换旧历史，recovery 则在重启时重新走一遍这些证据。
+
+所以恢复不是“尽量把文件救回来”，而是确认哪些历史已经被系统正式承认。
