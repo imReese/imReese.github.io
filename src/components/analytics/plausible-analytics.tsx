@@ -2,12 +2,15 @@
 
 import Script from "next/script";
 
-const plausibleUrl = process.env.NEXT_PUBLIC_PLAUSIBLE_URL!;
-const plausibleSrc = process.env.NEXT_PUBLIC_PLAUSIBLE_SRC!;
-
-
 export function PlausibleAnalytics() {
   if (process.env.NODE_ENV !== "production") {
+    return null;
+  }
+
+  const plausibleUrl = process.env.NEXT_PUBLIC_PLAUSIBLE_URL;
+  const plausibleSrc = process.env.NEXT_PUBLIC_PLAUSIBLE_SRC;
+
+  if (!plausibleUrl || !plausibleSrc) {
     return null;
   }
 
