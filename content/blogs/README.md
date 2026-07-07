@@ -16,12 +16,27 @@ title: 'My post title'
 description: 'A short summary for the blog index and metadata.'
 author: 'Reese'
 date: '2026-06-30'
+category: 'engineering-deep-dive'
+series: 'Mooncake / HiCache Internals'
+featured: false
 topics:
   - cloud-tooling
 ---
 ```
 
 ## Writing Standard
+
+Use `category`, `series`, and `featured` to control how the blog index presents the post:
+
+```text
+engineering-deep-dive  Source-level engineering analysis; eligible for featured placement
+debugging-validation   Debugging and validation paths; eligible for featured placement
+engineering-notes      Medium-depth engineering notes
+runbooks               Tool guides and operational notes
+reading-notes          Paper or classic system reading notes
+```
+
+Only set `featured: true` for posts with a clear thesis, source context, engineering trade-offs, evidence, and a strong takeaway.
 
 Every post should leave the reader with something concrete they can explain or use. Do not write soft summaries.
 
