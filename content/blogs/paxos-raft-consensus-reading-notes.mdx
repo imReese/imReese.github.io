@@ -1,164 +1,199 @@
 ---
-title: 'Paxos / Raft 学习笔记：一致性不是“大家投票”'
-description: '一篇分布式一致性入门笔记：从多数派、日志复制、leader 任期和故障恢复理解 Paxos 与 Raft。'
+title: 'Paxos / Raft 笔记：旧 leader 为什么不能继续写'
+description: '从旧 leader、网络分区、ballot/term、日志匹配、old-term commit 和 fencing 看一致性协议真正防住的故障。'
 author: 'Reese'
 date: '2022-04-12'
 topics:
   - distributed-systems
-category: 'reading-notes'
-series: 'Reading Notes'
+category: 'engineering-notes'
+series: 'Distributed Systems Notes'
 featured: false
 ---
 
-我第一次看 Paxos 和 Raft 的时候，很容易把它们粗暴理解成“大家投票，少数服从多数”。
+讲 Paxos 和 Raft，如果只说“多数派投票”，味道就不对。
 
-这个说法不能说完全错，但太容易让人误解。分布式一致性真正要解决的问题不是“谁票多谁赢”，而是：**在网络会丢包、节点会宕机、消息会乱序、旧 leader 可能还活着的情况下，系统怎样保证已经确认的决定不会被后来推翻。**
-
-所以我后来更愿意把一致性协议理解成一套约束：
+工程里最危险的场景通常长这样：
 
 ```text
-哪些节点能提出值
-哪些节点能接受值
-什么情况下一个值算被选定
-旧值如何限制新一轮提案
-故障恢复后如何继续不破坏历史
+node A 是 leader
+node A 和多数派断开
+node B 在多数派里成为新 leader
+node A 还活着，也还以为自己是 leader
 ```
 
-这条线比“投票”更接近问题本身。
+问题不是谁票多。问题是：**旧 leader 还能不能继续写？旧消息晚到了怎么办？旧日志能不能覆盖新历史？外部存储会不会接受旧 leader 的写入？**
 
-## 多数派的意义不是民主
+我现在读一致性协议，会先拿这个事故现场去套。
 
-多数派 quorum 最重要的性质是相交。
+## 多数派交集让旧历史留下证人
 
-如果集群有 5 个节点，任意一个多数派至少有 3 个节点。两个多数派不可能完全不相交，它们至少共享一个节点。
+5 个节点里，一个多数派至少 3 个节点。任意两个多数派一定相交：
 
 ```text
-quorum A: n1 n2 n3
-quorum B: n3 n4 n5
-
-intersection: n3
+quorum 1: n1 n2 n3
+quorum 2: n3 n4 n5
 ```
 
-这个交点很关键。它让后一轮决策有机会知道前一轮已经发生过什么。多数派不是为了让系统看起来“公平”，而是为了让历史不会在不同分区里各自长出一套。
+`n3` 的意义不是投票公平，而是历史证人。
 
-如果两个互不相交的组都能独立做决定，就可能出现两个值都被认为成功的情况。那就不是一致性，而是分叉。
+如果某个值已经在一个多数派里被接受或提交，后续另一个多数派必然有机会遇到至少一个知道旧历史的节点。协议再通过 ballot/term 和日志规则，把这个旧历史带到新一轮里。
 
-## Paxos 的难点在于“旧决定不能丢”
+没有交集，就可能两个分区各自长出自己的历史。
 
-Paxos 里最经典的是两阶段：
+## term / ballot 是权力版本号
+
+旧 leader 能不能继续写，第一道门是 term 或 ballot。
 
 ```text
-prepare / promise
-accept / accepted
+Paxos: ballot / proposal number
+Raft:  term
 ```
 
-我最初看这两个阶段时，会觉得 prepare 像是“申请一个编号”，accept 像是“提交一个值”。但关键不只是编号单调递增，而是 prepare 阶段要收集历史。
-
-当 proposer 发起一个更高编号的 prepare 时，acceptor 会承诺不再接受更低编号的提案。同时，如果它之前接受过某个值，也要把这个信息带回去。
-
-这就引出 Paxos 最核心的一点：
-
-**新一轮提案不能随便选自己喜欢的值。如果 prepare 返回里已经有被接受过的旧值，新 proposer 要继承编号最高的那个旧值。**
-
-这个约束保证了：一旦某个值已经有可能被多数派选定，后续更高编号的提案不会把它覆盖掉。
-
-Paxos 难读，不是因为它步骤特别多，而是因为它的安全性藏在这些“不许随便改值”的约束里。
-
-## Leader 不是安全性的来源
-
-很多工程实现会引入 leader。leader 会让系统更好理解：客户端把写请求给 leader，leader 复制日志，followers 跟上以后提交。
-
-但要小心，leader 只是让协议更高效、更容易工程化，不是安全性的唯一来源。
-
-真正保证安全的是：
-
-- 任期或 ballot 单调增长。
-- 多数派提交。
-- 新 leader 必须继承已经可能提交的历史。
-- follower 不能接受过期 leader 的写入。
-
-如果一个旧 leader 和集群断开了，它可能还以为自己是 leader。网络恢复时，它不能继续用旧任期写日志。任期号、投票规则和日志匹配规则，就是为了挡住这种“旧世界的权力”。
-
-## Raft 把可理解性放在了很高的位置
-
-Raft 给我的感觉是：它不是比 Paxos 魔法更强，而是更愿意把工程路径讲清楚。
-
-它把问题拆成几个部分：
+节点一旦见过更高版本，就应该拒绝旧版本写入：
 
 ```text
-leader election
-log replication
-safety
-membership change
-snapshot
+follower has seen term 8
+old leader sends term 7 AppendEntries
+  -> reject
 ```
 
-这样读起来比直接读 Multi-Paxos 友好很多。
+这不是简单的“新编号大于旧编号”。它是在给写权加版本。旧 leader 即使进程还活着，也不能带着旧 term 继续修改复制日志。
 
-Raft 里我最关心三个机制：
+<StateDiagram
+  title="旧 leader 失权的过程"
+  states={[
+    {
+      label: 'term 7 leader',
+      detail: '曾经拿到多数派',
+      tone: 'teal',
+      next: 'partition',
+    },
+    {
+      label: 'partition',
+      detail: '失去多数派但进程还活着',
+      tone: 'amber',
+      next: 'term 8 elected',
+    },
+    {
+      label: 'term 8 elected',
+      detail: '多数派授予新 leader',
+      tone: 'blue',
+      next: 'stale write rejected',
+    },
+    {
+      label: 'stale write rejected',
+      detail: '旧 term 消息不能推进日志',
+      tone: 'green',
+    },
+  ]}
+/>
 
-第一，leader election。
+## Paxos 的 prepare 阶段是在逼新 leader 听旧历史
 
-节点有 `term`。candidate 拉票，拿到多数票才能成为 leader。一个节点在同一个 term 里最多投一票。这让同一个 term 里最多只会有一个 leader 拿到多数派。
+Paxos 里 prepare/promise 最容易被看成流程仪式。其实它在解决一个很具体的问题：新 proposer 不能随便覆盖可能已经被选定的旧值。
 
-第二，log matching。
+prepare 做两件事：
 
-leader 发送 AppendEntries 时，会带上前一个日志位置和任期。follower 只有在本地日志能对上时才接受后续日志。对不上就回退，直到找到共同前缀。
+1. acceptor 承诺不再接受更低 ballot。
+2. acceptor 返回自己接受过的最高 ballot value。
 
-第三，commit rule。
-
-leader 只有在某条当前任期的日志复制到多数派后，才会推进 commit index。这个细节是为了避免旧任期日志在新 leader 上被错误提交。
-
-这些规则看起来繁琐，但每条都在处理一种真实的故障情况。
-
-## 日志复制比“状态一致”更重要
-
-分布式系统里常说复制状态机。更准确一点，大家复制的是日志，然后按同样顺序执行日志，最终得到同样状态。
+如果返回里已经有旧值，新 proposer 必须继承最高 ballot 的那个值。
 
 ```text
-same log entries
-  + same order
-  + deterministic state machine
-  -> same state
+prepare ballot=10
+
+acceptor A -> accepted ballot=6 value=x
+acceptor B -> none
+acceptor C -> accepted ballot=8 value=y
+
+proposer must choose y
 ```
 
-这也是为什么 Raft 会如此重视日志前缀关系。只要不同节点上已经提交的日志前缀一致，状态机就不会分叉。
+这条规则防住的是：旧值可能已经在某个多数派里形成决定，新一轮不能把它抹掉。
 
-如果直接同步“当前状态”，很多问题会变得模糊：哪个字段新，哪个字段旧，部分更新算不算成功，失败时如何回滚。日志把变化变成了一条条可排序、可重放、可确认的记录。
+Paxos 难读，不是因为步骤多，而是因为安全性藏在“你不能自由选择新值”这种约束里。
 
-这个思路后来再看 WAL、数据库恢复、消息队列，也会反复出现。
+## Raft 用日志匹配挡住错误后缀
 
-## 网络分区时，活性可以退让，安全不能退让
+Raft 的工程味更强。leader 复制日志，follower 接受日志，看起来直观很多。但真正要看的不是 happy path，而是 follower 如何拒绝不连续历史。
 
-一致性协议经常要在安全性和活性之间取舍。
-
-如果网络分区，少数派节点可能无法继续提交写入。系统看起来“不够可用”，但这是为了不让两个分区各自提交互相冲突的历史。
-
-我会这样理解：
+AppendEntries 会带：
 
 ```text
-safety:
-  不产生两个互相冲突的决定
-
-liveness:
-  系统最终还能继续往前走
+prevLogIndex
+prevLogTerm
+entries
+leaderCommit
 ```
 
-网络一直坏、调度一直不公平、节点不断重启时，任何协议都很难保证永远前进。但一个一致性协议至少要保证：就算暂时走不动，也不要走错。
+follower 只有在本地日志能对上 `prevLogIndex/prevLogTerm` 时，才接受后续 entries。
 
-## 我会怎么读这类协议
+```text
+leader:   [1:a] [2:b] [3:c] [4:d]
+follower: [1:a] [2:b] [3:x]
 
-我现在读一致性协议，会先抓几个问题：
+append after [3:c]
+  -> reject
+  -> leader backs off
+  -> find common prefix [1:a][2:b]
+```
 
-1. 这个协议里的 epoch/term/ballot 是什么，如何单调增长。
-2. 谁能提出值，谁能接受值，谁能提交值。
-3. 多数派交集在哪里被用到。
-4. 新 leader 如何发现旧日志。
-5. 旧 leader 如何被挡住。
-6. 节点重启以后，哪些状态必须持久化。
+这条规则保证日志不是随便从某个 index 开始覆盖。不同节点要先找到共同前缀，再接上 leader 的后缀。
 
-如果这些问题答不出来，说明还没真正理解协议，只是记住了流程图。
+## old-term commit 是 Raft 里容易漏掉的一刀
 
-## 守住一条历史
+Raft leader 不会仅仅因为旧 term 的 entry 复制到多数派，就直接用它推进 commit。它要等当前 term 的 entry 复制到多数派，再把前面的旧 entry 一起带上。
 
-一致性不是让每个节点每一刻都一样，而是让系统对外暴露的历史只有一条。Paxos 和 Raft 的核心，就是在一个不可靠的世界里，尽量守住这条历史线。
+这个规则看着别扭，但它在避免一种危险：新 leader 对旧 term 日志的提交判断不够强，可能让后续 leader election 里的日志安全性变复杂。
+
+更实用的理解是：
+
+```text
+current-term entry committed
+  -> 当前 leader 的权力被多数派确认
+  -> prefix before it becomes committed together
+```
+
+如果实现里忽略这个细节，系统可能在罕见选举交错下提交不该提交的旧日志。
+
+## 选主成功不等于外部写安全
+
+一致性协议能守住复制日志，但它不自动保护外部世界。
+
+假设旧 leader 曾经拿到写外部存储的权限。网络分区后，新 leader 在多数派中产生。旧 leader 恢复时，如果外部存储还接受它的写入，就会发生 split-brain side effect。
+
+所以工程系统需要 fencing token：
+
+```text
+leader term 8 -> token 8
+external storage records max token = 8
+
+old leader term 7 writes with token 7
+  -> reject
+```
+
+这一步经常不在一致性协议的核心流程图里，但生产系统不能省。leader 的 epoch/term 必须传到它控制的外部资源。
+
+## 我会怎么读实现
+
+看 Raft/Paxos 实现时，我不会从正常复制流程开始，而会找这些入口：
+
+- 节点什么时候持久化当前 term/ballot。
+- 收到更高 term 时如何 step down。
+- vote request 是否检查候选人的日志新旧。
+- AppendEntries 在哪里校验 previous log。
+- conflict 后如何回退。
+- commit index 何时推进。
+- old-term entry 是否被 current-term entry 间接提交。
+- snapshot install 后日志前缀语义是否还成立。
+- 对外资源有没有 fencing token。
+
+能挡住旧 leader，才是真正理解了多数派、term 和日志匹配的意义。
+
+## 最后记住的是写权，不是投票
+
+Paxos/Raft 要守住的是一条不能被旧世界改写的历史。
+
+多数派交集留下旧历史的证人，term/ballot 让旧 leader 失权，日志匹配防止错误后缀接上来，fencing token 把这个权力版本传到协议外部。
+
+所以一致性协议不是“大家投票选一个值”，而是在一个消息会延迟、节点会恢复、leader 会过期的世界里，持续回答一句话：现在谁还有资格写。

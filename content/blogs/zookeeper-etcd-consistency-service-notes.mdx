@@ -1,6 +1,6 @@
 ---
-title: 'ZooKeeper / etcd 学习笔记：把一致性做成服务'
-description: '一篇关于 ZooKeeper 和 etcd 的系统笔记：从一致性协议走到配置、选主、watch、租约和服务发现。'
+title: 'ZooKeeper / etcd 笔记：watch、lease 和 fencing 的边界'
+description: '从 watch 断线、revision compaction、lease 过期、选主 fencing 和 Kubernetes 控制面看协调服务为什么不能当普通 KV 用。'
 author: 'Reese'
 date: '2022-09-18'
 topics:
@@ -10,209 +10,247 @@ series: 'Distributed Systems Notes'
 featured: false
 ---
 
-看完 Paxos/Raft 以后，再看 ZooKeeper 和 etcd，会发现问题从“协议怎样保证一致”变成了“怎样把一致性包装成应用能直接用的服务”。
+ZooKeeper 和 etcd 很容易被误用，因为它们看起来都像 KV。
 
-大多数业务并不想自己实现 leader election、lease、watch、分布式锁、配置变更传播。它们想要的是一个相对可靠的协调层：
+但它们真正提供的不是“大一点的配置表”，而是一小段带顺序、生命周期和通知能力的控制面事实。
+
+我会用四个问题判断一个系统有没有把协调服务用对：
 
 ```text
-存一小份关键元数据
-  -> 大家看到同一份顺序
-  -> 变更能通知出去
-  -> 节点挂了能被感知
-  -> 临时状态能自动清掉
+watch 断了能不能续？
+历史 compact 了能不能重建本地状态？
+lease 过期后旧进程还能不能写外部资源？
+这里存的是控制面事实，还是数据面流量？
 ```
 
-ZooKeeper 和 etcd 的价值就在这里。它们不是拿来放大数据的存储系统，而是拿来放关键协调状态的系统。
+## 第一条红线：不要把协调服务当数据面
 
-## 协调服务不要存大对象
+ZooKeeper / etcd 适合存：
 
-我觉得理解这类系统的第一步，是不要把它们当普通 KV 数据库。
-
-ZooKeeper 和 etcd 适合存：
-
-- 服务注册信息。
-- leader 信息。
+- leader identity。
+- 服务实例。
 - 配置版本。
-- 元数据指针。
-- 租约和会话状态。
-- 小规模的控制面状态。
+- 任务领取状态。
+- worker session。
+- 小规模元数据指针。
 
-它们不适合存：
+不适合存：
 
-- 大文件。
-- 高频指标。
-- 大量日志。
-- 业务主数据。
-- 高吞吐写入流。
+- 用户大表。
+- 高频请求日志。
+- 指标流。
+- 大块二进制。
+- 消息队列式写入流。
 
-原因很直接：一致性和顺序是有成本的。每次写入都要经过复制协议、落盘、提交、再通知 watch。把大量业务数据塞进去，会让协调层自己变成瓶颈。
+原因不是“它们比较慢”这么粗糙，而是每次写入都会进入一致性复制、落盘、revision 推进和 watch 通知。你把数据面流量塞进去，拖慢的是整个控制面。
 
-我更愿意把这类系统想成“控制面的事实来源”，而不是“数据面的存储池”。
+协调服务应该小、稳、可解释。它的价值是给其它系统提供事实来源，不是替代业务数据库。
 
-## ZooKeeper 的 znode 模型
+## ZooKeeper 的强项是 session 语义
 
-ZooKeeper 的数据模型像一棵树：
+ZooKeeper 的 znode 树模型很直接：
 
 ```text
 /
   services/
-    search/
-      instance-0001
-      instance-0002
   locks/
   config/
 ```
 
-每个节点叫 znode。它既可以有数据，也可以有子节点。
+真正有用的是节点类型：
 
-最有用的是几类 znode：
+- persistent：显式删除前一直存在。
+- ephemeral：session 结束后自动删除。
+- sequential：创建时带递增序号。
+- ephemeral sequential：临时且有序。
 
-- persistent：普通持久节点。
-- ephemeral：会话断开后自动删除。
-- sequential：创建时自动带递增序号。
-- ephemeral sequential：临时且有序，常用于选主和锁。
+服务注册依赖 ephemeral：进程挂了、session 断了，节点消失。锁和选主依赖 sequential：大家创建有序节点，序号最小者持有权力，其它客户端 watch 前一个节点。
 
-这个模型非常适合协调问题。
+这里的工程边界是 session。协调层不需要知道进程“物理上是否还活着”，它只需要判断这个 session 是否还被承认。
 
-比如服务注册：服务启动后创建 ephemeral 节点，进程挂了或会话断了，节点自动消失。消费者 watch 这个目录，就能感知服务列表变化。
+## etcd 的强项是 revision 时间线
 
-比如分布式锁：多个客户端在同一目录下创建 sequential 节点，序号最小的拿锁，其余客户端 watch 自己前一个节点。前一个节点删除后，再判断自己是否最小。
-
-这里的关键不是“树结构多漂亮”，而是 ephemeral 和 sequential 让很多协调语义可以自然表达。
-
-## etcd 的 KV + revision 模型
-
-etcd 的表面模型更像 KV：
+etcd 更像 KV，但它的关键不是 key，而是 revision。
 
 ```text
-/services/search/instance-1 -> endpoint
-/config/rate-limit          -> value
-/leader/job-a               -> node-id
+rev 101: put /config/a
+rev 102: put /services/x
+rev 103: delete /services/y
 ```
 
-但 etcd 的关键是 revision。每次写入都会推进全局 revision，watch 可以从某个 revision 开始观察后续变化。
+revision 让客户端能说清楚自己看到了哪里。watch 断线后，也能从某个 revision 往后继续消费。
 
-这让 etcd 很适合做 Kubernetes 这类系统的后端存储。API 对象的变化可以被排序，watch client 可以从某个版本继续追，不必一直全量扫描。
-
-我会把 etcd 的几个概念放在一起看：
+这就是 Kubernetes controller 能工作的基础模式：
 
 ```text
-key-value
-  + revision
-  + watch
-  + lease
-  + transaction
-  + compaction
+list current objects at resourceVersion R
+watch from R + 1
+process ordered events
+if watch history is gone, relist
 ```
 
-其中 revision 是时间线，watch 是订阅变化，lease 是生命周期，transaction 是条件更新，compaction 是清理过旧历史。
+如果没有 revision/resourceVersion，controller 断线后只能猜自己漏没漏事件。
 
-## watch 不是普通回调
+## watch 不是 callback
 
-watch 很容易被低估。
+把 watch 当 callback，是使用 etcd/ZooKeeper 时最常见的错误之一。
 
-应用看配置变化、服务上下线、Kubernetes controller 看对象变化，本质上都依赖 watch。
+callback 的心智模型是：
 
-一个可靠的 watch 机制至少要回答：
+```text
+changed -> notify me
+```
 
-- 从哪个版本开始看。
-- 中间断线后怎么恢复。
-- 历史被 compact 后怎么办。
-- 事件顺序是否和写入顺序一致。
-- 客户端处理慢了会不会堆积。
+watch 的真实模型更像：
 
-所以 watch 不是“改了就调个 callback”这么简单。它是把一致性存储里的有序历史，变成应用能消费的事件流。
+```text
+I have processed history up to revision R.
+Please give me events after R.
+If you no longer have that history, tell me to rebuild.
+```
 
-这也是为什么 etcd 的 revision 很重要。没有版本号，断线恢复时就很难说清楚“我错过了哪些事件”。
+所以一个可靠 watcher 必须保存进度，并处理断线。
 
-## lease 解决生命周期问题
+<SequenceDiagram
+  title="watch client 应该能重新找回事实"
+  actors={['Client', 'etcd', 'Local Cache']}
+  steps={[
+    {
+      from: 'Client',
+      to: 'etcd',
+      label: 'list at revision R',
+      detail: '先拿当前事实和版本',
+      tone: 'teal',
+    },
+    {
+      from: 'Client',
+      to: 'Local Cache',
+      label: 'replace local cache',
+      detail: '本地状态以 list 结果为准',
+      tone: 'blue',
+    },
+    {
+      from: 'Client',
+      to: 'etcd',
+      label: 'watch from R + 1',
+      detail: '按 revision 消费后续事件',
+      tone: 'green',
+    },
+    {
+      from: 'etcd',
+      to: 'Client',
+      label: 'compacted',
+      detail: '历史不在了，必须重新 list',
+      tone: 'amber',
+    },
+  ]}
+/>
 
-分布式系统里，最麻烦的问题之一是：一个节点到底还活着吗？
+如果代码在 watch 断线后只是重连，不检查 revision 是否还存在，它的本地 cache 就可能悄悄变成旧世界。
 
-如果只靠显式 delete，进程崩溃时就来不及清理。lease 的思路是反过来：状态默认有过期时间，客户端要持续续约；续不上，就认为它失效。
+## compaction 是事件流的保留窗口
 
-etcd 里常见模式是：
+etcd 不会无限保存历史 revision。compaction 会清理旧版本。
+
+这意味着慢 watcher 或长时间断线的 watcher 会错过窗口：
+
+```text
+client last seen: 120
+etcd compacted <= 180
+client watches from 121
+  -> compacted error
+```
+
+正确动作不是继续 retry，而是 relist。
+
+这点对 Kubernetes controller 很关键。controller 不能假设自己永远在线，也不能假设 watch 永远连续。它必须能用 list 重建本地状态，再从新的 resourceVersion 继续 watch。
+
+## lease 过期不是死亡证明
+
+lease 解决的是沉默客户端的生命周期。
 
 ```text
 grant lease
 put key with lease
-keepalive lease
-process exits or network breaks
+keepalive
+pause / partition / crash
 lease expires
 key deleted
-watchers receive delete event
 ```
 
-ZooKeeper 的 ephemeral node 也有类似效果，只是它绑定在 session 上。
+lease 过期表示协调服务不再承认这个 holder。它不等于进程真的停止了。
 
-lease 不是完美的故障检测。网络抖动、GC pause、负载过高都可能导致误判。但在工程上，它提供了一个可实现的边界：系统不需要永远等一个沉默的客户端。
+旧进程可能只是 GC pause，或者网络短暂断了。恢复后它还会继续跑。如果它手里还有旧 leader 身份，事情就危险了。
 
-## 选主不是谁先写成功这么简单
+所以 lease 通常必须配合 fencing token。
 
-很多人第一次写 leader election，会想用一个 key：
+## 选主不带 fencing，只是内部正确
+
+假设：
 
 ```text
-/leader = node-a
+node-1 holds leader lease 10
+node-1 pauses
+lease 10 expires
+node-2 gets leader lease 11
+node-1 resumes
 ```
 
-谁先写成功谁就是 leader。
+协调服务内部已经承认 node-2 是新 leader。但 node-1 进程还活着。如果它继续写外部数据库、对象存储或下游服务，而下游不检查 token，就会出现旧 leader 写入。
 
-这还不够。你还要处理：
+更稳的模式是把 epoch / revision / lease id 带到外部写入：
 
-- leader 挂了以后 key 怎么删。
-- 旧 leader 网络恢复后会不会继续以为自己是 leader。
-- 新 leader 是否知道旧 leader 留下的状态。
-- watch 丢事件后 follower 怎么重新判断。
-- leader 的任期或 fence token 如何传给下游资源。
+```text
+write(value, fencing_token=11)
 
-所以真正可靠的选主通常要配合 lease、revision、session、sequential node 或 fencing token。
+external system:
+  accept only if token >= current_token
+```
 
-我觉得这里最重要的是 fencing。即使旧 leader 后来恢复，它带着旧 token 去操作外部系统，也应该被拒绝。否则协调服务内部选出了新 leader，但外部资源仍然可能被旧 leader 改坏。
+这样旧 leader 即使恢复，也会因为 token 过期被拒绝。
 
-## Kubernetes 为什么离不开 etcd
+选主不是终点。选出来的权力必须能被下游验证。
 
-Kubernetes 里的 etcd 是一个很好的例子。
+## Kubernetes 用 etcd，是因为它能重建事实
 
-API Server 把集群对象写进 etcd。Controller 通过 watch 观察对象变化，然后不断把实际状态推向期望状态。
+Kubernetes 依赖 etcd，不是因为 etcd 像一个普通数据库，而是因为 API Server 和 controller 能围绕 resourceVersion 建立有序事实。
 
-这条链路大致是：
+大致链路是：
 
 ```text
 kubectl apply
   -> API Server validates object
   -> write object to etcd
   -> controller watches change
-  -> controller creates/updates other objects
-  -> kubelet watches assigned Pods
-  -> node runtime starts containers
+  -> controller reconciles actual state
 ```
 
-etcd 不直接调度 Pod，也不直接启动容器。它存的是集群控制面的事实。Kubernetes 的很多“声明式”能力，其实都建立在这个有序、可 watch 的事实来源上。
+controller 的关键动作不是“收到事件就执行”，而是 reconcile：
 
-这也解释了为什么 etcd 的健康如此重要。控制面可以短暂抖动，但如果 etcd 的一致性、延迟、空间、compaction 出问题，整个集群的控制面都会变得不稳定。
+```text
+desired state from etcd
+  + observed cluster state
+  -> next action
+```
 
-## 这类系统的边界感
+watch 可以断，事件可以重复，本地 cache 可以丢。只要 controller 能 relist 并重新 watch，它就能回到事实来源上。
 
-我现在会这样给协调服务划边界：
+## 我会警惕的使用方式
 
-适合它做的事：
+看到这些设计，我会先打问号：
 
-- 谁是 leader。
-- 当前配置版本是多少。
-- 哪些 worker 活着。
-- 某个任务是否被领取。
-- 某个资源的元数据指针是什么。
+- 把每个请求状态都写进 etcd。
+- watch 断线后没有保存和检查 revision。
+- compacted error 只做重试，不做 relist。
+- leader 只写一个 key，没有 fencing token。
+- lease TTL 设得很短，但进程有长 GC pause。
+- 把大 JSON、二进制 blob、指标流塞进协调服务。
+- controller 本地 cache 没有重建路径。
 
-不适合它做的事：
+这些问题不是 API 用法小错，而是把协调服务的边界理解错了。
 
-- 存用户大表。
-- 记录每个请求日志。
-- 当消息队列高频吞吐。
-- 存大块二进制数据。
-- 把所有业务状态都塞进去。
+## 协调服务应该保持克制
 
-协调服务越关键，越要克制使用范围。它应该小、稳、清楚，而不是被当成万能状态中心。
+ZooKeeper / etcd 提供的是小规模、有顺序、可观察、带生命周期的控制面事实。
 
-## 协调服务的克制
-
-Paxos/Raft 解释“怎么形成一条一致的历史”，ZooKeeper/etcd 解释“怎样把这条历史变成工程系统能用的协调接口”。后者更贴近日常工程，也更容易被滥用。
+watch 让变化可以被追上，revision 让断线恢复有锚点，lease 让沉默客户端可以被回收，fencing 让旧 leader 不能继续写外部资源。把这些边界用清楚，协调服务会很稳；把它当万能状态中心，它会把整个控制面一起拖下水。
