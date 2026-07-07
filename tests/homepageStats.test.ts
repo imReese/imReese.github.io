@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   formatHomepageViewCount,
+  formatHomepageViewLabel,
   getHomepageViewCount,
 } from '../src/lib/homepageStats'
 
@@ -31,4 +32,10 @@ test('rejects malformed homepage stats', () => {
 test('formats homepage counts for English and Chinese readers', () => {
   assert.equal(formatHomepageViewCount(12345, 'en'), '12,345')
   assert.equal(formatHomepageViewCount(12345, 'zh'), '12,345')
+})
+
+test('formats compact footer view labels', () => {
+  assert.equal(formatHomepageViewLabel(1), 'view')
+  assert.equal(formatHomepageViewLabel(2), 'views')
+  assert.equal(formatHomepageViewLabel(0), 'views')
 })

@@ -5,7 +5,6 @@ home:
   hero:
     viewProjects: View projects
     readNotes: Read notes
-    visitStatsLabel: homepage views
   systemsPanel:
     workspaceTitle: "Reese's workspace"
     workspaceSubtitle: Inference systems and backend performance

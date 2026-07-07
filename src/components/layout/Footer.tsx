@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 
 import { ContainerInner, ContainerOuter } from '@/components/layout/Container'
 import { footerItems } from '@/config/siteConfig'
-import { pagesContent, siteContent } from '@/config/content'
+import { siteContent } from '@/config/content'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
 import SocialLinks from '@/components/home/SocialLinks'
 import { HomepageViewStats } from '@/components/shared/HomepageViewStats'
@@ -59,7 +59,6 @@ export function Footer() {
                 {showHomepageStats ? (
                   <HomepageViewStats
                     className="justify-center sm:self-end sm:justify-end"
-                    label={pagesContent.home.hero.visitStatsLabel}
                   />
                 ) : null}
               </div>

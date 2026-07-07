@@ -5,16 +5,16 @@ import { Eye } from 'lucide-react'
 
 import {
   formatHomepageViewCount,
+  formatHomepageViewLabel,
   getHomepageViewCount,
 } from '@/lib/homepageStats'
 import { cn } from '@/lib/utils'
 
 type HomepageViewStatsProps = {
   className?: string
-  label: string
 }
 
-export function HomepageViewStats({ className, label }: HomepageViewStatsProps) {
+export function HomepageViewStats({ className }: HomepageViewStatsProps) {
   const [viewCount, setViewCount] = useState<number | null>(null)
 
   useEffect(() => {
@@ -54,16 +54,16 @@ export function HomepageViewStats({ className, label }: HomepageViewStatsProps) 
   return (
     <div
       className={cn(
-        'inline-flex max-w-full items-center gap-1.5 whitespace-nowrap text-sm font-medium text-muted-foreground',
+        'inline-flex max-w-full items-center gap-1.5 whitespace-nowrap text-sm font-normal text-muted-foreground',
         className,
       )}
     >
-      <Eye className="h-4 w-4 text-primary" aria-hidden="true" />
+      <Eye className="h-4 w-4 text-muted-foreground/80" aria-hidden="true" />
       <span>
-        <span className="font-semibold text-foreground">
+        <span className="font-medium text-muted-foreground">
           {formatHomepageViewCount(viewCount, 'en')}
         </span>{' '}
-        {label}
+        {formatHomepageViewLabel(viewCount)}
       </span>
     </div>
   )

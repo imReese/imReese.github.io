@@ -5,7 +5,6 @@ home:
   hero:
     viewProjects: 查看项目
     readNotes: 阅读笔记
-    visitStatsLabel: 主页访问
   systemsPanel:
     workspaceTitle: "段冰的工作台"
     workspaceSubtitle: 大模型推理服务 / 后端性能

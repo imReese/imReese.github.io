@@ -32,3 +32,7 @@ export function formatHomepageViewCount(count: number, locale: Locale) {
     count,
   )
 }
+
+export function formatHomepageViewLabel(count: number) {
+  return count === 1 ? 'view' : 'views'
+}
