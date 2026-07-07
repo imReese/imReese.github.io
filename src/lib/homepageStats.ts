@@ -33,6 +33,10 @@ export function formatHomepageViewCount(count: number, locale: Locale) {
   )
 }
 
-export function formatHomepageViewLabel(count: number) {
+export function formatHomepageViewLabel(count: number, locale: Locale) {
+  if (locale === 'zh') {
+    return '次访问'
+  }
+
   return count === 1 ? 'view' : 'views'
 }

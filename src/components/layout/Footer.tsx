@@ -9,6 +9,7 @@ import { siteContent } from '@/config/content'
 import { ThemeToggle } from '@/components/shared/ThemeToggle'
 import SocialLinks from '@/components/home/SocialLinks'
 import { HomepageViewStats } from '@/components/shared/HomepageViewStats'
+import { useLanguage } from '@/components/shared/LanguageProvider'
 
 
 function NavLink({
@@ -29,6 +30,7 @@ function NavLink({
 }
 
 export function Footer() {
+  const { t } = useLanguage()
   const pathname = usePathname()
   const showHomepageStats = pathname === '/'
 
@@ -41,7 +43,7 @@ export function Footer() {
               <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm font-medium sm:justify-start">
                 {footerItems.map((item) => (
                   <NavLink key={item.name} href={item.href}>
-                    {item.name}
+                    {t(`nav.${item.name}` as Parameters<typeof t>[0])}
                   </NavLink>
                 ))}
               </div>

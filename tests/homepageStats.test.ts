@@ -35,7 +35,9 @@ test('formats homepage counts for English and Chinese readers', () => {
 })
 
 test('formats compact footer view labels', () => {
-  assert.equal(formatHomepageViewLabel(1), 'view')
-  assert.equal(formatHomepageViewLabel(2), 'views')
-  assert.equal(formatHomepageViewLabel(0), 'views')
+  assert.equal(formatHomepageViewLabel(1, 'en'), 'view')
+  assert.equal(formatHomepageViewLabel(2, 'en'), 'views')
+  assert.equal(formatHomepageViewLabel(0, 'en'), 'views')
+  assert.equal(formatHomepageViewLabel(1, 'zh'), '次访问')
+  assert.equal(formatHomepageViewLabel(2, 'zh'), '次访问')
 })

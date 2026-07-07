@@ -9,12 +9,14 @@ import {
   getHomepageViewCount,
 } from '@/lib/homepageStats'
 import { cn } from '@/lib/utils'
+import { useLanguage } from '@/components/shared/LanguageProvider'
 
 type HomepageViewStatsProps = {
   className?: string
 }
 
 export function HomepageViewStats({ className }: HomepageViewStatsProps) {
+  const { locale } = useLanguage()
   const [viewCount, setViewCount] = useState<number | null>(null)
 
   useEffect(() => {
@@ -61,9 +63,9 @@ export function HomepageViewStats({ className }: HomepageViewStatsProps) {
       <Eye className="h-4 w-4 text-muted-foreground/80" aria-hidden="true" />
       <span>
         <span className="font-medium text-muted-foreground">
-          {formatHomepageViewCount(viewCount, 'en')}
+          {formatHomepageViewCount(viewCount, locale)}
         </span>{' '}
-        {formatHomepageViewLabel(viewCount)}
+        {formatHomepageViewLabel(viewCount, locale)}
       </span>
     </div>
   )
