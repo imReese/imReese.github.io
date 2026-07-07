@@ -1,6 +1,6 @@
 ---
-title: '存储系统 Benchmark 笔记：别只看平均延迟'
-description: '一篇关于存储系统压测的工程笔记：从 workload、预热、p99、写放大和资源隔离理解 benchmark。'
+title: '存储 Benchmark 笔记：别被漂亮平均延迟骗了'
+description: '从 redis-benchmark、memtier_benchmark 和 sysbench 看存储压测：workload、预热、数据规模、p99、knee point 和资源隔离为什么比平均值更重要。'
 author: 'Reese'
 date: '2024-07-20'
 topics:
@@ -11,82 +11,238 @@ series: 'Storage Systems Notes'
 featured: false
 ---
 
-做存储系统 benchmark 时，平均延迟是最容易骗人、也最容易被拿来讲故事的指标。
+很多 benchmark 报告的问题不是数字错了，而是数字回答了一个没人在乎的问题。
 
-一个系统平均延迟很好看，但 p99 有毛刺，线上体验仍然可能很差。尤其是存储系统，后台 compaction、flush、GC、page cache、I/O 调度都会把延迟拉出长尾。
-
-所以我现在看 benchmark，会先问：
+比如一份 Redis 压测结果写着：
 
 ```text
-测的是什么 workload？
-数据集是否大于缓存？
-有没有预热？
-测的是 steady state 还是刚启动的蜜月期？
-看平均值，还是看 p95/p99/p999？
-后台任务是否已经进入稳定状态？
+throughput: 120k ops/s
+avg latency: 1.8 ms
 ```
 
-如果这些问题没有答案，benchmark 数字再漂亮也只能先放一边。
+看起来很漂亮。但如果同一组数据里还有：
 
-## Workload 先于指标
+```text
+p99 latency: 80 ms
+p999 latency: 1.2 s
+timeout: 0.3%
+```
 
-Benchmark 不是先选工具，而是先定义 workload。
+那这个系统对在线请求来说已经很危险。平均值没有撒谎，它只是把问题藏起来了。
 
-存储系统里最基本的维度包括：
+我现在看 Redis、MySQL 或存储引擎 benchmark，第一反应不是问“快不快”，而是问：这个数字是在什么 workload、什么数据规模、什么预热状态、什么并发压力和什么资源隔离条件下得到的。回答不上来，数字越漂亮越可疑。
 
-- read / write 比例。
-- point lookup / range scan 比例。
-- key 分布是 uniform 还是 Zipfian。
-- value size。
-- 数据集大小。
-- 并发数。
-- 请求是否有 burst。
-- 是否有 delete / update。
-- 是否有 snapshot 或 long iterator。
+## 工具只能产生数字，不能定义问题
 
-不同 workload 下，同一个系统可能表现完全不同。
+常用工具本身没有问题。
 
-比如 LSM 对写入友好，但 range scan、delete-heavy workload、热点读、超大 value 都会触发不同瓶颈。只测一个 `readwrite` 混合比例，然后得出“系统 A 比系统 B 快”，意义很有限。
+Redis 侧常见的是：
 
-## 数据集大小决定你测到什么
+- `redis-benchmark`：Redis 自带，适合快速确认 GET/SET、pipeline、连接数变化下的基础吞吐。
+- `memtier_benchmark`：更适合构造真实一点的 KV workload，可以配置 key 分布、value size、pipeline、读写比例、线程数和连接数。
+- `YCSB`：适合把 Redis 放进更通用的 KV workload 里，和 RocksDB、MongoDB、Cassandra 这类系统比较。
 
-如果数据集完全落在内存里，你可能测到的是 block cache 或 page cache，而不是磁盘路径。
+MySQL 侧常见的是：
 
-这不是说内存命中不重要。很多真实系统确实依赖缓存。但 benchmark 必须说明自己测的是：
+- `sysbench`：最常用，`oltp_read_write`、`oltp_read_only`、`oltp_write_only` 都可以快速搭出事务 workload。
+- `mysqlslap`：MySQL 自带，适合简单 SQL 并发验证，但 workload 表达能力有限。
+- `tpcc-mysql`、`HammerDB`、`go-tpc`、`BenchmarkSQL`：更接近 TPC-C / TPC-H / TPC-DS 这类事务或分析型场景。
+
+这些工具只是入口。真正决定 benchmark 有没有意义的是问题定义。
+
+```text
+要回答什么问题？
+  -> 单请求延迟？
+  -> 峰值吞吐？
+  -> tail latency 稳定性？
+  -> 容量规划的 knee point？
+  -> compaction / checkpoint / flush 进入后台后还能不能稳？
+```
+
+如果目标是线上容量规划，却只跑了一个短时间极限吞吐测试，工具再专业也没用。它测出来的是“系统在一小段时间内最多能被打到多高”，不是“系统能长期稳定服务到哪里”。
+
+## redis-benchmark 很容易测到一个过于简单的世界
+
+`redis-benchmark` 很适合快速冒烟：
+
+```bash
+redis-benchmark -h 127.0.0.1 -p 6379 -n 100000 -c 100 -t get,set
+```
+
+这条命令能告诉你服务能不能扛住基础 GET/SET 压力，但它默认构造出来的世界通常太干净：
+
+- key/value 模型简单。
+- 请求类型少。
+- client 和 server 可能在同一台机器上互相抢 CPU。
+- pipeline 一开，吞吐数字会很好看，但单请求排队和尾延迟可能被掩盖。
+- 数据集如果太小，测到的更像 hot cache 路径。
+
+所以 `redis-benchmark` 的结果适合当 smoke test，不适合直接拿来证明生产 workload 很快。
+
+如果报告里只有：
+
+```text
+SET: 150000 requests per second
+GET: 180000 requests per second
+```
+
+我会继续问：
+
+```text
+value size 是多少？
+key space 多大？
+是否使用 pipeline？
+client 和 Redis 是否隔离？
+是否启用了持久化？
+有没有慢查询、fork、AOF rewrite 或 RDB save？
+有没有 p95 / p99 / p999？
+```
+
+这些问题不是吹毛求疵。Redis 的 tail latency 很容易被 fork、AOF fsync、内存碎片、网络队列、client pipeline 深度影响。只看 requests per second，等于只看了最会讲故事的一列。
+
+## memtier_benchmark 更适合描述 Redis workload
+
+如果要认真一点测 Redis，我更愿意从 `memtier_benchmark` 开始，因为它能把 workload 说清楚：
+
+```bash
+memtier_benchmark \
+  --server=127.0.0.1 \
+  --port=6379 \
+  --threads=4 \
+  --clients=50 \
+  --ratio=1:9 \
+  --data-size=1024 \
+  --key-pattern=R:R \
+  --key-maximum=10000000 \
+  --test-time=300 \
+  --pipeline=1
+```
+
+这类命令比一个裸 `redis-benchmark` 更有解释力，因为它至少把几个关键维度摊开了：
+
+- `--ratio=1:9`：读写比例。
+- `--data-size=1024`：value size。
+- `--key-maximum=10000000`：key space，影响 cache / memory path。
+- `--key-pattern=R:R`：访问分布，决定热点形态。
+- `--threads` / `--clients`：client 侧压力模型。
+- `--pipeline`：吞吐和排队行为会被它显著改变。
+
+但即使是 `memtier_benchmark`，也不能只拿最终汇总行当结论。尤其要小心 pipeline。
+
+pipeline 能提高吞吐，因为 client 可以一次发出多个请求，减少往返等待。但这也会改变请求排队形态。对于 batch 写入或异步处理，pipeline 可能符合业务；对于用户同步请求，过深 pipeline 可能只是把延迟塞进队列里，然后把吞吐数字擦得很亮。
+
+所以报告里应该把 pipeline 当成 workload 的一部分，而不是藏在命令参数里。
+
+## sysbench 小表测试经常只是在测 buffer pool
+
+MySQL benchmark 最常见的是 `sysbench`：
+
+```bash
+sysbench oltp_read_write \
+  --mysql-host=127.0.0.1 \
+  --mysql-port=3306 \
+  --mysql-user=root \
+  --mysql-password=pass \
+  --mysql-db=bench \
+  --tables=16 \
+  --table-size=1000000 \
+  --threads=64 \
+  --time=300 \
+  prepare
+```
+
+正式运行：
+
+```bash
+sysbench oltp_read_write \
+  --mysql-host=127.0.0.1 \
+  --mysql-port=3306 \
+  --mysql-user=root \
+  --mysql-password=pass \
+  --mysql-db=bench \
+  --tables=16 \
+  --table-size=1000000 \
+  --threads=64 \
+  --time=300 \
+  --report-interval=10 \
+  run
+```
+
+这里最容易骗人的地方是数据集大小。
+
+如果 `tables * table-size * row-size` 明显小于 InnoDB buffer pool，很多查询会变成内存命中路径。这个结果不是没价值，但它回答的是“热数据在内存里时 MySQL 怎么样”，不是“数据集超过内存后 MySQL 怎么样”。
+
+我看 sysbench 报告时会先找这些信息：
+
+```text
+buffer pool size
+table count
+table size
+row size
+data + index 总大小
+prepare 后是否重启过 MySQL
+测试前是否预热
+正式统计窗口多长
+```
+
+如果数据和索引总量只有 5GB，buffer pool 有 32GB，那这个 benchmark 不能拿来证明磁盘路径、page read、checkpoint 压力或 I/O tail latency。
+
+它只能证明：这个 workload 在热内存里表现不错。
+
+## 数据集大小决定你到底测到了什么
+
+存储系统 benchmark 一定要先讲清楚数据是否超过缓存层。
 
 ```text
 cache hit workload
 cache miss workload
 mixed workload
+working set slowly grows
+working set larger than memory
 ```
 
-我会特别留意两件事：
+这些不是细节，而是不同问题。
 
-第一，数据集是否大于内存。
+Redis 场景里，key space 太小可能全是热 key；MySQL 场景里，表和索引太小可能全在 buffer pool；文件系统场景里，如果没有说明 page cache，fio 或自写压测可能测到的是内存缓存，不是设备路径。
 
-第二，测试前是否 drop cache 或者明确 warm up。
+这不代表 cache hit benchmark 没意义。很多线上系统就是靠缓存活着。但报告必须诚实说明自己测的是哪一层。
 
-如果没有预热，刚开始的数据可能很差；如果预热过度，结果又可能过于理想。更好的做法是把预热阶段和正式统计阶段分开，并在报告里说明。
+我更喜欢把结果拆成几组：
 
-## Steady state 很重要
+```text
+hot set: working set fits in memory
+warm set: most requests hit cache, some miss
+cold-ish set: data larger than memory, sustained misses
+growth set: write path continuously expands working set
+```
 
-LSM 系统尤其容易出现“刚开始很好看，跑久了变慢”。
+这样读者才知道数字应该怎么用。
 
-刚开始没有太多历史文件，compaction debt 不高，空间也充足。写一段时间后，L0 堆积、compaction 追赶、旧版本和 tombstone 增多，系统才进入真正状态。
+## 预热和正式窗口必须分开
 
-所以我会关心：
+没有预热，刚开始的数据可能很差；预热过度，结果又会过于理想。
 
-- 测试前是否先装载足够数据。
-- 正式压测持续多久。
-- compaction 是否已经稳定。
-- 磁盘空间是否在持续上涨。
-- 写入速率是否超过后台整理能力。
+Redis 读 workload 需要让热点分布进入稳定状态。MySQL 需要考虑 buffer pool、adaptive hash index、redo/checkpoint 状态。LSM 系统还要等 flush、compaction、tombstone、L0 文件数量进入稳定区间。
 
-一个短时间 benchmark 可能只测到了 buffer，而不是系统长期能力。
+所以一次像样的 benchmark 至少要分两段：
 
-## 平均延迟不够
+```text
+warmup window
+  -> 不计入最终结果
+  -> 让 cache / buffer / background task 进入目标状态
 
-我会至少看这些指标：
+measurement window
+  -> 固定时长
+  -> 记录吞吐、延迟分位、错误率和资源曲线
+```
+
+如果是写入型存储系统，还要警惕“蜜月期”。
+
+刚启动或刚 load 完数据时，后台债务可能还没积起来。跑 30 秒很快，跑 30 分钟开始 compaction 追不上，这两个结果都是真的，但只有后者更接近长期服务能力。
+
+## 平均延迟不够，p99 也不是终点
+
+我至少会看这些指标：
 
 ```text
 throughput
@@ -97,117 +253,129 @@ p99
 p999
 max
 error rate
+timeout count
 ```
 
-平均值可以说明总体效率，但 tail latency 才能暴露后台任务、锁竞争、I/O 抖动、调度延迟。
+平均值说明总体效率，分位数说明用户会不会撞上长尾。
 
-比如：
+但 p99 也不是魔法数字。对于高 QPS 服务，1% 已经是很多请求。p999、max、timeout 和错误率能帮你看到更糟糕的尾部。
+
+更重要的是分位延迟要和时间线放在一起看。
 
 ```text
-avg: 2 ms
-p99: 80 ms
-p999: 1.2 s
+10s interval:
+  throughput
+  p95 latency
+  p99 latency
+  error / timeout
+  CPU / memory / disk I/O / network
+  background task state
 ```
 
-这个系统对很多在线服务来说已经很危险。平均值没问题，但用户会遇到明显卡顿。
+如果 p99 每隔一分钟尖刺一次，平均 p99 可能不难看，但线上用户会周期性卡顿。这种模式常常来自 checkpoint、AOF fsync、GC、compaction、云盘 credit 或调度抖动。
 
-存储系统的毛刺常见来源包括：
+## 吞吐峰值不是容量规划点
 
-- WAL fsync。
+很多系统在低负载下延迟很低。随着并发增加，吞吐上升，p99 慢慢抬头。到某个点后，吞吐只多一点，tail latency 却突然炸开。
+
+这个点比峰值吞吐更重要。
+
+```text
+offered load / concurrency
+  -> throughput
+  -> p99 latency
+  -> timeout
+```
+
+我会把并发或 offered load 梯度扫一遍，而不是只压一个最大值。
+
+```text
+clients: 8   throughput: 30k/s   p99: 3 ms
+clients: 16  throughput: 58k/s   p99: 5 ms
+clients: 32  throughput: 96k/s   p99: 18 ms
+clients: 64  throughput: 118k/s  p99: 95 ms
+clients: 96  throughput: 121k/s  p99: 480 ms
+```
+
+真正可用的容量点不是 121k/s，而可能是 96k/s 之前。因为后面已经进入排队失控区间。
+
+线上系统不应该长期跑在快崩的边缘。benchmark 报告如果只写峰值吞吐，就像只告诉你车能开到多快，却不告诉你什么时候刹不住。
+
+## client 也可能先成为瓶颈
+
+压测器不是透明的。
+
+Redis benchmark 里，client 线程数、连接数、pipeline、网络栈都会影响结果。MySQL sysbench 里，Lua workload、client CPU、连接池、SQL 生成和结果处理也可能先打满。
+
+如果 client 和 server 在同一台机器上，问题更麻烦：
+
+- client 抢 server CPU。
+- loopback 网络路径和真实网络不同。
+- NUMA、调度和中断路径不代表生产环境。
+- client 自己先到瓶颈，server 还没被打满。
+
+所以报告至少要说明：
+
+```text
+client / server 是否分机
+client CPU 使用率
+client 网络带宽
+client 线程和连接模型
+压测器是否有错误或超时
+```
+
+压测器先喘不上气时，server 的 benchmark 数字没有太大解释力。
+
+## 后台状态要和结果放在一起
+
+存储系统的长尾通常不是凭空出现的。
+
+Redis 要看：
+
+- AOF fsync。
+- AOF rewrite。
+- RDB save / fork。
+- 内存碎片和 eviction。
+- slowlog。
+- network input/output buffer。
+
+MySQL 要看：
+
+- buffer pool hit rate。
+- redo log 和 checkpoint age。
+- dirty page flush。
+- lock wait。
+- transaction rollback。
+- temporary table。
+- I/O queue。
+
+LSM / RocksDB / LevelDB 要看：
+
 - memtable flush。
-- compaction。
-- cache miss。
-- block cache eviction。
-- 文件系统抖动。
-- 云盘 I/O credit。
-- CPU 抢占。
-
-所以 benchmark 报告里只给平均值，基本不够。
-
-## 吞吐和延迟要一起看
-
-吞吐提升不一定代表系统更好。
-
-很多系统在低负载下延迟很低，随着并发增加，吞吐上升，但尾延迟也开始恶化。到了某个点以后，吞吐继续涨一点，p99 可能暴涨。
-
-我更喜欢画这样的曲线：
-
-```text
-x-axis: offered load / concurrency
-y-axis: throughput + p99 latency
-```
-
-这样能看到系统的 knee point。也就是从“还能稳定服务”到“开始排队失控”的拐点。
-
-线上容量规划时，这个拐点比峰值吞吐更重要。因为服务不应该长期跑在快崩的边缘。
-
-## 资源隔离要说清楚
-
-Benchmark 环境里的资源隔离经常被忽略。
-
-至少要说明：
-
-- CPU 核数和频率。
-- NUMA 拓扑。
-- 内存大小。
-- 磁盘类型和队列深度。
-- 文件系统。
-- 是否容器化。
-- 是否和别的任务共享机器。
-- 云盘类型、IOPS、带宽、burst credit。
-
-云环境里尤其要小心。不同实例类型、不同云盘规格、同一规格不同时间段，都可能有差异。云盘还可能有 credit 或后台限流机制，短测看不出来，长测才暴露。
-
-如果 benchmark 结果要给别人复现，环境描述就是结果的一部分。
-
-## 写放大也应该进报告
-
-对 LSM/存储引擎来说，只看用户吞吐不够。
-
-我会尽量观察：
-
-- 用户写入字节。
-- 实际磁盘写入字节。
-- compaction read/write 字节。
-- WAL 写入字节。
-- 空间放大。
-- L0 文件数量。
+- compaction bytes。
+- L0 file count。
 - pending compaction bytes。
+- write stall。
+- read amplification。
+- write amplification。
 
-如果用户写入 100GB，磁盘实际写了 900GB，那系统吞吐背后有很重的后台成本。这个成本会影响 SSD 寿命、云盘费用、tail latency 和长期稳定性。
-
-写放大不是一个学术指标，它会直接变成钱和故障。
-
-## Benchmark 工具不等于方法
-
-工具很重要，比如 fio、sysbench、YCSB、db_bench、自写压测器。但工具不能替代方法。
-
-我会警惕几种情况：
-
-- 工具默认参数和真实 workload 差很多。
-- key/value size 没对齐业务。
-- 只测单线程或只测极限并发。
-- client 和 server 在同机导致资源互相干扰。
-- 压测器自己先成为瓶颈。
-- 没有记录错误和超时。
-
-一个好的 benchmark，要能说清楚“为什么这样测”。否则只是跑了一个程序，拿到一串数字。
+如果 p99 尖刺和后台任务时间线对得上，benchmark 才开始有解释力。否则只有一个结论：某段时间慢了，但不知道为什么。
 
 ## 我会怎样写 benchmark 报告
 
-我希望报告至少包含这些部分：
+一份能被相信的报告，至少应该包含：
 
-1. 目标：这次想回答什么问题。
-2. 环境：机器、磁盘、系统、配置。
-3. Workload：读写比例、数据规模、key 分布、value size。
-4. 方法：预热、正式运行时长、并发、采样方式。
-5. 结果：吞吐、延迟分位、错误率。
-6. 资源：CPU、内存、I/O、网络。
-7. 后台状态：compaction、GC、队列、空间增长。
-8. 结论：适用范围和不适用范围。
+1. 目标：这次 benchmark 要回答什么问题。
+2. 工具和版本：`redis-benchmark`、`memtier_benchmark`、`sysbench` 或其它工具的版本。
+3. 环境：client/server 拓扑、CPU、NUMA、内存、磁盘、文件系统、网络、云盘规格。
+4. 配置：Redis 持久化、MySQL buffer pool、redo log、存储引擎参数。
+5. Workload：读写比例、key 分布、value size、表规模、数据集是否大于内存。
+6. 方法：prepare、warmup、measurement、并发梯度、采样间隔。
+7. 结果：吞吐、p50/p95/p99/p999、max、错误率、timeout。
+8. 资源：CPU、内存、I/O、网络、client 侧瓶颈。
+9. 后台状态：AOF、checkpoint、flush、compaction、GC、队列。
+10. 结论边界：这些数字适用于什么条件，不适用于什么条件。
 
-最重要的是最后一项。Benchmark 不是证明“我赢了”，而是说明“在这些条件下，这个系统表现如何；换条件后不保证同样结论”。
+最后一项最重要。
 
-## Benchmark 要留下证据
-
-benchmark 不是一个数字，而是一组证据。平均延迟是证据之一，但远远不够。真正有用的 benchmark，应该能解释系统在什么负载下稳定，什么时候开始失控，以及为什么失控。
+好的 benchmark 不是证明系统赢了，而是说明系统在哪些条件下还没开始撒谎。平均延迟只是证据之一，真正有用的是解释：系统在什么负载下稳定，什么时候开始失控，以及为什么失控。

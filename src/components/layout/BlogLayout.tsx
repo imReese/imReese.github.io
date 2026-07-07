@@ -61,7 +61,7 @@ export function BlogLayout({
 
   return (
     <Container className="mt-14 sm:mt-24">
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto w-full max-w-[1440px]">
         <article className="min-w-0">
           <header className="flex flex-col">
             <div className="flex items-center justify-between gap-4 border-b border-border/70 pb-6">
@@ -96,7 +96,10 @@ export function BlogLayout({
             {chips.length > 0 ? (
               <div className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs leading-5 text-muted-foreground">
                 {chips.map((chip, index) => (
-                  <span key={chip.key} className="inline-flex items-center gap-x-2">
+                  <span
+                    key={chip.key}
+                    className="inline-flex items-center gap-x-2"
+                  >
                     {index > 0 ? (
                       <span className="h-1 w-1 rounded-full bg-muted-foreground/35" />
                     ) : null}
@@ -106,7 +109,10 @@ export function BlogLayout({
               </div>
             ) : null}
           </header>
-          <Prose className="mt-12 max-w-none text-[1.0625rem] leading-8" data-mdx-content>
+          <Prose
+            className="blog-prose mt-12 max-w-none text-[1.0625rem] leading-8"
+            data-mdx-content
+          >
             {children}
           </Prose>
         </article>
