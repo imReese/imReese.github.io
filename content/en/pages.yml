@@ -1,5 +1,5 @@
 about:
-  headline: "I'm Reese, a backend systems engineer based in Beijing, China."
+  headline: "I'm Reese, a backend engineer working on LLM inference systems."
 
 home:
   hero:
@@ -14,7 +14,7 @@ home:
     experiences:
       - period: "2025.06 - Now"
         organization: Baidu AI Computing
-        summary: Inference engine performance for large-model serving.
+        summary: LLM inference engine performance.
         current: true
         details:
           - "Serving runtime: SGLang scheduler boundaries and prefill/decode paths"
@@ -32,12 +32,12 @@ home:
     aboutLink: About
     educationPrefix: Details
     technicalEyebrow: Technical stack
-    technicalTitle: Tools around inference and systems debugging
-    technicalIntro: A compact view of the runtime, memory, backend, and infrastructure tools I use when tracing serving systems.
+    technicalTitle: Tools for inference and systems debugging
+    technicalIntro: Runtime, memory, backend, and infrastructure tools used to analyze serving systems.
     currentEmphasisLabel: Current emphasis
-    currentEmphasis: SGLang runtime paths, KV-cache behavior, Mooncake TE boundaries, and accelerator backend tuning.
+    currentEmphasis: SGLang runtime scheduling, KV Cache residency, Mooncake TE boundaries, and accelerator backend tuning.
     engineeringHabitLabel: Engineering habit
-    engineeringHabit: measure the path, reduce hidden state, and keep production behavior observable.
+    engineeringHabit: Measure first, then optimize; keep system behavior observable.
   notes:
     title: Recent posts
     intro: LLM serving, distributed systems, engineering practice, and the occasional life note.

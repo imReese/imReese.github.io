@@ -2,10 +2,9 @@ site:
   name: Reese
   headline: "Hi, I'm Reese. I work on LLM inference engines and systems performance."
   introduction: >
-    I'm a Beijing-based software engineer in Baidu AI Computing, focused on
-    large-model inference engines. My work sits around runtime paths, cache and
-    KV-cache behavior, Mooncake TransferEngine, and heterogeneous backends across
-    accelerator serving environments.
+    At Baidu AI Computing, I work on runtime scheduling, KV Cache, Mooncake
+    TransferEngine, and heterogeneous accelerator backends. Before that, I worked
+    on distributed storage and CPU microarchitecture at Huawei.
   location: Beijing, China
   email: reese_duan@outlook.com
   githubUsername: imReese

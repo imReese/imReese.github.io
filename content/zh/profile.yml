@@ -7,22 +7,21 @@ focusAreas:
   - 异构后端
 
 aboutParagraphs:
-  - 我做后端系统，关心可靠性、性能，也关心线上行为能不能被看清楚。如果一个系统出了问题却没人能说清楚为什么，那说明还有活要干。
-  - 现在的日常围绕大模型推理服务：Runtime 调度路径、KV Cache 生命周期、Mooncake TransferEngine 传输通道，以及不同加速后端上怎么把性能榨干。
-  - "我也在持续读 SGLang 的 Rust Runtime——请求怎么走完它的一生，Scheduler 和 Router 之间的边界在哪，gRPC 和 Tokenization 怎么接起来，以及 PD 架构下 KV 传输该怎么规划。"
-  - 更早之前在华为做过分布式存储和 CPU 微架构分析。这些经历让我养成了一个习惯：从用户看到的现象开始，一路往下追到线程调度、内存交互和指令流水线。
+  - 我在百度 AI 计算团队做大模型推理引擎性能优化，主要涉及 runtime 调度、KV Cache、Mooncake TransferEngine 和异构加速后端。
+  - "我也在跟进 SGLang 的 Rust runtime，包括请求生命周期、Scheduler/Router 边界、gRPC 接口、tokenization 和 PD KV 传输。"
+  - 此前在华为做过分布式存储和 CPU 微架构分析，工作内容包括集群管理、指令流分析、TLB 调度和 SMT 调优。
 
 currentFocus:
   eyebrow: 当前重点
-  title: 大模型推理服务的系统工程
+  title: 大模型推理引擎与系统性能
   summary: >
-    我在给大模型推理铺"高速公路"——从 Cache 调度、KV 传输路径、Mooncake TransferEngine
-    到芯片级 Runtime，把整条链路上的瓶颈逐个击破。
+    我在百度 AI 计算团队做大模型推理引擎性能优化，主要涉及 runtime 调度、
+    KV Cache、Mooncake TransferEngine 和异构加速后端。
   bullets:
-    - 在生产推理负载里找瓶颈：吞吐、延迟、Cache 命中率、内存效率，哪里慢就盯哪里。
-    - 跟踪 Prefix Cache 和 KV Cache 的生命周期——它们什么时候该留、什么时候该换、Prefill/Decode 路径上的传输有没有就绪。
-    - 验证 Mooncake TransferEngine 的系统边界：KV 传输规划、描述符交互、就绪检测，以及和后端的接入点。
-    - "把读 SGLang Runtime 学到的东西带回来——请求生命周期、调度策略、Cache 管理和传输边界，反哺自己的服务系统设计。"
+    - 分析推理负载的吞吐、延迟、Cache 命中率、内存使用和 runtime 瓶颈。
+    - 跟踪 Prefix Cache 和 KV Cache 在 Prefill/Decode 路径上的生命周期。
+    - 验证 Mooncake TransferEngine 的 KV 传输规划、描述符、就绪检测和后端接入。
+    - "将 SGLang runtime 的请求生命周期、调度、Cache 管理和传输边界用于服务系统设计。"
   links:
     - label: sglang-rs
       href: https://github.com/imReese/sglang-rs
@@ -32,7 +31,7 @@ currentFocus:
 researchAreas:
   - title: 推理引擎
     label: 请求路径
-    description: 顺着请求链路一路往下看——调度、算子、Kernel、后端 Dispatch，找出真正拖慢推理的那段路径。
+    description: 分析调度、算子、kernel 和 backend dispatch 组成的推理执行路径。
     points:
       - 吞吐 / 延迟
       - 算子与 kernel 路径
@@ -43,7 +42,7 @@ researchAreas:
       - Scheduling
   - title: Cache 与 KV Cache
     label: 内存行为
-    description: 关注 Prefix Cache 和 KV Cache 在真实服务里的生命周期、复用效率和内存压力，让每一块显存都花在刀刃上。
+    description: 分析 Prefix Cache 和 KV Cache 的生命周期、复用效率、驻留状态和内存压力。
     points:
       - prefix cache 行为
       - KV page 生命周期
@@ -54,7 +53,7 @@ researchAreas:
       - Memory
   - title: Mooncake TE
     label: 传输链路
-    description: 搞清楚 Mooncake TransferEngine 怎么接入 KV 传输——哪些状态算 ready，哪些边界需要 Runtime 自己兜住。
+    description: 验证 Mooncake TransferEngine 的 KV 传输规划、描述符、就绪检测和 runtime 边界。
     points:
       - KV 传输规划
       - descriptor 与 checksum 路径
@@ -65,7 +64,7 @@ researchAreas:
       - PD
   - title: 异构后端
     label: 异构加速
-    description: 在不同加速卡上把执行路径跑顺，同时不让设备细节污染 Serving 层的设计。
+    description: 优化不同加速器的 backend 路径，并将设备相关逻辑限制在后端接口内。
     points:
       - 加速器后端路径
       - 设备相关 runtime
@@ -112,10 +111,10 @@ experience:
     start: "2025.06.30"
     end: 至今
     highlights:
-      - 负责大模型服务系统里的推理引擎性能——哪里慢就盯哪里。
+      - 负责大模型推理引擎性能优化。
       - 跟踪 Prefill/Decode 负载下 Cache、KV Cache 和 Mooncake TransferEngine 的数据流转路径。
-      - 在不同加速后端上适配并优化 Runtime 和 Backend 执行路径。
-      - 剖析 Kernel、算子、调度、内存、传输边界和执行链路中的瓶颈。
+      - 在不同加速器上适配并优化 runtime 和 backend 执行路径。
+      - 分析 kernel、算子、调度、内存和传输路径中的瓶颈。
   - company: 华为云计算
     team: 竖亥Lab
     title: 计算机体系结构研究工程师

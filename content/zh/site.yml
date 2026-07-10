@@ -2,10 +2,9 @@ site:
   name: 段冰
   headline: "Hi，我是段冰，主要做大模型推理引擎和系统性能优化。"
   introduction: >
-    我的工作是让大模型推理跑得更快、更稳。目前在百度 AI 计算团队，日常与
-    SGLang 调度瓶颈、KV Cache 驻留特征和加速芯片后端调优打交道。
-    此前在华为，我做过分布式存储集群管理和 CPU 微架构性能分析——
-    从用户能感知的系统行为一路追到线程、内存和指令级细节，是我习惯的工作方式。
+    目前在百度 AI 计算团队，工作内容包括 runtime 调度、KV Cache、
+    Mooncake TransferEngine 和异构加速后端。此前在华为做过分布式存储
+    和 CPU 微架构分析。
   location: 北京，中国
   email: reese_duan@outlook.com
   githubUsername: imReese

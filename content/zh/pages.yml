@@ -1,5 +1,5 @@
 about:
-  headline: "Hi，我是段冰，一个在北京做大模型推理系统的后端工程师。"
+  headline: "我是段冰，主要做大模型推理引擎和系统性能优化。"
 
 home:
   hero:
@@ -14,7 +14,7 @@ home:
     experiences:
       - period: "2025.06 - 至今"
         organization: 百度 AI 计算
-        summary: 给大模型推理引擎做性能优化——让它跑得更快、更稳。
+        summary: 大模型推理引擎性能优化。
         current: true
         details:
           - "推理运行时：拆解 SGLang 调度边界和 Prefill/Decode 路径"
@@ -32,12 +32,12 @@ home:
     aboutLink: 关于
     educationPrefix: 补充信息
     technicalEyebrow: 技术栈
-    technicalTitle: 排查系统问题时常用的工具
-    technicalIntro: 覆盖推理运行时、内存行为、异构后端和基础设施，主要用于把线上问题一路追到底。
+    technicalTitle: 推理与系统分析工具
+    technicalIntro: 用于分析推理服务的 runtime、内存、后端和基础设施问题。
     currentEmphasisLabel: 当前重点
-    currentEmphasis: SGLang Runtime 调度路径、KV Cache 驻留行为、Mooncake TE 传输边界，以及异构后端调优。
+    currentEmphasis: SGLang runtime 调度、KV Cache 驻留、Mooncake TE 传输边界和异构后端调优。
     engineeringHabitLabel: 工程信条
-    engineeringHabit: 把性能榨干到极致，让生产行为清晰透明。
+    engineeringHabit: 先测量，再优化；保持系统行为可观测。
   notes:
     title: 最近更新
     intro: 大模型推理、分布式系统和工程实践，也会写一点工具使用和生活记录。

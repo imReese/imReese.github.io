@@ -7,24 +7,22 @@ focusAreas:
   - Heterogeneous Backends
 
 aboutParagraphs:
-  - I build backend systems where reliability, performance, and operational clarity matter.
-  - My current work focuses on inference engine performance for large-model serving, including runtime paths, cache and KV-cache behavior, Mooncake TransferEngine integration, and heterogeneous accelerator backend optimization.
-  - "I also study SGLang's Rust runtime direction: request lifecycle, scheduler/router boundaries, gRPC protocols, tokenization edges, and PD-style KV transfer planning."
-  - Before that I worked on distributed storage cluster management and CPU microarchitecture performance analysis at Huawei, which shaped how I debug systems from product behavior down to instruction-level traces.
+  - I work on LLM inference engine performance at Baidu AI Computing, including runtime scheduling, KV Cache, Mooncake TransferEngine, and heterogeneous accelerator backends.
+  - "I also follow SGLang's Rust runtime work: request lifecycle, scheduler/router boundaries, gRPC interfaces, tokenization, and PD KV transfer."
+  - Before Baidu, I worked on distributed storage and CPU microarchitecture at Huawei, covering cluster management, instruction-flow analysis, TLB scheduling, and SMT tuning.
 
 currentFocus:
   eyebrow: Current focus
-  title: LLM serving systems engineering
+  title: LLM inference engines and systems performance
   summary: >
-    I work on inference engine optimization for large-model serving at Baidu AI
-    Computing Department, with a focus on cache behavior, KV-transfer paths,
-    Mooncake TransferEngine, and backend performance across heterogeneous
-    accelerator runtimes.
+    At Baidu AI Computing, I optimize LLM inference engines across runtime
+    scheduling, KV Cache, Mooncake TransferEngine, and heterogeneous accelerator
+    backends.
   bullets:
-    - Analyze throughput, latency, cache hit behavior, memory efficiency, and runtime bottlenecks in production-oriented inference workloads.
-    - Trace prefix cache, KV cache lifecycle, cache residency, and transfer readiness across prefill/decode serving paths.
-    - Validate Mooncake TransferEngine boundaries for KV transfer planning, descriptors, readiness checks, and backend integration.
-    - "Carry SGLang runtime experience into serving-system design: request lifecycle, scheduling, cache management, and transfer boundaries."
+    - Measure throughput, latency, cache hit rate, memory use, and runtime bottlenecks in inference workloads.
+    - Trace prefix cache and KV Cache lifecycle across prefill/decode paths.
+    - Validate Mooncake TransferEngine planning, descriptors, readiness checks, and backend integration.
+    - "Apply SGLang runtime patterns to request lifecycle, scheduling, cache management, and transfer boundaries."
   links:
     - label: sglang-rs
       href: https://github.com/imReese/sglang-rs
@@ -34,7 +32,7 @@ currentFocus:
 researchAreas:
   - title: Inference Engine
     label: runtime path
-    description: Profiling and tuning the execution path that connects scheduling, operators, kernels, and backend dispatch.
+    description: Profile and tune execution paths across scheduling, operators, kernels, and backend dispatch.
     points:
       - throughput / latency
       - operator and kernel paths
@@ -45,7 +43,7 @@ researchAreas:
       - Scheduling
   - title: Cache & KV Cache
     label: memory behavior
-    description: Tracing prefix cache and KV-cache lifecycle behavior for reuse, residency, memory pressure, and serving stability.
+    description: Analyze prefix cache and KV Cache reuse, residency, memory pressure, and lifecycle.
     points:
       - prefix cache behavior
       - KV page lifecycle
@@ -56,7 +54,7 @@ researchAreas:
       - Memory
   - title: Mooncake TE
     label: transfer engine
-    description: Validating Mooncake TransferEngine integration for KV transfer planning, descriptors, readiness checks, and runtime boundaries.
+    description: Validate Mooncake TransferEngine planning, descriptors, readiness checks, and runtime boundaries.
     points:
       - KV transfer planning
       - descriptor and checksum paths
@@ -67,7 +65,7 @@ researchAreas:
       - PD
   - title: Heterogeneous Backends
     label: accelerators
-    description: Optimizing accelerator backend paths without leaking device-specific complexity into the serving layer.
+    description: Optimize accelerator backend paths while keeping device-specific logic behind backend interfaces.
     points:
       - accelerator backend paths
       - device-specific runtime paths
@@ -114,9 +112,9 @@ experience:
     start: "2025.06.30"
     end: Present
     highlights:
-      - Work on inference engine performance for large-model serving systems.
-      - Trace cache, KV-cache, and Mooncake TransferEngine paths for prefill/decode serving workloads.
-      - Optimize runtime and backend paths across heterogeneous accelerator environments.
+      - Optimize LLM inference engine performance.
+      - Trace cache, KV Cache, and Mooncake TransferEngine paths across prefill/decode workloads.
+      - Optimize runtime and backend paths across heterogeneous accelerators.
       - Investigate bottlenecks across kernels, operators, scheduling, memory behavior, transfer boundaries, and execution paths.
   - company: Huawei Cloud Computing
     team: Shuhai Lab
