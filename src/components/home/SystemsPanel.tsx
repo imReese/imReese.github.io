@@ -1,14 +1,13 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { ArrowUpRight, MapPin, SquareTerminal } from 'lucide-react'
+import { MapPin, SquareTerminal } from 'lucide-react'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 
 export function SystemsPanel() {
   const { site, profile, home } = useLocalizedContent()
   const currentExperience = profile.experience[0]
   const previousExperience = profile.experience.slice(1, 3)
-  const primaryLink = profile.currentFocus.links[0]
   const copy = home.systemsPanel
 
   return (
@@ -94,22 +93,6 @@ export function SystemsPanel() {
             ))}
           </div>
         </div>
-
-        {primaryLink ? (
-          <a
-            href={primaryLink.href}
-            target={primaryLink.href.startsWith('http') ? '_blank' : undefined}
-            rel={
-              primaryLink.href.startsWith('http')
-                ? 'noopener noreferrer'
-                : undefined
-            }
-            className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-foreground transition hover:text-primary"
-          >
-            {primaryLink.label}
-            <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-          </a>
-        ) : null}
       </div>
     </motion.aside>
   )

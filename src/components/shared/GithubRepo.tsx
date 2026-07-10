@@ -9,7 +9,7 @@ export function GithubRepo() {
 
   return (
     <Link
-      href="https://github.com/imReese/reese-personal-website"
+      href="https://github.com/imReese"
       target="_blank"
       rel="noopener noreferrer nofollow"
       className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
