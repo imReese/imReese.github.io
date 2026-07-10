@@ -2,7 +2,6 @@
 
 import { motion } from 'framer-motion'
 import { ArrowRight, BookOpen, Github } from 'lucide-react'
-import { SystemsPanel } from '@/components/home/SystemsPanel'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 
 function getHeadlineLines(headline: string) {
@@ -28,55 +27,63 @@ export function ElegantIntro() {
   const headlineLines = getHeadlineLines(site.headline)
 
   return (
-    <section className="grid min-w-0 gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+    <section className="grid min-w-0 gap-10 lg:grid-cols-[1.18fr_0.82fr] lg:items-end lg:gap-16">
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.7, ease: 'easeOut' }}
-        className="min-w-0 max-w-2xl"
+        className="min-w-0"
       >
-        <h1 className="break-words font-bold text-foreground">
+        <h1 className="max-w-4xl break-words font-semibold text-foreground">
           {headlineLines.map((line, index) => (
             <span
               key={`${index}-${line}`}
               className={
                 index === 0
-                  ? `block text-3xl sm:text-5xl lg:text-6xl ${
+                  ? `block text-4xl leading-tight sm:text-5xl ${
                       headlineLines.length > 1 ? 'whitespace-nowrap' : ''
                     }`
-                  : 'mt-2 block text-2xl leading-tight sm:text-4xl lg:text-5xl'
+                  : 'mt-3 block text-3xl leading-tight sm:text-4xl lg:text-5xl'
               }
             >
               {line}
             </span>
           ))}
         </h1>
-        <p className="mt-6 max-w-full text-base leading-8 text-muted-foreground sm:text-lg">
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.65, delay: 0.12, ease: 'easeOut' }}
+        className="min-w-0 border-t border-border/70 pt-6 lg:border-t-0 lg:pt-0"
+      >
+        <p className="max-w-full text-base leading-8 text-muted-foreground sm:text-lg">
           {site.introduction}
         </p>
 
-        <div className="mt-6 flex max-w-full flex-wrap gap-2 overflow-hidden">
-          {profile.focusAreas.map((area) => (
-            <span
-              key={area}
-              className="max-w-full rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-sm font-medium text-primary"
-            >
-              {area}
+        <div className="mt-6 flex max-w-full flex-wrap gap-x-3 gap-y-2 overflow-hidden text-sm text-muted-foreground">
+          {profile.focusAreas.slice(0, 3).map((area, index) => (
+            <span key={area} className="inline-flex items-center gap-x-3">
+              {index > 0 ? (
+                <span className="h-1 w-1 rounded-full bg-primary/70" />
+              ) : null}
+              <span>{area}</span>
             </span>
           ))}
         </div>
 
-        <div className="mt-8 flex max-w-full flex-col gap-3 sm:flex-row">
+        <div className="mt-8 flex max-w-full flex-wrap items-center gap-x-6 gap-y-3">
           <a
             href="/projects"
-            className="inline-flex max-w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/15 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/20"
+            className="inline-flex h-10 max-w-full items-center justify-center gap-2 rounded-md bg-foreground px-4 text-sm font-semibold text-background transition hover:bg-primary hover:text-primary-foreground"
           >
             <Github className="h-4 w-4" />
             {home.hero.viewProjects}
           </a>
           <a
             href="/blogs"
-            className="inline-flex max-w-full items-center justify-center gap-2 rounded-full border border-primary/35 px-6 py-3 text-sm font-semibold text-primary transition hover:-translate-y-0.5 hover:bg-primary/10"
+            className="inline-flex h-10 max-w-full items-center justify-center gap-2 text-sm font-semibold text-foreground transition hover:text-primary"
           >
             <BookOpen className="h-4 w-4" />
             {home.hero.readNotes}
@@ -84,8 +91,6 @@ export function ElegantIntro() {
           </a>
         </div>
       </motion.div>
-
-      <SystemsPanel />
     </section>
   )
 }

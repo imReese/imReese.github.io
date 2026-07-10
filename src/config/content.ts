@@ -40,26 +40,10 @@ export type SiteContent = {
   }>
 }
 
-export type SystemsPanelExperience = {
-  period: string
-  organization: string
-  summary: string
-  current?: boolean
-  details?: string[]
-}
-
 export type HomePageContent = {
   hero: {
     viewProjects: string
     readNotes: string
-  }
-  systemsPanel: {
-    workspaceTitle: string
-    workspaceSubtitle: string
-    location: string
-    sectionTitle: string
-    current: string
-    experiences: SystemsPanelExperience[]
   }
   experienceStack: {
     eyebrow: string

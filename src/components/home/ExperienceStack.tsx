@@ -1,4 +1,4 @@
-"use client"
+'use client'
 
 import Link from 'next/link'
 import {
@@ -23,8 +23,8 @@ export function ExperienceStack() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.18fr_0.82fr] lg:items-start">
-      <section className="rounded-2xl border border-border/70 bg-card/75 p-5 shadow-sm backdrop-blur sm:p-6">
+    <div className="grid gap-14 lg:grid-cols-[1.18fr_0.82fr] lg:items-start lg:gap-16">
+      <section>
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-primary">
@@ -37,7 +37,7 @@ export function ExperienceStack() {
           </div>
           <Link
             href="/about"
-            className="hidden items-center gap-1 rounded-full border border-primary/30 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/10 sm:inline-flex"
+            className="hidden items-center gap-1 text-sm font-semibold text-foreground transition hover:text-primary sm:inline-flex"
           >
             {copy.aboutLink}
             <ArrowRight className="h-3.5 w-3.5" />
@@ -45,7 +45,7 @@ export function ExperienceStack() {
         </div>
 
         <div className="mt-6 space-y-5">
-          <article className="border-l-2 border-primary pl-4">
+          <article className="border-t border-border/70 pt-6">
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
               <h3 className="text-base font-semibold text-foreground">
                 {currentRole.company}
@@ -93,9 +93,7 @@ export function ExperienceStack() {
 
           {education ? (
             <div className="flex gap-3 border-t border-border/70 pt-5">
-              <span className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
-                <GraduationCap className="h-4 w-4" />
-              </span>
+              <GraduationCap className="mt-0.5 h-4 w-4 flex-none text-primary" />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <h3 className="text-sm font-semibold text-foreground">
@@ -106,7 +104,8 @@ export function ExperienceStack() {
                   </span>
                 </div>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {education.major}. {copy.educationPrefix}: {education.details.join(' ')}
+                  {education.major}. {copy.educationPrefix}:{' '}
+                  {education.details.join(' ')}
                 </p>
               </div>
             </div>
@@ -114,7 +113,7 @@ export function ExperienceStack() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-border/70 bg-card/75 p-5 shadow-sm backdrop-blur sm:p-6">
+      <section className="border-t border-border/70 pt-10 lg:border-l lg:border-t-0 lg:pl-12 lg:pt-0">
         <div className="flex items-center gap-2 text-sm font-semibold text-primary">
           <Layers3 className="h-4 w-4" />
           <span>{copy.technicalEyebrow}</span>
@@ -135,13 +134,16 @@ export function ExperienceStack() {
               <div className="whitespace-nowrap text-sm font-semibold text-primary">
                 {group.title}
               </div>
-              <div className="flex min-w-0 flex-wrap gap-1.5">
-                {group.items.map((item) => (
+              <div className="flex min-w-0 flex-wrap gap-x-2.5 gap-y-1 text-xs leading-6 text-muted-foreground">
+                {group.items.map((item, index) => (
                   <span
                     key={item}
-                    className="max-w-full rounded-md bg-secondary px-2 py-1 text-[0.72rem] font-medium text-muted-foreground"
+                    className="inline-flex items-center gap-x-2.5"
                   >
-                    {item}
+                    {index > 0 ? (
+                      <span className="h-1 w-1 rounded-full bg-primary/70" />
+                    ) : null}
+                    <span>{item}</span>
                   </span>
                 ))}
               </div>

@@ -5,27 +5,6 @@ home:
   hero:
     viewProjects: View projects
     readNotes: Read notes
-  systemsPanel:
-    workspaceTitle: "Reese's workspace"
-    workspaceSubtitle: Inference systems and backend performance
-    location: Beijing
-    sectionTitle: Experience
-    current: Current
-    experiences:
-      - period: "2025.06 - Now"
-        organization: Baidu AI Computing
-        summary: LLM inference engine performance.
-        current: true
-        details:
-          - "Serving runtime: SGLang scheduler boundaries and prefill/decode paths"
-          - "Memory and transfer: cache/KV residency and Mooncake TE readiness"
-          - Backend tuning across heterogeneous accelerator paths
-      - period: "2023"
-        organization: Huawei Cloud
-        summary: CPU architecture performance analysis.
-      - period: "2022"
-        organization: Huawei Data Storage
-        summary: Distributed systems engineering.
   experienceStack:
     eyebrow: Experience & education
     title: Systems work from storage to LLM serving

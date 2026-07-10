@@ -5,27 +5,6 @@ home:
   hero:
     viewProjects: 查看项目
     readNotes: 阅读笔记
-  systemsPanel:
-    workspaceTitle: "段冰的工作台"
-    workspaceSubtitle: 大模型推理服务 / 后端性能
-    location: 北京
-    sectionTitle: 经历
-    current: 当前
-    experiences:
-      - period: "2025.06 - 至今"
-        organization: 百度 AI 计算
-        summary: 大模型推理引擎性能优化。
-        current: true
-        details:
-          - "推理运行时：拆解 SGLang 调度边界和 Prefill/Decode 路径"
-          - "内存与传输：跟踪 Cache 驻留行为和 Mooncake TE 传输就绪状态"
-          - "异构后端：在不同加速卡上适配并调优执行路径"
-      - period: "2023"
-        organization: 华为云
-        summary: CPU 体系结构性能分析。
-      - period: "2022"
-        organization: 华为数据存储
-        summary: 分布式系统工程。
   experienceStack:
     eyebrow: 经历 / 教育
     title: 从分布式存储到大模型推理服务
