@@ -3,8 +3,8 @@ site:
   headline: "Hi，我是段冰，主要做大模型推理引擎和系统性能优化。"
   introduction: >
     目前在百度 AI 计算团队，工作内容包括 runtime 调度、KV Cache、
-    Mooncake TransferEngine 和异构加速后端。此前在华为做过分布式存储
-    和 CPU 微架构分析。
+    Mooncake TransferEngine 和异构加速后端。此前在华为做过云 workload
+    性能分析、CPU 体系结构优化和分布式存储系统。
   location: 北京，中国
   email: reese_duan@outlook.com
   githubUsername: imReese

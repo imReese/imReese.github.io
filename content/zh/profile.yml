@@ -9,7 +9,7 @@ focusAreas:
 aboutParagraphs:
   - 我在百度 AI 计算团队做大模型推理引擎性能优化，主要涉及 runtime 调度、KV Cache、Mooncake TransferEngine 和异构加速后端。
   - "我也在跟进 SGLang 的 Rust runtime，包括请求生命周期、Scheduler/Router 边界、gRPC 接口、tokenization 和 PD KV 传输。"
-  - 此前在华为做过分布式存储和 CPU 微架构分析，工作内容包括集群管理、指令流分析、TLB 调度和 SMT 调优。
+  - 此前在华为云竖亥实验室和数据存储产品线，做过云 workload 特征分析、CPU 体系结构优化，以及分布式存储的高可用与集群管理。
 
 currentFocus:
   eyebrow: 当前重点
@@ -115,26 +115,26 @@ experience:
       - 跟踪 Prefill/Decode 负载下 Cache、KV Cache 和 Mooncake TransferEngine 的数据流转路径。
       - 在不同加速器上适配并优化 runtime 和 backend 执行路径。
       - 分析 kernel、算子、调度、内存和传输路径中的瓶颈。
-  - company: 华为云计算
-    team: 竖亥Lab
+  - company: 华为云
+    team: 竖亥实验室
     title: 计算机体系结构研究工程师
     logo: cpu
     start: "2023.07"
     end: "2024.07"
     highlights:
-      - 用 perf 和 Intel Pin 给 MySQL、Redis 这类负载做低开销指令流分析。
-      - 在 ChampSim 里验证动态 TLB 调度算法，提升模拟环境下的 TLB 命中率和 IPC。
-      - 和海思、openEuler 团队一起做 Kunpeng CPU SMT 策略调优和微码级性能改进。
-  - company: 华为数据存储
-    team: 基础设施开发
+      - 面向云 workload 建设性能分析工具，刻画指令流和微架构行为。
+      - 结合 workload 数据与仿真评估 CPU 体系结构优化方案。
+      - 与芯片和操作系统团队协作，在鲲鹏平台验证软硬件协同优化。
+  - company: 华为数据存储产品线
+    team: 基础设施开发部
     title: 软件开发工程师
     logo: database
     start: "2022.05"
     end: "2023.07"
     highlights:
-      - 围绕 Leader Election 和 Paxos 协调做分布式高可用与集群管理。
-      - 通过异步队列解耦初始化模块，把支持节点规模从 128 扩展到 256。
-      - 为 200+ 接口补充 DTFuzz 覆盖，并通过输入过滤和沙箱加固命令执行路径。
+      - 参与分布式存储产品的高可用与集群管理组件开发。
+      - 优化控制面通信和初始化流程，提升集群规模与资源初始化效率。
+      - 通过自动化测试、安全加固和现网问题治理提升产品可靠性。
 
 education:
   - school: 南京大学

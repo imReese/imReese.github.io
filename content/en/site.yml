@@ -4,7 +4,7 @@ site:
   introduction: >
     At Baidu AI Computing, I work on runtime scheduling, KV Cache, Mooncake
     TransferEngine, and heterogeneous accelerator backends. Before that, I worked
-    on distributed storage and CPU microarchitecture at Huawei.
+    on cloud workload characterization and distributed storage systems at Huawei.
   location: Beijing, China
   email: reese_duan@outlook.com
   githubUsername: imReese

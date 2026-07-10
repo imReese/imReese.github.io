@@ -9,7 +9,7 @@ focusAreas:
 aboutParagraphs:
   - I work on LLM inference engine performance at Baidu AI Computing, including runtime scheduling, KV Cache, Mooncake TransferEngine, and heterogeneous accelerator backends.
   - "I also follow SGLang's Rust runtime work: request lifecycle, scheduler/router boundaries, gRPC interfaces, tokenization, and PD KV transfer."
-  - Before Baidu, I worked on distributed storage and CPU microarchitecture at Huawei, covering cluster management, instruction-flow analysis, TLB scheduling, and SMT tuning.
+  - Before Baidu, I worked at Huawei Cloud's Shuhai Lab and Huawei's Data Storage Product Line, spanning cloud workload characterization, CPU architecture, distributed storage availability, and cluster management.
 
 currentFocus:
   eyebrow: Current focus
@@ -116,26 +116,26 @@ experience:
       - Trace cache, KV Cache, and Mooncake TransferEngine paths across prefill/decode workloads.
       - Optimize runtime and backend paths across heterogeneous accelerators.
       - Investigate bottlenecks across kernels, operators, scheduling, memory behavior, transfer boundaries, and execution paths.
-  - company: Huawei Cloud Computing
+  - company: Huawei Cloud
     team: Shuhai Lab
     title: Computer Architecture Research Engineer
     logo: cpu
     start: "2023.07"
     end: "2024.07"
     highlights:
-      - Used perf and Intel Pin to build low-overhead instruction-flow analysis for MySQL and Redis-style workloads.
-      - Validated a dynamic TLB scheduling algorithm in ChampSim, improving simulated TLB hit rate and IPC.
-      - Worked with HiSilicon and openEuler teams on Kunpeng CPU SMT tuning and microcode-level performance improvement.
-  - company: Huawei Data Storage
-    team: Infrastructure Development
+      - Built performance tooling for cloud workloads and characterized instruction-flow and microarchitectural behavior.
+      - Used workload data and simulation to evaluate CPU architecture optimizations.
+      - Worked across hardware and operating-system teams to validate software-hardware optimization on Kunpeng platforms.
+  - company: Huawei Data Storage Product Line
+    team: Infrastructure Development Department
     title: Software Development Engineer
     logo: database
     start: "2022.05"
     end: "2023.07"
     highlights:
-      - Built distributed high-availability and cluster-management paths around leader election and Paxos-based coordination.
-      - Decoupled initialization modules with async queues, raising supported node scale from 128 to 256.
-      - Added DTFuzz coverage for 200+ interfaces and hardened command execution paths with input filtering and sandboxing.
+      - Developed high-availability and cluster-management components for distributed storage products.
+      - Improved control-plane scalability and initialization efficiency through asynchronous communication and module decoupling.
+      - Strengthened product reliability through automated testing, security hardening, and production issue resolution.
 
 education:
   - school: Nanjing University
