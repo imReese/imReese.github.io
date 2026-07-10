@@ -1,6 +1,6 @@
 ---
 title: 'SGLang HiCache 写路径：GPU KV 如何降级到 Host 和 Storage'
-description: '基于 SGLang v0.5.14 拆解 HiCache 写路径：write_backup、write_backup_storage、PoolTransfer 和 storage batch_set 如何协作。'
+description: '沿着 GPU 到 Host 的 backup 和 Host 到 storage 的写入，说明 write_backup、PoolTransfer 与 batch_set 如何协作。'
 author: 'Reese'
 date: '2026-06-27'
 topics:
@@ -17,7 +17,7 @@ HiCache 写路径回答的是：**一段已经在 GPU 上算出来的 prefix KV 
 
 这个问题的坑在于，写路径里有两次“成功”：一次是 GPU KV 被备份到 Host，一次是 Host page 被写进 Storage backend。只看其中一次成功，就会误判后续请求能不能 remote hit。
 
-## Source Context
+## 源码版本与范围
 
 在 SGLang `v0.5.14` 中，主线入口在：
 
@@ -363,7 +363,7 @@ batch_put_from_multi_buffers(...)
 
 HiCache 通过 lock、ongoing operation 和 page 级结果尽量把失败限制在可回退状态，而不是把 radix tree 直接标成“全都可用”。
 
-## What this proves — and what it does not
+## 这条路径能证明什么
 
 <CompareCallout
   title="Write-path evidence boundary"
@@ -392,7 +392,7 @@ HiCache 通过 lock、ongoing operation 和 page 级结果尽量把失败限制�
   ]}
 />
 
-## Takeaway：写入成功必须按 page 级语义提交
+## 结论：写入成功必须按 page 级语义提交
 
 HiCache 写路径最容易误读的地方，是把“某个 buffer 搬完”当成“这个 prefix 以后可复用”。更稳的读法是按 page 级语义看提交条件：
 

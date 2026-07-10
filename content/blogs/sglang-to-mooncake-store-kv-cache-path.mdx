@@ -1,6 +1,6 @@
 ---
 title: 'SGLang v0.5.14 到 Mooncake Store：page key、zero-copy 和 shared TE'
-description: '把 SGLang HiCache 和 Mooncake Store 接起来的源码链路：HiCacheStorage、page key、Host KV pointer、batch_get/set、PoolTransfer 和 shared Transfer Engine。'
+description: '沿着一次 KV 写入和读回，说明 SGLang 如何把 page-level cache 映射为 Mooncake object，以及 Host 内存为何是两套系统的交接点。'
 author: 'Reese'
 date: '2026-06-30'
 topics:
@@ -23,7 +23,7 @@ API 层看起来接上了，并不等于 runtime path 已经成立。SGLang 侧�
 
 这篇文章不是介绍 Mooncake backend 支持哪些功能，而是沿着 page key、Host buffer pointer 和 Store object 三个身份一路追踪边界。读完以后，应该能判断一次 remote KV 是否真的跨过了 SGLang/Mooncake 的集成边界，而不是只看到配置里写了 `mooncake`。
 
-## Article Contract / Source Context
+## 源码版本与文章范围
 
 本文固定到 SGLang `v0.5.14`。Mooncake 侧参考 `kvcache-ai/Mooncake` 的稳定 release tag `v0.3.11.post1`（commit `e9c61075720039bcfc5fffd19f847608402be3d0`），阅读边界是 Store、Transfer Engine 和 SGLang backend 接口路径。
 
@@ -77,7 +77,7 @@ radix node hash_value
 ```
 
 <FlowDiagram
-  eyebrow="path overview"
+  eyebrow="路径概览"
   title="从 SGLang runtime 到 Mooncake-backed Store path"
   caption="这张图只表达本文覆盖的源码路径：page key 和 Host pointer 怎么跨过 HiCacheStorage 边界。"
   steps={[
@@ -451,7 +451,7 @@ Mooncake backend 会尝试从 parallel state 里拿已经初始化好的 `Moonca
 
 它们名字都叫 Mooncake，但不一定是同一条数据路径。共享 TE 是优化，不是语义前提。
 
-## Failure Modes / Debugging Heuristics
+## 常见失败模式与排查顺序
 
 调这条链路时，不要从“Mooncake 是否开启”直接跳到“remote KV 是否有效”。更稳的顺序是按语义边界拆：
 
@@ -583,7 +583,7 @@ Mooncake Store objects
   ]}
 />
 
-## What this proves — and what it does not
+## 这条路径能证明什么
 
 这条链路能证明的是：SGLang HiCache 和 Mooncake Store 的集成边界不是一个普通 library call，而是一组 runtime cache state 到 Store object state 的翻译。
 
@@ -626,9 +626,9 @@ SGLang 先把 prefix KV Cache page 化、hash 化，并把 GPU KV 降级到 Host
 
 理解这个边界以后，才不会把 Mooncake 当成普通远端 KV，也不会把 HiCache storage backend 误解成一层简单的 Python 字典。它们接起来，是为了让 prefix KV Cache 从单个 SGLang worker 的内存状态，变成可以跨节点查询、搬运和复用的系统资源。
 
-## Takeaway：shared TE 是优化，Host page 边界才是语义入口
+## 结论：shared TE 是优化，Host page 才是语义入口
 
-这条链路最值得带走的结论是：SGLang 和 Mooncake 的语义交接点不是 GPU tensor，也不是一个抽象的“KV Cache object”，而是 **page key + Host KV page pointer + backend result**。
+这条链路的关键结论是：SGLang 和 Mooncake 的语义交接点不是 GPU tensor，也不是一个抽象的“KV Cache object”，而是 **page key + Host KV page pointer + backend result**。
 
 因此调试或设计类似系统时，先不要问“Mooncake 是否开启”，而要问：
 

@@ -1,6 +1,6 @@
 ---
 title: 'SGLang HiCache 读路径：prefetch、load back 和调度边界'
-description: '基于 SGLang v0.5.14 拆解 HiCache 读路径：从 prefix match 到 storage prefetch，再从 Host load back 到 GPU。'
+description: '沿着 prefix match、storage prefetch 和 Host 到 GPU 的 load back，梳理 HiCache 如何确认并提交一次缓存命中。'
 author: 'Reese'
 date: '2026-06-28'
 topics:
@@ -19,7 +19,7 @@ HiCache 读路径回答的是：**请求来了以后，SGLang 怎么判断一段
 
 读完这篇，应该能把一次 remote hit 拆成三个问题：L3 有没有 page、Host 是否被填充、GPU 是否真正 commit。普通源码笔记容易停在 `batch_get` 返回成功；这里更关心 scheduler 为什么不能为了远端 cache 无限等待。
 
-## Source Context
+## 源码版本与范围
 
 本文基于 SGLang `v0.5.14` 的 HiCache 读路径阅读，主要入口：
 
@@ -318,7 +318,7 @@ request tokens
 
 只有第三个问题为真，推理计算才能真正跳过这段 prefill。
 
-## What this proves — and what it does not
+## 这条路径能证明什么
 
 <CompareCallout
   title="Read-path evidence boundary"
@@ -347,7 +347,7 @@ request tokens
   ]}
 />
 
-## Takeaway：Storage hit 只是候选命中
+## 结论：storage hit 只是候选命中
 
 读 HiCache 读路径时，最重要的不是问“Storage backend 有没有这个 key”，而是问这段 prefix 是否已经穿过完整复用链路：
 

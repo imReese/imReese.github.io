@@ -1,6 +1,6 @@
 ---
 title: 'Mooncake Store 写入路径：PutStart、TransferSubmitter 和 PutEnd'
-description: 'Mooncake Store Put 路径源码拆解：从 master 分配 PROCESSING replica，到 client 数据搬运，再到 PutEnd 提交可读副本。'
+description: '沿着 PutStart、TransferSubmitter 和 PutEnd，梳理一次 Store 写入如何完成副本分配、数据搬运与可见性提交。'
 author: 'Reese'
 date: '2026-05-29'
 topics:
@@ -17,7 +17,7 @@ Mooncake Store 的 Put 不是一次 RPC。它是一段控制面和数据面协�
 
 这篇追踪的问题是：**一个 object 从调用方传进 Store 后，什么时候只是被 master 预留，什么时候才真正对读路径可见。** 这个边界决定了 HiCache 写入 Mooncake 后能不能被后续请求当作完整 remote hit，而不是只看见一次 `PutStart` 成功。
 
-## Source Context
+## 源码版本与范围
 
 本文参考 `kvcache-ai/Mooncake` 的稳定 release tag `v0.3.11.post1`（commit `e9c61075720039bcfc5fffd19f847608402be3d0`），以 Mooncake Store 的源码路径和调用链为阅读边界。
 
@@ -308,7 +308,7 @@ HiCache 写 Mooncake 时，真正想完成的不是“调用一次 put”，而�
 
 所以写路径要按两个层次理解：Store 负责把每个 object 的 replica 从 `PROCESSING` 推到 `COMPLETE`；HiCache backend 负责把多个 object 级结果折回 page 级结果。只要其中一个 object 写失败，这个 logical page 就不能被后续请求当成完整 remote hit。
 
-## What this proves — and what it does not
+## 这条路径能证明什么
 
 <CompareCallout
   title="Put-path evidence boundary"
@@ -337,9 +337,9 @@ HiCache 写 Mooncake 时，真正想完成的不是“调用一次 put”，而�
   ]}
 />
 
-## Takeaway：PutEnd 才是可读性的提交点
+## 结论：PutEnd 才是可读性的提交点
 
-这条写路径最值得带走的结论是：Mooncake Store 的写入正确性不靠一次“大 Put RPC”，而靠控制面和数据面的明确分工。
+这条写路径的关键结论是：Mooncake Store 的写入正确性不靠一次“大 Put RPC”，而靠控制面和数据面的明确分工。
 
 ```text
 PutStart reserves metadata

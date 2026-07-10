@@ -23,6 +23,10 @@ function getTopicLabel(topic: string, copy: BlogPageContent['readingMap']) {
   return copy.topics.find((item) => item.value === topic)?.label ?? topic
 }
 
+function getSeriesLabel(series: string, labels: BlogPageContent['series']) {
+  return labels[series] ?? series
+}
+
 function ArrowLeftIcon(props: React.ComponentPropsWithoutRef<'svg'>) {
   return (
     <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" {...props}>
@@ -52,7 +56,12 @@ export function BlogLayout({
       key: `category:${blog.category ?? 'fallback'}`,
       label: getCategoryLabel(blog.category, blogPage.categories),
     },
-    blog.series ? { key: `series:${blog.series}`, label: blog.series } : null,
+    blog.series
+      ? {
+          key: `series:${blog.series}`,
+          label: getSeriesLabel(blog.series, blogPage.series),
+        }
+      : null,
     ...(blog.topics ?? []).slice(0, 4).map((topic) => ({
       key: `topic:${topic}`,
       label: getTopicLabel(topic, blogPage.readingMap),

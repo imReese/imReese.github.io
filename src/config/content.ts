@@ -93,6 +93,7 @@ export type BlogPageContent = {
   intro: string
   readBlog: string
   categories: Record<string, string>
+  series: Record<string, string>
   article: {
     backToBlogs: string
     descriptionLabel: string

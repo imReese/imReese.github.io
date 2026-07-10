@@ -23,13 +23,19 @@ function getTopicLabel(topic: string, copy: BlogPageContent['readingMap']) {
   return copy.topics.find((item) => item.value === topic)?.label ?? topic
 }
 
+function getSeriesLabel(series: string, labels: BlogPageContent['series']) {
+  return labels[series] ?? series
+}
+
 function BlogMeta({
   blog,
   categoryLabels,
+  seriesLabels,
   readingMap,
 }: {
   blog: BlogType
   categoryLabels: BlogPageContent['categories']
+  seriesLabels: BlogPageContent['series']
   readingMap: BlogPageContent['readingMap']
 }) {
   const chips = [
@@ -37,7 +43,12 @@ function BlogMeta({
       key: `category:${blog.category ?? 'fallback'}`,
       label: getCategoryLabel(blog.category, categoryLabels),
     },
-    blog.series ? { key: `series:${blog.series}`, label: blog.series } : null,
+    blog.series
+      ? {
+          key: `series:${blog.series}`,
+          label: getSeriesLabel(blog.series, seriesLabels),
+        }
+      : null,
     ...(blog.topics ?? []).slice(0, 2).map((topic) => ({
       key: `topic:${topic}`,
       label: getTopicLabel(topic, readingMap),
@@ -62,12 +73,14 @@ function Blog({
   blog,
   readBlog,
   categoryLabels,
+  seriesLabels,
   readingMap,
   locale,
 }: {
   blog: BlogType
   readBlog: string
   categoryLabels: BlogPageContent['categories']
+  seriesLabels: BlogPageContent['series']
   readingMap: BlogPageContent['readingMap']
   locale: 'en' | 'zh'
 }) {
@@ -93,6 +106,7 @@ function Blog({
           <BlogMeta
             blog={blog}
             categoryLabels={categoryLabels}
+            seriesLabels={seriesLabels}
             readingMap={readingMap}
           />
           <span className="hidden shrink-0 items-center gap-1 text-xs font-semibold text-primary opacity-0 transition group-hover:opacity-100 sm:inline-flex">
@@ -109,12 +123,14 @@ function LeadFeaturedBlog({
   blog,
   readBlog,
   categoryLabels,
+  seriesLabels,
   readingMap,
   locale,
 }: {
   blog: BlogType
   readBlog: string
   categoryLabels: BlogPageContent['categories']
+  seriesLabels: BlogPageContent['series']
   readingMap: BlogPageContent['readingMap']
   locale: 'en' | 'zh'
 }) {
@@ -138,6 +154,7 @@ function LeadFeaturedBlog({
       <BlogMeta
         blog={blog}
         categoryLabels={categoryLabels}
+        seriesLabels={seriesLabels}
         readingMap={readingMap}
       />
       <div
@@ -154,11 +171,13 @@ function LeadFeaturedBlog({
 function SupportingFeaturedBlog({
   blog,
   categoryLabels,
+  seriesLabels,
   readingMap,
   locale,
 }: {
   blog: BlogType
   categoryLabels: BlogPageContent['categories']
+  seriesLabels: BlogPageContent['series']
   readingMap: BlogPageContent['readingMap']
   locale: 'en' | 'zh'
 }) {
@@ -184,6 +203,7 @@ function SupportingFeaturedBlog({
           <BlogMeta
             blog={blog}
             categoryLabels={categoryLabels}
+            seriesLabels={seriesLabels}
             readingMap={readingMap}
           />
         </div>
@@ -196,12 +216,14 @@ function FeaturedBlogSet({
   blogs,
   readBlog,
   categoryLabels,
+  seriesLabels,
   readingMap,
   locale,
 }: {
   blogs: BlogType[]
   readBlog: string
   categoryLabels: BlogPageContent['categories']
+  seriesLabels: BlogPageContent['series']
   readingMap: BlogPageContent['readingMap']
   locale: 'en' | 'zh'
 }) {
@@ -217,6 +239,7 @@ function FeaturedBlogSet({
         blog={leadBlog}
         readBlog={readBlog}
         categoryLabels={categoryLabels}
+        seriesLabels={seriesLabels}
         readingMap={readingMap}
         locale={locale}
       />
@@ -226,6 +249,7 @@ function FeaturedBlogSet({
             key={blog.slug}
             blog={blog}
             categoryLabels={categoryLabels}
+            seriesLabels={seriesLabels}
             readingMap={readingMap}
             locale={locale}
           />
@@ -496,6 +520,7 @@ function BlogsPageContentView({
               blogs={featuredBlogs}
               readBlog={blogPage.readBlog}
               categoryLabels={blogPage.categories}
+              seriesLabels={blogPage.series}
               readingMap={blogPage.readingMap}
               locale={locale}
             />
@@ -513,6 +538,7 @@ function BlogsPageContentView({
                     blog={blog}
                     readBlog={blogPage.readBlog}
                     categoryLabels={blogPage.categories}
+                    seriesLabels={blogPage.series}
                     readingMap={blogPage.readingMap}
                     locale={locale}
                   />

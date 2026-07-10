@@ -39,10 +39,10 @@ home:
     engineeringHabitLabel: 工程信条
     engineeringHabit: 把性能榨干到极致，让生产行为清晰透明。
   notes:
-    title: 技术笔记
-    intro: 后端系统、推理优化、云原生工具，以及偶尔一点生活碎片。
-    allNotes: 全部笔记
-    empty: 还没放笔记，第一篇写完后这里会自动出现。
+    title: 最近更新
+    intro: 大模型推理、分布式系统和工程实践，也会写一点工具使用和生活记录。
+    allNotes: 全部文章
+    empty: 还没有文章。
 
 projectsPage:
   githubActivityTitle: GitHub 动态
@@ -50,38 +50,45 @@ projectsPage:
   githubProfileLink: 查看 GitHub 主页
 
 blogPage:
-  headline: 工程深挖与源码笔记
-  intro: 围绕 SGLang、Mooncake、KV Cache 系统和推理 Runtime 调试路径整理的源码级记录。
+  headline: Blog
+  intro: 记录大模型推理、分布式系统和工程实践，内容主要包括 SGLang runtime、KV Cache 管理、Mooncake Store / Transfer Engine，以及相关的源码阅读和性能分析。
   readBlog: 阅读全文
   categories:
-    engineering-deep-dive: 工程深挖
-    debugging-validation: 排障与验证
-    engineering-notes: 工程笔记
-    runbooks: 操作手册
-    reading-notes: 阅读笔记
-    fallback: 工程笔记
+    engineering-deep-dive: 源码分析
+    debugging-validation: 调试与验证
+    engineering-notes: 技术笔记
+    runbooks: 工具手册
+    reading-notes: 读书笔记
+    fallback: 技术笔记
+  series:
+    Mooncake / HiCache Internals: Mooncake / HiCache 源码
+    SGLang Runtime Notes: SGLang runtime
+    Storage Systems Notes: 存储系统
+    Distributed Systems Notes: 分布式系统
+    Practical Runbooks: 工具手册
+    Open Source Engineering: 开源工程
   article:
-    backToBlogs: 返回博客列表
+    backToBlogs: 返回文章列表
     descriptionLabel: 文章摘要
   sections:
-    featuredTitle: 精选工程深挖
-    featuredIntro: "最值得优先阅读的长文：Mooncake、HiCache、SGLang 里的源码路径、Runtime 边界、Cache 生命周期和验证方法。"
-    recentTitle: 最近工程文章
-    recentIntro: "最近的工程文章，保留源码上下文、系统取舍或验证价值。"
-    notesTitle: 笔记 / 操作手册
-    notesIntro: "工具命令、环境配置和经典材料学习笔记会保留在这里，但不会抢占工程深挖文章的位置。"
+    featuredTitle: 推荐阅读
+    featuredIntro: "几篇整理得比较完整的源码分析和系统笔记。"
+    recentTitle: 最近更新
+    recentIntro: "最近发布的文章。"
+    notesTitle: 笔记与工具手册
+    notesIntro: "命令、环境配置和经典论文的学习记录。"
     archiveTitle: 全部文章
-    archiveIntro: "所有文章按时间排序放在这里。"
+    archiveIntro: "按发布时间倒序排列。"
   readingMap:
-    title: 阅读索引
-    intro: 按时间和主题快速扫一遍这些笔记。
-    latestLabel: 最新一篇
+    title: 归档
+    intro: 按年份或主题浏览。
+    latestLabel: 最新文章
     archiveLabel: 归档
     topicsLabel: 主题
     noteSingular: 篇
     notePlural: 篇
     clearFilter: 清除筛选
-    emptyFilter: 暂时没有匹配这个筛选的笔记。
+    emptyFilter: 没有匹配的文章。
     topics:
       - label: 分布式系统
         value: distributed-systems

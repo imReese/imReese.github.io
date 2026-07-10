@@ -1,6 +1,6 @@
 ---
 title: 'Mooncake Transfer Engine：Segment、注册内存和 BatchTransfer'
-description: 'Mooncake Transfer Engine 源码拆解：从公开 API、Segment、registerLocalMemory、TransferRequest 和 BatchID 理解数据搬运层。'
+description: '从 Segment、内存注册、TransferRequest 和 BatchID 出发，建立 Mooncake Transfer Engine 的数据搬运模型。'
 author: 'Reese'
 date: '2026-06-03'
 topics:
@@ -258,7 +258,7 @@ Transfer Engine 独立出来以后，Store 只需要表达：
 
 ## 和 Store 语义保持距离
 
-Transfer Engine 最值得守住的边界是：它只知道传输任务，不知道对象生命周期。`TransferStatus.COMPLETED` 表示 bytes 搬完了；`ReplicaStatus.COMPLETE` 表示 Store 认为这个 object replica 可以被读。Put 路径里前者成功以后，还需要 PutEnd；Get 路径里后者存在以后，还需要 READ 成功。
+Transfer Engine 的关键边界是：它只知道传输任务，不知道对象生命周期。`TransferStatus.COMPLETED` 表示 bytes 搬完了；`ReplicaStatus.COMPLETE` 表示 Store 认为这个 object replica 可以被读。Put 路径里前者成功以后，还需要 PutEnd；Get 路径里后者存在以后，还需要 READ 成功。
 
 这层独立性是 Mooncake 能扩展多种 transport 的原因。Store 不需要知道 RDMA MR、NVLink IPC 或 TCP 连接怎么管理；Transfer Engine 也不需要知道 object key、lease、K/V object 是否同属于一个 logical page。两边只通过 Segment、offset、length 和本地 buffer 地址交接。
 
