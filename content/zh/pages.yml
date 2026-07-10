@@ -5,6 +5,11 @@ home:
   hero:
     viewProjects: 查看项目
     readNotes: 阅读笔记
+  systemsPanel:
+    title: "Reese's workspace"
+    subtitle: 推理系统与后端性能
+    current: 当前
+    previous: 过往经历
   notes:
     title: 最近更新
     intro: 大模型推理、分布式系统和工程实践，也会写一点工具使用和生活记录。

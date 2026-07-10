@@ -1,14 +1,15 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { ArrowUpRight, MapPin } from 'lucide-react'
+import { ArrowUpRight, MapPin, SquareTerminal } from 'lucide-react'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 
 export function SystemsPanel() {
-  const { site, profile } = useLocalizedContent()
+  const { site, profile, home } = useLocalizedContent()
   const currentExperience = profile.experience[0]
-  const systemPath = profile.researchAreas.slice(0, 4)
+  const previousExperience = profile.experience.slice(1, 3)
   const primaryLink = profile.currentFocus.links[0]
+  const copy = home.systemsPanel
 
   return (
     <motion.aside
@@ -17,10 +18,20 @@ export function SystemsPanel() {
       transition={{ duration: 0.7, delay: 0.16, ease: 'easeOut' }}
       className="min-w-0 overflow-hidden rounded-lg border border-border/80 bg-card/65"
     >
-      <div className="flex items-center justify-between gap-4 border-b border-border/70 px-5 py-4">
-        <span className="text-xs font-semibold text-primary">
-          {profile.currentFocus.eyebrow}
-        </span>
+      <div className="flex flex-col items-start gap-3 border-b border-border/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-primary/10 text-primary">
+            <SquareTerminal className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground">
+              {copy.title}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {copy.subtitle}
+            </p>
+          </div>
+        </div>
         <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
           <MapPin className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
           {site.location}
@@ -28,10 +39,15 @@ export function SystemsPanel() {
       </div>
 
       <div className="px-5 py-5 sm:px-6 sm:py-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <span className="text-sm font-semibold text-foreground">
-            {currentExperience.company}
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-foreground">
+              {currentExperience.company}
+            </span>
+            <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[0.68rem] font-semibold text-primary">
+              {copy.current}
+            </span>
+          </div>
           <span className="font-mono text-xs text-muted-foreground">
             {currentExperience.start} - {currentExperience.end}
           </span>
@@ -43,23 +59,40 @@ export function SystemsPanel() {
           {currentExperience.team}
         </p>
 
-        <div className="mt-6 border-t border-border/70">
-          {systemPath.map((area, index) => (
-            <div
-              key={area.title}
-              className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-border/70 py-3.5"
+        <ul className="mt-4 space-y-2">
+          {currentExperience.highlights.slice(0, 3).map((highlight) => (
+            <li
+              key={highlight}
+              className="flex gap-2.5 text-xs leading-5 text-muted-foreground"
             >
-              <span className="font-mono text-[0.68rem] font-semibold text-primary">
-                {String(index + 1).padStart(2, '0')}
-              </span>
-              <span className="min-w-0 text-sm font-medium text-foreground">
-                {area.title}
-              </span>
-              <span className="hidden text-xs text-muted-foreground sm:block">
-                {area.label}
-              </span>
-            </div>
+              <span className="mt-2 h-1 w-1 flex-none rounded-full bg-primary" />
+              <span>{highlight}</span>
+            </li>
           ))}
+        </ul>
+
+        <div className="mt-5 border-t border-border/70 pt-4">
+          <p className="text-xs font-semibold text-primary">{copy.previous}</p>
+          <div className="mt-3 grid gap-4 sm:grid-cols-2 sm:gap-0">
+            {previousExperience.map((experience, index) => (
+              <div
+                key={`${experience.company}-${experience.start}`}
+                className={index > 0 ? 'sm:border-l sm:pl-4' : 'sm:pr-4'}
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <span className="text-sm font-semibold text-foreground">
+                    {experience.company}
+                  </span>
+                  <span className="font-mono text-[0.68rem] text-muted-foreground">
+                    {experience.start}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {experience.title}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
 
         {primaryLink ? (

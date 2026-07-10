@@ -45,6 +45,12 @@ export type HomePageContent = {
     viewProjects: string
     readNotes: string
   }
+  systemsPanel: {
+    title: string
+    subtitle: string
+    current: string
+    previous: string
+  }
   notes: {
     title: string
     intro: string
