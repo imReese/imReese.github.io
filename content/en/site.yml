@@ -1,6 +1,6 @@
 site:
   name: Reese
-  headline: "Hi, I'm Reese. I build reliable backend systems."
+  headline: "Hi, I'm Reese. I work on LLM inference engines and systems performance."
   introduction: >
     I'm a Beijing-based software engineer in Baidu AI Computing, focused on
     large-model inference engines. My work sits around runtime paths, cache and

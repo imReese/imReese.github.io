@@ -1,6 +1,6 @@
 site:
   name: 段冰
-  headline: "Hi，我是段冰，一个做大模型推理系统的后端工程师。"
+  headline: "Hi，我是段冰，主要做大模型推理引擎和系统性能优化。"
   introduction: >
     我的工作是让大模型推理跑得更快、更稳。目前在百度 AI 计算团队，日常与
     SGLang 调度瓶颈、KV Cache 驻留特征和加速芯片后端调优打交道。
