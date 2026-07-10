@@ -5,18 +5,6 @@ home:
   hero:
     viewProjects: View projects
     readNotes: Read notes
-  experienceStack:
-    eyebrow: Experience & education
-    title: Systems work from storage to LLM serving
-    aboutLink: About
-    educationPrefix: Details
-    technicalEyebrow: Technical stack
-    technicalTitle: Tools for inference and systems debugging
-    technicalIntro: Runtime, memory, backend, and infrastructure tools used to analyze serving systems.
-    currentEmphasisLabel: Current emphasis
-    currentEmphasis: SGLang runtime scheduling, KV Cache residency, Mooncake TE boundaries, and accelerator backend tuning.
-    engineeringHabitLabel: Engineering habit
-    engineeringHabit: Measure first, then optimize; keep system behavior observable.
   notes:
     title: Recent posts
     intro: LLM serving, distributed systems, engineering practice, and the occasional life note.

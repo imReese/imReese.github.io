@@ -45,19 +45,6 @@ export type HomePageContent = {
     viewProjects: string
     readNotes: string
   }
-  experienceStack: {
-    eyebrow: string
-    title: string
-    aboutLink: string
-    educationPrefix: string
-    technicalEyebrow: string
-    technicalTitle: string
-    technicalIntro: string
-    currentEmphasisLabel: string
-    currentEmphasis: string
-    engineeringHabitLabel: string
-    engineeringHabit: string
-  }
   notes: {
     title: string
     intro: string

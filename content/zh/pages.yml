@@ -5,18 +5,6 @@ home:
   hero:
     viewProjects: 查看项目
     readNotes: 阅读笔记
-  experienceStack:
-    eyebrow: 经历 / 教育
-    title: 从分布式存储到大模型推理服务
-    aboutLink: 关于
-    educationPrefix: 补充信息
-    technicalEyebrow: 技术栈
-    technicalTitle: 推理与系统分析工具
-    technicalIntro: 用于分析推理服务的 runtime、内存、后端和基础设施问题。
-    currentEmphasisLabel: 当前重点
-    currentEmphasis: SGLang runtime 调度、KV Cache 驻留、Mooncake TE 传输边界和异构后端调优。
-    engineeringHabitLabel: 工程信条
-    engineeringHabit: 先测量，再优化；保持系统行为可观测。
   notes:
     title: 最近更新
     intro: 大模型推理、分布式系统和工程实践，也会写一点工具使用和生活记录。

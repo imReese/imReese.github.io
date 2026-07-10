@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { ArrowRight, BookOpen, Github } from 'lucide-react'
+import { SystemsPanel } from '@/components/home/SystemsPanel'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 
 function getHeadlineLines(headline: string) {
@@ -27,12 +28,12 @@ export function ElegantIntro() {
   const headlineLines = getHeadlineLines(site.headline)
 
   return (
-    <section className="grid min-w-0 gap-10 lg:grid-cols-[1.18fr_0.82fr] lg:items-end lg:gap-16">
+    <section className="grid min-w-0 gap-10 lg:grid-cols-[0.98fr_1.02fr] lg:items-center lg:gap-14">
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.7, ease: 'easeOut' }}
-        className="min-w-0"
+        className="min-w-0 max-w-2xl"
       >
         <h1 className="max-w-4xl break-words font-semibold text-foreground">
           {headlineLines.map((line, index) => (
@@ -40,25 +41,17 @@ export function ElegantIntro() {
               key={`${index}-${line}`}
               className={
                 index === 0
-                  ? `block text-4xl leading-tight sm:text-5xl ${
+                  ? `block text-4xl leading-tight sm:text-5xl lg:text-6xl ${
                       headlineLines.length > 1 ? 'whitespace-nowrap' : ''
                     }`
-                  : 'mt-3 block text-3xl leading-tight sm:text-4xl lg:text-5xl'
+                  : 'mt-3 block text-3xl leading-tight sm:text-4xl lg:text-[2.8rem]'
               }
             >
               {line}
             </span>
           ))}
         </h1>
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.65, delay: 0.12, ease: 'easeOut' }}
-        className="min-w-0 border-t border-border/70 pt-6 lg:border-t-0 lg:pt-0"
-      >
-        <p className="max-w-full text-base leading-8 text-muted-foreground sm:text-lg">
+        <p className="mt-6 max-w-full text-base leading-8 text-muted-foreground sm:text-lg">
           {site.introduction}
         </p>
 
@@ -91,6 +84,8 @@ export function ElegantIntro() {
           </a>
         </div>
       </motion.div>
+
+      <SystemsPanel />
     </section>
   )
 }
