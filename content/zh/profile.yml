@@ -7,26 +7,49 @@ focusAreas:
   - 异构后端
 
 aboutParagraphs:
-  - 我在百度 AI 计算团队做大模型推理引擎性能优化，主要涉及 runtime 调度、KV Cache、Mooncake TransferEngine 和异构加速后端。
-  - "我也在跟进 SGLang 的 Rust runtime，包括请求生命周期、Scheduler/Router 边界、gRPC 接口、tokenization 和 PD KV 传输。"
-  - 此前在华为云竖亥实验室和数据存储产品线，做过云 workload 特征分析、CPU 体系结构优化，以及分布式存储的高可用与集群管理。
+  - 我喜欢模型行为真正落到系统问题上的位置：请求状态、调度、Cache 驻留、传输就绪和 Backend capability 必须互相对得上。
+  - 我的技术路径从分布式存储高可用与集群管理出发，经过云 workload 和 CPU 分析，现在聚焦大模型推理 Runtime 性能。
+  - 这个网站记录的是这条路径背后的工作过程：明确状态的个人项目、标注清楚的 upstream 源码研究，以及能保留实现脉络的文章。
 
 currentFocus:
   eyebrow: 当前重点
   title: 大模型推理引擎与系统性能
   summary: >
-    我在百度 AI 计算团队做大模型推理引擎性能优化，主要涉及 runtime 调度、
-    KV Cache、Mooncake TransferEngine 和异构加速后端。
+    当前工作集中在三类边界：Runtime 执行、KV 状态生命周期，以及异构推理
+    Backend 之间的数据搬运。
   bullets:
     - 分析推理负载的吞吐、延迟、Cache 命中率、内存使用和 runtime 瓶颈。
     - 跟踪 Prefix Cache 和 KV Cache 在 Prefill/Decode 路径上的生命周期。
     - 验证 Mooncake TransferEngine 的 KV 传输规划、描述符、就绪检测和后端接入。
-    - "将 SGLang runtime 的请求生命周期、调度、Cache 管理和传输边界用于服务系统设计。"
+    - '将 SGLang runtime 的请求生命周期、调度、Cache 管理和传输边界用于服务系统设计。'
   links:
-    - label: sglang-rs
-      href: https://github.com/imReese/sglang-rs
     - label: 项目
       href: /projects
+    - label: 源码笔记
+      href: /blogs
+
+selectedWork:
+  - eyebrow: Runtime prototype
+    title: SGLang Rust Runtime
+    description: 用 Rust 显式实现并测试请求生命周期、调度、Prefix 复用、协议处理与分阶段 PD 传输集成边界。
+    problem: 在生产执行路径仍在建设时，让隐藏状态、能力缺口和 fallback 行为可检查。
+    evidence:
+      label: 当前范围与测试
+      href: https://github.com/imReese/sglang-rs#current-scope
+  - eyebrow: KV cache platform
+    title: NexusKV
+    description: 用 Go、Rust、Python 拆开控制策略、状态索引规划、执行层和 SGLang/vLLM lifecycle adapter。
+    problem: 在真实 data plane 逐步开发时，避免让 reuse planning 和 transfer policy 滑进 connector 分支。
+    evidence:
+      label: 架构与执行边界
+      href: https://github.com/imReese/NexusKV/blob/main/docs/design/execution-boundary.md
+  - eyebrow: Source analysis
+    title: Mooncake / HiCache 源码
+    description: 沿着具体读写路径追踪 page key、Host KV memory、Store object、replica state 与 shared Transfer Engine 边界。
+    problem: 区分容易混在一起的 Cache 命中、materialization、metadata 可见性与数据传输语义。
+    evidence:
+      label: SGLang 到 Mooncake KV 路径
+      href: /blogs/sglang-to-mooncake-store-kv-cache-path
 
 researchAreas:
   - title: 推理引擎
@@ -84,22 +107,22 @@ impactStats:
   - value: heterogeneous
     label: 后端路径
     detail: 在异构加速器上优化推理执行链路，保持后端抽象干净。
-  - value: "128 -> 256"
+  - value: '128 -> 256'
     label: 集群规模
     detail: 扩展分布式存储集群初始化能力。
-  - value: "+40%"
+  - value: '+40%'
     label: 初始化效率
     detail: 通过异步队列和模块解耦优化集群启动路径。
-  - value: "90%+"
+  - value: '90%+'
     label: 分支覆盖率
     detail: 构建 DTFuzz 接口测试，提前挡住高风险存储缺陷。
-  - value: "+30%"
+  - value: '+30%'
     label: TLB 命中率
     detail: 在 ChampSim 里验证动态 TLB 调度思路。
-  - value: "+6%"
+  - value: '+6%'
     label: IPC
     detail: 在 CPU 仿真中度量指令级架构收益。
-  - value: "+8%"
+  - value: '+8%'
     label: 吞吐
     detail: 参与 Kunpeng CPU 工作负载的 SMT 策略调优。
 
@@ -108,7 +131,7 @@ experience:
     team: AI 计算团队
     title: 软件工程师，推理引擎
     logo: cpu, gpu, inference engine
-    start: "2025.06.30"
+    start: '2025.06.30'
     end: 至今
     highlights:
       - 负责大模型推理引擎性能优化。
@@ -119,8 +142,8 @@ experience:
     team: 竖亥实验室
     title: 计算机体系结构研究工程师
     logo: cpu
-    start: "2023.07"
-    end: "2024.07"
+    start: '2023.07'
+    end: '2024.07'
     highlights:
       - 面向云 workload 建设性能分析工具，刻画指令流和微架构行为。
       - 结合 workload 数据与仿真评估 CPU 体系结构优化方案。
@@ -129,8 +152,8 @@ experience:
     team: 基础设施开发部
     title: 软件开发工程师
     logo: database
-    start: "2022.05"
-    end: "2023.07"
+    start: '2022.05'
+    end: '2023.07'
     highlights:
       - 参与分布式存储产品的高可用与集群管理组件开发。
       - 优化控制面通信和初始化流程，提升集群规模与资源初始化效率。
@@ -140,8 +163,8 @@ education:
   - school: 南京大学
     major: 环境工程工学学士
     logo: college
-    start: "2017.09"
-    end: "2021.06"
+    start: '2017.09'
+    end: '2021.06'
     details:
       - GPA 4.2 / 5.0。
       - 修读计算机组成原理、数据结构、操作系统、计算机网络、计算机体系结构、线性代数、概率统计和算法设计等课程。

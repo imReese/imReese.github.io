@@ -1,5 +1,30 @@
 about:
-  headline: "我是段冰，主要做大模型推理引擎和系统性能优化。"
+  headline: '我在构建和研究大模型推理背后的 Runtime 边界。'
+  timelineTitle: 职业时间线
+  timelineIntro: 从存储可靠性、workload 与 CPU 分析，逐步走到大模型推理系统。
+  capabilitiesTitle: 技术能力主线
+  capabilitiesIntro: 按系统边界和验证闭环组织能力，不做关键词堆叠。
+  representativeTitle: 代表工作
+  representativeIntro: 用项目和文章把实现路径与源码分析过程暴露出来，便于复查。
+  projectLabel: 项目
+  articleLabel: 文章
+  links:
+    - kind: project
+      title: SGLang Rust Runtime
+      description: 持续开发中的 Rust runtime 原型，明确列出当前范围、限制和测试。
+      href: https://github.com/imReese/sglang-rs
+    - kind: project
+      title: NexusKV
+      description: LLM KV cache platform foundation，区分已实现与仍在规划的层次。
+      href: https://github.com/imReese/NexusKV
+    - kind: article
+      title: SGLang 到 Mooncake Store 的 KV 路径
+      description: 从 page key、Host memory、Store object 追到 shared TE 边界。
+      href: /blogs/sglang-to-mooncake-store-kv-cache-path
+    - kind: article
+      title: Mooncake / HiCache 源码
+      description: 连接 Cache 生命周期、Store metadata 与传输职责的资源模型。
+      href: /blogs/mooncake-kv-cache-system-resource
 
 home:
   hero:
@@ -15,6 +40,11 @@ home:
     intro: 大模型推理、分布式系统和工程实践，也会写一点工具使用和生活记录。
     allNotes: 全部文章
     empty: 还没有文章。
+  selectedWork:
+    title: Selected Engineering Work
+    intro: 精选三个工程证据点，每项都给出可复查的实现或源码分析链接。
+    problemLabel: 解决的问题
+    evidenceLabel: 证据
 
 projectsPage:
   githubActivityTitle: GitHub 动态
@@ -44,16 +74,45 @@ blogPage:
     descriptionLabel: 文章摘要
   sections:
     featuredTitle: 推荐阅读
-    featuredIntro: "几篇整理得比较完整的源码分析和系统笔记。"
+    featuredIntro: '几篇整理得比较完整的源码分析和系统笔记。'
     recentTitle: 最近更新
-    recentIntro: "最近发布的文章。"
+    recentIntro: '最近发布的文章。'
     notesTitle: 笔记与工具手册
-    notesIntro: "命令、环境配置和经典论文的学习记录。"
-    archiveTitle: 全部文章
-    archiveIntro: "按发布时间倒序排列。"
+    notesIntro: '命令、环境配置和经典论文的学习记录。'
+    archiveTitle: 更多文章
+    archiveIntro: '展示推荐阅读以外的归档内容，减少直接重复。'
+    resultsTitle: 筛选结果
+  seriesNav:
+    title: 按系列阅读
+    intro: 先从系统主线进入；工具 Runbook 保留入口，但降低视觉权重。
+    items:
+      - value: sglang-runtime
+        label: SGLang Runtime
+        description: Scheduler、Cache、请求生命周期与 Runtime 边界。
+        weight: primary
+      - value: mooncake-hicache
+        label: Mooncake / HiCache Internals
+        description: Store、Transfer Engine 与分层 Cache 路径。
+        weight: primary
+      - value: kv-cache-systems
+        label: KV Cache Systems
+        description: 内存、复用、驻留和跨节点状态。
+        weight: primary
+      - value: performance-engineering
+        label: Performance Engineering
+        description: Profiling、benchmark、尾延迟与验证。
+        weight: primary
+      - value: distributed-storage
+        label: Distributed / Storage Systems
+        description: 一致性、WAL、Compaction、Lease 与恢复。
+        weight: primary
+      - value: runbooks
+        label: Runbooks
+        description: 命令速查与日常操作笔记。
+        weight: reference
   readingMap:
     title: 归档
-    intro: 按年份或主题浏览。
+    intro: 按年份或主题浏览；系列入口位于主列表上方。
     latestLabel: 最新文章
     archiveLabel: 归档
     topicsLabel: 主题

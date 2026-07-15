@@ -9,7 +9,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.ts",
+    "check:links": "node scripts/check-links.mjs out",
+    "check:links:external": "node scripts/check-links.mjs out --external",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run check:links"
   },
   "browserslist": "defaults, not ie <= 11",
   "dependencies": {

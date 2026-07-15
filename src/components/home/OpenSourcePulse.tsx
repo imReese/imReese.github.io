@@ -4,8 +4,8 @@ import { ArrowUpRight } from 'lucide-react'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 
 export function OpenSourcePulse() {
-  const { profile } = useLocalizedContent()
-  const { currentFocus, researchAreas } = profile
+  const { profile, home } = useLocalizedContent()
+  const { currentFocus, selectedWork } = profile
 
   return (
     <section className="grid gap-12 lg:grid-cols-[0.82fr_1.18fr] lg:items-start lg:gap-16">
@@ -38,28 +38,59 @@ export function OpenSourcePulse() {
         </div>
       </div>
 
-      <div className="border-t border-border/70">
-        {researchAreas.slice(0, 3).map((area, index) => (
-          <article
-            key={area.title}
-            className="grid gap-3 border-b border-border/70 py-6 sm:grid-cols-[2.5rem_12rem_minmax(0,1fr)] sm:gap-5"
-          >
-            <span className="font-mono text-xs font-semibold text-primary">
-              {String(index + 1).padStart(2, '0')}
-            </span>
-            <div>
-              <h3 className="text-base font-semibold text-foreground">
-                {area.title}
-              </h3>
-              <span className="mt-1 block text-xs text-primary">
-                {area.label}
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+          {home.selectedWork.title}
+        </h2>
+        <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
+          {home.selectedWork.intro}
+        </p>
+        <div className="mt-6 border-t border-border/70">
+          {selectedWork.slice(0, 3).map((work, index) => (
+            <article
+              key={work.title}
+              className="grid gap-3 border-b border-border/70 py-6 sm:grid-cols-[2.5rem_11rem_minmax(0,1fr)] sm:gap-5"
+            >
+              <span className="font-mono text-xs font-semibold text-primary">
+                {String(index + 1).padStart(2, '0')}
               </span>
-            </div>
-            <p className="text-sm leading-7 text-muted-foreground">
-              {area.description}
-            </p>
-          </article>
-        ))}
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-foreground">
+                  {work.title}
+                </h3>
+                <span className="mt-1 block text-xs text-primary">
+                  {work.eyebrow}
+                </span>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm leading-7 text-muted-foreground">
+                  {work.description}
+                </p>
+                <p className="mt-2 text-xs leading-6 text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {home.selectedWork.problemLabel}:
+                  </span>{' '}
+                  {work.problem}
+                </p>
+                <a
+                  href={work.evidence.href}
+                  target={
+                    work.evidence.href.startsWith('http') ? '_blank' : undefined
+                  }
+                  rel={
+                    work.evidence.href.startsWith('http')
+                      ? 'noopener noreferrer'
+                      : undefined
+                  }
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-primary transition hover:text-primary/80"
+                >
+                  {home.selectedWork.evidenceLabel}: {work.evidence.label}
+                  <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </a>
+              </div>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   )

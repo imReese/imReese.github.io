@@ -57,6 +57,12 @@ export type HomePageContent = {
     allNotes: string
     empty: string
   }
+  selectedWork: {
+    title: string
+    intro: string
+    problemLabel: string
+    evidenceLabel: string
+  }
 }
 
 export type ProjectsPageContent = {
@@ -84,6 +90,17 @@ export type BlogPageContent = {
     notesIntro: string
     archiveTitle: string
     archiveIntro: string
+    resultsTitle: string
+  }
+  seriesNav: {
+    title: string
+    intro: string
+    items: Array<{
+      value: string
+      label: string
+      description: string
+      weight: 'primary' | 'reference'
+    }>
   }
   readingMap: {
     title: string
@@ -112,6 +129,16 @@ export type ProfileContent = {
     bullets: string[]
     links: Array<{ label: string; href: string }>
   }
+  selectedWork: Array<{
+    eyebrow: string
+    title: string
+    description: string
+    problem: string
+    evidence: {
+      label: string
+      href: string
+    }
+  }>
   researchAreas: Array<{
     title: string
     label: string
@@ -170,7 +197,40 @@ export type ProjectsContent = {
     href: string
     label: string
     tags: string[]
+    status?: {
+      label: string
+      description: string
+    }
+    capabilities?: string[]
+    evidenceLinks?: Array<{
+      label: string
+      href: string
+    }>
   }>
+  diagrams?: {
+    runtime?: {
+      eyebrow: string
+      title: string
+      caption: string
+      steps: Array<{
+        label: string
+        meta: string
+        detail: string
+        items?: string[]
+      }>
+    }
+    platform?: {
+      eyebrow: string
+      title: string
+      caption: string
+      groups: Array<{
+        label: string
+        detail: string
+        items: string[]
+        signals?: string[]
+      }>
+    }
+  }
   workSections?: Array<{
     title: string
     intro: string
@@ -180,6 +240,15 @@ export type ProjectsContent = {
       href: string
       label: string
       tags: string[]
+      relation?: string
+      upstream?: {
+        href: string
+        label: string
+      }
+      evidenceLinks?: Array<{
+        href: string
+        label: string
+      }>
     }>
   }>
   githubItems: Array<{
@@ -200,6 +269,20 @@ export type ProjectsContent = {
 export type PagesContent = {
   about: {
     headline: string
+    timelineTitle: string
+    timelineIntro: string
+    capabilitiesTitle: string
+    capabilitiesIntro: string
+    representativeTitle: string
+    representativeIntro: string
+    projectLabel: string
+    articleLabel: string
+    links: Array<{
+      kind: 'project' | 'article'
+      title: string
+      description: string
+      href: string
+    }>
   }
   home: HomePageContent
   projectsPage: ProjectsPageContent
@@ -226,14 +309,26 @@ function loadYamlContent<T>(source: string, label: string): T {
 export const contentByLocale = {
   en: {
     site: loadYamlContent<SiteContent>(siteEnYaml, 'content/en/site.yml'),
-    profile: loadYamlContent<ProfileContent>(profileEnYaml, 'content/en/profile.yml'),
-    projects: loadYamlContent<ProjectsContent>(projectsEnYaml, 'content/en/projects.yml'),
+    profile: loadYamlContent<ProfileContent>(
+      profileEnYaml,
+      'content/en/profile.yml',
+    ),
+    projects: loadYamlContent<ProjectsContent>(
+      projectsEnYaml,
+      'content/en/projects.yml',
+    ),
     pages: loadYamlContent<PagesContent>(pagesEnYaml, 'content/en/pages.yml'),
   },
   zh: {
     site: loadYamlContent<SiteContent>(siteZhYaml, 'content/zh/site.yml'),
-    profile: loadYamlContent<ProfileContent>(profileZhYaml, 'content/zh/profile.yml'),
-    projects: loadYamlContent<ProjectsContent>(projectsZhYaml, 'content/zh/projects.yml'),
+    profile: loadYamlContent<ProfileContent>(
+      profileZhYaml,
+      'content/zh/profile.yml',
+    ),
+    projects: loadYamlContent<ProjectsContent>(
+      projectsZhYaml,
+      'content/zh/projects.yml',
+    ),
     pages: loadYamlContent<PagesContent>(pagesZhYaml, 'content/zh/pages.yml'),
   },
 } satisfies Record<string, LocaleContent>

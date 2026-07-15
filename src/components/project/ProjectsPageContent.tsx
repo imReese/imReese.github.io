@@ -1,12 +1,17 @@
-"use client"
+'use client'
 
-import { ArrowUpRight } from "lucide-react"
+import { ArrowUpRight } from 'lucide-react'
 
-import GitHubSnake from "@/components/home/GitHubSnake"
-import { Container } from "@/components/layout/Container"
-import { CustomIcon } from "@/components/shared/CustomIcon"
-import { useLocalizedContent } from "@/components/shared/useLocalizedContent"
-import { utm_source } from "@/config/siteConfig"
+import GitHubSnake from '@/components/home/GitHubSnake'
+import { Container } from '@/components/layout/Container'
+import { CustomIcon } from '@/components/shared/CustomIcon'
+import {
+  FlowDiagram,
+  SystemBoundaryDiagram,
+} from '@/components/shared/TechDiagram'
+import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
+import { utm_source } from '@/config/siteConfig'
+import { isExternalHref, withUtmSource } from '@/lib/externalLinks'
 
 type WorkItem = {
   name: string
@@ -14,6 +19,14 @@ type WorkItem = {
   href: string
   label: string
   tags: string[]
+  status?: {
+    label: string
+    description: string
+  }
+  capabilities?: string[]
+  evidenceLinks?: Array<{ label: string; href: string }>
+  relation?: string
+  upstream?: { href: string; label: string }
 }
 
 type WorkSection = {
@@ -22,25 +35,43 @@ type WorkSection = {
   items: WorkItem[]
 }
 
-function hrefWithUtm(href: string) {
-  if (!/^https?:\/\//.test(href)) {
-    return href
-  }
-
-  const separator = href.includes("?") ? "&" : "?"
-  return `${href}${separator}utm_source=${utm_source}`
-}
-
-function isExternalHref(href: string) {
-  return /^https?:\/\//.test(href)
-}
-
 function LinkArrow() {
   return (
     <ArrowUpRight
       className="mt-1 h-4 w-4 shrink-0 text-muted-foreground transition group-hover:text-primary"
       aria-hidden="true"
     />
+  )
+}
+
+function EvidenceLinks({
+  links,
+}: {
+  links: Array<{ label: string; href: string }> | undefined
+}) {
+  if (!links || links.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2">
+      {links.map((link) => {
+        const isExternal = isExternalHref(link.href)
+
+        return (
+          <a
+            key={`${link.label}-${link.href}`}
+            href={withUtmSource(link.href, utm_source)}
+            target={isExternal ? '_blank' : undefined}
+            rel={isExternal ? 'noopener noreferrer' : undefined}
+            className="inline-flex items-center gap-1.5 border-b border-primary/30 pb-0.5 text-xs font-semibold text-primary transition hover:border-primary"
+          >
+            {link.label}
+            <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </a>
+        )
+      })}
+    </div>
   )
 }
 
@@ -63,13 +94,7 @@ function TagLine({ tags }: { tags: string[] }) {
   )
 }
 
-function SectionHeader({
-  title,
-  intro,
-}: {
-  title: string
-  intro: string
-}) {
+function SectionHeader({ title, intro }: { title: string; intro: string }) {
   return (
     <div className="border-b border-border/70 pb-4">
       <h2 className="text-2xl font-semibold tracking-tight text-foreground">
@@ -119,36 +144,65 @@ function FeaturedSystems({ items }: { items: WorkItem[] }) {
 
   return (
     <section className="mt-12">
-      <ul role="list" className="divide-y divide-border/70 border-y border-border/70">
+      <ul
+        role="list"
+        className="divide-y divide-border/70 border-y border-border/70"
+      >
         {items.map((item) => {
           const isExternal = isExternalHref(item.href)
 
           return (
-            <li key={item.name}>
-              <a
-                href={hrefWithUtm(item.href)}
-                target={isExternal ? "_blank" : undefined}
-                rel={isExternal ? "noopener noreferrer" : undefined}
-                className="group grid gap-5 py-7 transition hover:bg-muted/20 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)] sm:px-3"
-              >
+            <li key={item.name} className="py-8 sm:px-3">
+              <article className="grid gap-6 sm:grid-cols-[minmax(0,0.82fr)_minmax(0,1.35fr)]">
                 <div className="flex min-w-0 items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <h2 className="text-2xl font-semibold leading-tight tracking-tight text-foreground transition group-hover:text-primary">
-                      {item.name}
+                    {item.status ? (
+                      <span className="mb-3 inline-flex rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 font-mono text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-primary">
+                        {item.status.label}
+                      </span>
+                    ) : null}
+                    <h2 className="text-2xl font-semibold leading-tight tracking-tight text-foreground">
+                      <a
+                        href={withUtmSource(item.href, utm_source)}
+                        target={isExternal ? '_blank' : undefined}
+                        rel={isExternal ? 'noopener noreferrer' : undefined}
+                        className="group inline-flex items-start gap-2 transition hover:text-primary"
+                      >
+                        {item.name}
+                        <LinkArrow />
+                      </a>
                     </h2>
                     <p className="mt-3 truncate font-mono text-xs text-muted-foreground">
                       {item.label}
                     </p>
+                    {item.status ? (
+                      <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                        {item.status.description}
+                      </p>
+                    ) : null}
                   </div>
-                  <LinkArrow />
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm leading-6 text-muted-foreground">
                     {item.description}
                   </p>
+                  {item.capabilities && item.capabilities.length > 0 ? (
+                    <ul className="mt-5 space-y-2">
+                      {item.capabilities.map((capability) => (
+                        <li
+                          key={capability}
+                          className="flex gap-2.5 text-sm leading-6 text-muted-foreground"
+                        >
+                          <span className="mt-2.5 h-1 w-1 shrink-0 rounded-full bg-primary" />
+                          <span>{capability}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                   <TagLine tags={item.tags} />
+                  <EvidenceLinks links={item.evidenceLinks} />
                 </div>
-              </a>
+              </article>
             </li>
           )
         })}
@@ -166,16 +220,24 @@ function WorkSectionList({ section }: { section: WorkSection }) {
           const isExternal = isExternalHref(item.href)
 
           return (
-            <li key={item.name}>
-              <a
-                href={hrefWithUtm(item.href)}
-                target={isExternal ? "_blank" : undefined}
-                rel={isExternal ? "noopener noreferrer" : undefined}
-                className="group grid gap-4 py-5 transition hover:bg-muted/20 sm:grid-cols-[12rem_minmax(0,1fr)_1rem] sm:px-3"
-              >
+            <li key={item.name} className="py-5 sm:px-3">
+              <article className="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
                 <div className="min-w-0">
-                  <h3 className="text-base font-semibold leading-6 text-foreground transition group-hover:text-primary">
-                    {item.name}
+                  {item.relation ? (
+                    <span className="mb-2 block font-mono text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-primary">
+                      {item.relation}
+                    </span>
+                  ) : null}
+                  <h3 className="text-base font-semibold leading-6 text-foreground">
+                    <a
+                      href={withUtmSource(item.href, utm_source)}
+                      target={isExternal ? '_blank' : undefined}
+                      rel={isExternal ? 'noopener noreferrer' : undefined}
+                      className="group inline-flex items-start gap-1.5 transition hover:text-primary"
+                    >
+                      {item.name}
+                      <LinkArrow />
+                    </a>
                   </h3>
                   <p className="mt-2 truncate font-mono text-xs text-muted-foreground">
                     {item.label}
@@ -186,13 +248,49 @@ function WorkSectionList({ section }: { section: WorkSection }) {
                     {item.description}
                   </p>
                   <TagLine tags={item.tags} />
+                  <EvidenceLinks
+                    links={[
+                      ...(item.upstream ? [item.upstream] : []),
+                      ...(item.evidenceLinks ?? []),
+                    ]}
+                  />
                 </div>
-                <LinkArrow />
-              </a>
+              </article>
             </li>
           )
         })}
       </ul>
+    </section>
+  )
+}
+
+function ArchitectureViews({
+  diagrams,
+}: {
+  diagrams: ReturnType<typeof useLocalizedContent>['projects']['diagrams']
+}) {
+  if (!diagrams?.runtime && !diagrams?.platform) {
+    return null
+  }
+
+  return (
+    <section className="mt-16">
+      {diagrams.runtime ? (
+        <FlowDiagram
+          eyebrow={diagrams.runtime.eyebrow}
+          title={diagrams.runtime.title}
+          caption={diagrams.runtime.caption}
+          steps={diagrams.runtime.steps}
+        />
+      ) : null}
+      {diagrams.platform ? (
+        <SystemBoundaryDiagram
+          eyebrow={diagrams.platform.eyebrow}
+          title={diagrams.platform.title}
+          caption={diagrams.platform.caption}
+          groups={diagrams.platform.groups}
+        />
+      ) : null}
     </section>
   )
 }
@@ -283,6 +381,9 @@ export function ProjectsPageContent() {
     href: project.href,
     label: project.label,
     tags: project.tags,
+    status: project.status,
+    capabilities: project.capabilities,
+    evidenceLinks: project.evidenceLinks,
   }))
 
   return (
@@ -299,6 +400,7 @@ export function ProjectsPageContent() {
       <div className="mt-12">
         <OverviewIndex items={overviewItems} />
         <FeaturedSystems items={featuredSystems} />
+        <ArchitectureViews diagrams={projects.diagrams} />
 
         {workSections.map((section) => (
           <WorkSectionList key={section.title} section={section} />
@@ -309,7 +411,10 @@ export function ProjectsPageContent() {
         <GitHubActivity
           title={projectsPage.githubActivityTitle}
           intro={projectsPage.githubActivityIntro}
-          href={`https://github.com/${site.githubUsername}`}
+          href={withUtmSource(
+            `https://github.com/${site.githubUsername}`,
+            utm_source,
+          )}
           linkLabel={projectsPage.githubProfileLink}
         />
       </div>

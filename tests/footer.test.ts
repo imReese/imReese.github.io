@@ -4,11 +4,14 @@ import test from 'node:test'
 
 const footerSource = readFileSync('src/components/layout/Footer.tsx', 'utf8')
 
-test('renders the same footer stats block on every page', () => {
-  assert.equal(
-    footerSource.includes("import { usePathname } from 'next/navigation'"),
-    false,
-  )
-  assert.equal(footerSource.includes("pathname === '/'"), false)
-  assert.match(footerSource, /<HomepageViewStats[\s\S]*className=/)
+test('footer does not present homepage-only analytics as a site-wide count', () => {
+  assert.equal(footerSource.includes('HomepageViewStats'), false)
+  assert.equal(footerSource.includes('stats.json'), false)
+  assert.equal(footerSource.includes('views'), false)
+})
+
+test('footer localizes the site name and rights copy', () => {
+  assert.match(footerSource, /useLocalizedContent/)
+  assert.match(footerSource, /site\.name/)
+  assert.match(footerSource, /footer\.rights/)
 })

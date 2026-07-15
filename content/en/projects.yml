@@ -1,32 +1,68 @@
-headline: Systems Work
-intro: "A compact view of real LLM-serving systems work: self-built projects, open-source systems reading and adaptation, and engineering deep dives that make the work inspectable."
+headline: Systems work
+intro: A deliberately small set of verifiable systems projects, implementation work, and source studies around LLM serving. Status and evidence links are shown explicitly; tracked forks are separated from original projects.
 
 overview:
   - label: Runtime
-    value: SGLang
-    description: Scheduling boundaries, request lifecycle, prefill/decode paths, and accelerator backend tuning.
+    value: SGLang Rust Runtime
+    description: An active Rust runtime prototype with request lifecycle, scheduling, cache, protocol, and PD transfer boundaries under construction.
   - label: KV Platform
     value: NexusKV
-    description: A KV cache platform for LLM inference with separated control-plane, data-plane, and engine-adapter layers.
-  - label: Integration
-    value: Mooncake TE
-    description: Transfer Engine attachment points, resource boundaries, and cross-node KV movement planning.
+    description: An LLM KV cache platform foundation spanning control plane, state/index, execution, and engine adapters.
+  - label: Source work
+    value: Mooncake / HiCache
+    description: Reproducible source analysis of cache lifecycle, Store semantics, and Transfer Engine integration paths.
 
 items:
   - name: SGLang Rust Runtime
-    description: Rust runtime direction for SGLang covering request lifecycle, scheduler/router boundaries, gRPC contracts, tokenizer edges, cache management, Mooncake TE, and PD KV-transfer planning.
+    description: An independent Rust workspace exploring how SGLang runtime responsibilities can move behind explicit Rust boundaries. The repository is useful for architecture and integration validation today; it is not presented as a production-ready replacement for upstream SGLang.
     href: https://github.com/imReese/sglang-rs
     label: github.com/imReese/sglang-rs
+    status:
+      label: Active prototype
+      description: Request lifecycle and integration paths are implemented and tested in stages. Production transformer execution, complete accelerator coverage, and a production deployment story remain incomplete.
+    capabilities:
+      - Rust request lifecycle with prefill/decode scheduling, finite KV page allocation, and RadixCache-style prefix reuse.
+      - Tonic gRPC and OpenAI-compatible HTTP/router boundaries, plus a process-level CPU PD smoke path.
+      - CPU reference execution, dynamic CUDA/cuBLAS capability boundaries, and explicit failure for unavailable backends.
+      - PD transfer planning, readiness polling, descriptor checksums, and a managed Mooncake ABI/memory-registration boundary.
+    evidenceLinks:
+      - label: Current scope and limitations
+        href: https://github.com/imReese/sglang-rs#current-scope
+      - label: Request lifecycle tests
+        href: https://github.com/imReese/sglang-rs/blob/main/crates/sglang-srt/tests/request_lifecycle.rs
+      - label: PD transfer-plan tests
+        href: https://github.com/imReese/sglang-rs/blob/main/crates/sglang-srt/tests/pd_transfer_plan.rs
+      - label: Local PD smoke
+        href: https://github.com/imReese/sglang-rs/blob/main/scripts/run_cpu_pd_smoke.sh
     tags:
       - Rust
       - SGLang
+      - Scheduler
       - KV Cache
-      - Mooncake TE
-      - Scheduling
+      - Mooncake
   - name: NexusKV
-    description: A KV cache platform for LLM inference evolving from a small Go prototype into separated control-plane, data-plane, and engine-adapter layers across Go, Rust, and Python.
+    description: A staged LLM KV cache platform that separates policy and control, reuse planning and state/index, execution/data movement, and engine-facing lifecycle adapters. The current repository proves these boundaries with deterministic implementations and tests without claiming that planned transport paths already exist.
     href: https://github.com/imReese/NexusKV
     label: github.com/imReese/NexusKV
+    status:
+      label: Platform foundation
+      description: Contracts, planner, connector lifecycle, execution policy, and baseline backends exist. Real remote transports, RDMA/GPU-direct paths, distributed coordination, and throughput work remain planned.
+    capabilities:
+      - Versioned attention-state contracts and a Rust nxradixtree core for exact and prefix reuse planning.
+      - A narrow PyO3 bridge used by SGLang and vLLM connector lifecycle adapters.
+      - Deterministic execution runner, backend catalog, fallback model, payload handles, and in-memory baseline store.
+      - Go control-plane config and reloadable policy handoff into Python execution with last-known-good behavior.
+    evidenceLinks:
+      - label: North star
+        href: https://github.com/imReese/NexusKV/blob/main/docs/architecture/target-platform.md
+      - label: Migration status
+        href: https://github.com/imReese/NexusKV/blob/main/docs/architecture/migration-status.md
+      - label: Planner bridge
+        href: https://github.com/imReese/NexusKV/blob/main/docs/design/python-rust-planner-bridge.md
+      - label: Connector lifecycle
+        href: https://github.com/imReese/NexusKV/blob/main/docs/design/connector-lifecycle.md
+      - label: Execution boundary
+        href: https://github.com/imReese/NexusKV/blob/main/docs/design/execution-boundary.md
     tags:
       - Go
       - Rust
@@ -34,90 +70,148 @@ items:
       - KV Cache
       - LLM Serving
 
+diagrams:
+  runtime:
+    eyebrow: execution path
+    title: SGLang Rust Runtime — implemented request path
+    caption: The diagram shows the boundaries already represented in code and tests. Production model execution and complete transport backends are intentionally outside the claim.
+    steps:
+      - label: Protocol boundary
+        meta: HTTP / gRPC / router
+        detail: Validate text or tokenized requests and preserve PD bootstrap metadata.
+        items:
+          - typed proto
+          - OpenAI path
+      - label: Scheduler
+        meta: waiting → prefill → decode
+        detail: Form batches, apply token budgets, and hold decode until transferred KV is ready.
+        items:
+          - lifecycle
+          - readiness
+      - label: Cache and workers
+        meta: RadixCache + KV pages
+        detail: Match reusable prefixes, allocate finite pages, and dispatch local or split workers.
+        items:
+          - page geometry
+          - prefix reuse
+      - label: PD transfer boundary
+        meta: fake / snapshot / Mooncake ABI
+        detail: Build and poll transfer plans; production Mooncake execution remains an integration boundary.
+        items:
+          - checksums
+          - managed regions
+  platform:
+    eyebrow: platform boundaries
+    title: NexusKV — current foundation and planned transport work
+    caption: The platform is split by responsibility so engine connectors do not absorb policy, planning, or transport semantics.
+    groups:
+      - label: Control plane
+        detail: Implemented scaffold and policy handoff.
+        items:
+          - Go config
+          - health / admin
+          - execution policy
+        signals:
+          - last-known-good reload
+      - label: State and index
+        detail: Implemented versioned contracts and Rust reuse planner.
+        items:
+          - descriptors
+          - nxradixtree
+          - exact / prefix match
+      - label: Execution / data plane
+        detail: Deterministic runner and baseline backends exist; real transports are planned.
+        items:
+          - backend catalog
+          - payload handles
+          - fallback
+        signals:
+          - TODO real remote transport
+      - label: Engine adapters
+        detail: Implemented lifecycle boundaries for SGLang and vLLM.
+        items:
+          - prefill / extend
+          - request start
+          - planner bridge
+
 workSections:
-  - title: Open-source systems work
-    intro: These are not filler projects. They are the inference-system components I track, read, and adapt over time.
+  - title: Tracked forks and source studies
+    intro: These entries are not original projects. Each link is labeled as a tracked fork/source-study surface and is paired with the upstream repository.
     items:
       - name: SGLang
-        description: A high-performance LLM/VLM serving framework, with current attention on scheduler behavior, runtime paths, HiCache, and PD transfer boundaries.
+        relation: Tracked fork · Source study
+        description: Used to follow scheduler, runtime, HiCache, and PD integration boundaries while writing reproducible source notes.
         href: https://github.com/imReese/sglang
-        label: github.com/imReese/sglang
+        label: tracked fork / imReese/sglang
+        upstream:
+          label: Upstream repository
+          href: https://github.com/sgl-project/sglang
+        evidenceLinks:
+          - label: Related source analysis
+            href: /blogs/sglang-hicache-read-path
         tags:
           - Serving
           - Scheduler
           - HiCache
       - name: Mooncake
-        description: Serving infrastructure around data movement, storage, and transfer paths, with emphasis on Store, Transfer Engine, and KV-cache integration boundaries.
+        relation: Tracked fork · Source study
+        description: Used to trace Store object lifecycle, Transfer Engine memory/transport boundaries, and SGLang integration paths.
         href: https://github.com/imReese/Mooncake
-        label: github.com/imReese/Mooncake
+        label: tracked fork / imReese/Mooncake
+        upstream:
+          label: Upstream repository
+          href: https://github.com/kvcache-ai/Mooncake
+        evidenceLinks:
+          - label: Related source analysis
+            href: /blogs/mooncake-kv-cache-system-resource
         tags:
           - Store
           - Transfer Engine
           - KV Cache
       - name: xgrammar
-        description: Structured generation infrastructure that fits into the serving path around tokenizer, grammar, and runtime interfaces.
+        relation: Tracked fork · Source study
+        description: Retained as a study surface for structured-generation interfaces across tokenizer, grammar compilation, and serving runtime integration.
         href: https://github.com/imReese/xgrammar
-        label: github.com/imReese/xgrammar
+        label: tracked fork / imReese/xgrammar
+        upstream:
+          label: Upstream repository
+          href: https://github.com/mlc-ai/xgrammar
         tags:
           - Structured Generation
           - Runtime
           - Parser
-  - title: Related deep dives
-    intro: Notes are not projects, but they make the systems work concrete and inspectable.
+  - title: Reproducible engineering analysis
+    intro: These articles are evidence of source paths traced and boundaries checked; they are not presented as ownership of the upstream systems.
     items:
-      - name: SGLang to Mooncake Store KV-cache path
-        description: Traces page keys, Host KV pointers, and Store objects to check whether remote KV really crosses the integration boundary.
+      - name: SGLang to Mooncake Store KV path
+        relation: Source analysis
+        description: Follow page keys, host KV pointers, Store objects, and the shared Transfer Engine boundary for a write/read cycle.
         href: /blogs/sglang-to-mooncake-store-kv-cache-path
         label: blogs/sglang-to-mooncake-store-kv-cache-path
         tags:
           - SGLang
           - Mooncake
           - KV Cache
-      - name: HiCache read/write paths
-        description: Separates storage hits, Host load-back, and GPU KV reuse so cache-hit claims stay precise.
+      - name: HiCache read and write paths
+        relation: Source analysis
+        description: Separate storage hits, host load-back, GPU reuse, backup, and batch persistence so cache-hit claims stay precise.
         href: /blogs/sglang-hicache-read-path
         label: blogs/sglang-hicache-read-path
+        evidenceLinks:
+          - label: Write path
+            href: /blogs/sglang-hicache-write-path
         tags:
           - HiCache
-          - Read Path
+          - Read / Write
           - Validation
-      - name: Mooncake KV-cache resource model
-        description: Splits runtime, Store metadata, and Transfer Engine state to show what remote KV cache actually owns.
+      - name: Mooncake KV resource model
+        relation: Source analysis
+        description: Separate runtime state, Store metadata, replica lifecycle, and Transfer Engine responsibilities.
         href: /blogs/mooncake-kv-cache-system-resource
         label: blogs/mooncake-kv-cache-system-resource
         tags:
           - Resource Model
           - Store
           - Transfer
-
-focus:
-  title: Engineering tracks
-  intro: Notes stay out of the project list; this section shows the real engineering tracks inside these projects.
-  items:
-    - title: SGLang request lifecycle
-      description: Trace requests from ingress through queues, scheduling, backend execution, and output so each layer has a clear job.
-      tags:
-        - Router
-        - Scheduler
-        - Lifecycle
-    - title: Scheduler / Router boundary
-      description: Separate routing, scheduling, batching, and backend execution responsibilities to reduce hidden state and cross-layer coupling.
-      tags:
-        - Scheduling
-        - Batching
-        - Runtime
-    - title: NexusKV platform layers
-      description: Separate control-plane, data-plane, state/index, and engine-adapter concerns so the KV cache is not treated as one monolithic service.
-      tags:
-        - Control Plane
-        - Data Plane
-        - Adapter
-    - title: KV transfer integration
-      description: Plan Mooncake TE attachment points, resource lifecycle, and cross-node KV movement under PD-style serving.
-      tags:
-        - KV Cache
-        - Mooncake
-        - Transfer
-        - PD Serving
 
 githubItems: []

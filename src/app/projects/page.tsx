@@ -1,12 +1,14 @@
 import { type Metadata } from 'next'
 
 import { ProjectsPageContent } from '@/components/project/ProjectsPageContent'
-import { projectHeadLine } from '@/config/infoConfig'
+import { createPageMetadata } from '@/lib/seo'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = createPageMetadata({
   title: 'Projects',
-  description: projectHeadLine,
-}
+  description:
+    'Verifiable systems work across the SGLang Rust runtime, NexusKV, and Mooncake / HiCache source analysis, with status and evidence links.',
+  path: '/projects/',
+})
 
 export default function Projects() {
   return <ProjectsPageContent />

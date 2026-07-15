@@ -8,24 +8,9 @@ import { Container } from '@/components/layout/Container'
 import { Prose } from '@/components/shared/Prose'
 import { useLanguage } from '@/components/shared/LanguageProvider'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
-import { type BlogPageContent } from '@/config/content'
 import { type BlogType } from '@/lib/blogs'
+import { getBlogMetaChips } from '@/lib/blogPresentation'
 import { formatDate } from '@/lib/formatDate'
-
-function getCategoryLabel(
-  category: string | undefined,
-  labels: BlogPageContent['categories'],
-) {
-  return category ? (labels[category] ?? category) : labels.fallback
-}
-
-function getTopicLabel(topic: string, copy: BlogPageContent['readingMap']) {
-  return copy.topics.find((item) => item.value === topic)?.label ?? topic
-}
-
-function getSeriesLabel(series: string, labels: BlogPageContent['series']) {
-  return labels[series] ?? series
-}
 
 function ArrowLeftIcon(props: React.ComponentPropsWithoutRef<'svg'>) {
   return (
@@ -51,27 +36,18 @@ export function BlogLayout({
   let { previousPathname } = useContext(AppContext)
   const { locale } = useLanguage()
   const { blogPage } = useLocalizedContent()
-  const chips = [
-    {
-      key: `category:${blog.category ?? 'fallback'}`,
-      label: getCategoryLabel(blog.category, blogPage.categories),
-    },
-    blog.series
-      ? {
-          key: `series:${blog.series}`,
-          label: getSeriesLabel(blog.series, blogPage.series),
-        }
-      : null,
-    ...(blog.topics ?? []).slice(0, 4).map((topic) => ({
-      key: `topic:${topic}`,
-      label: getTopicLabel(topic, blogPage.readingMap),
-    })),
-  ].filter((chip): chip is { key: string; label: string } => Boolean(chip))
+  const chips = getBlogMetaChips(
+    blog,
+    blogPage.categories,
+    blogPage.series,
+    blogPage.readingMap,
+    4,
+  )
 
   return (
     <Container className="mt-14 sm:mt-24">
       <div className="mx-auto w-full max-w-[1440px]">
-        <article className="min-w-0">
+        <article className="min-w-0" lang={blog.language}>
           <header className="flex flex-col">
             <div className="flex items-center justify-between gap-4 border-b border-border/70 pb-6">
               {previousPathname && (

@@ -7,27 +7,49 @@ focusAreas:
   - Heterogeneous Backends
 
 aboutParagraphs:
-  - I work on LLM inference engine performance at Baidu AI Computing, including runtime scheduling, KV Cache, Mooncake TransferEngine, and heterogeneous accelerator backends.
-  - "I also follow SGLang's Rust runtime work: request lifecycle, scheduler/router boundaries, gRPC interfaces, tokenization, and PD KV transfer."
-  - Before Baidu, I worked at Huawei Cloud's Shuhai Lab and Huawei's Data Storage Product Line, spanning cloud workload characterization, CPU architecture, distributed storage availability, and cluster management.
+  - 'I like the point where model-serving behavior becomes a systems problem: request state, scheduling, cache residency, transfer readiness, and backend capability all have to agree.'
+  - My route into this work runs through distributed-storage availability and cluster management, then cloud workload and CPU analysis, and now LLM inference runtime performance.
+  - 'This site is the working record behind that path: small original projects with explicit status, tracked upstream source studies, and articles that preserve the implementation trail.'
 
 currentFocus:
   eyebrow: Current focus
   title: LLM inference engines and systems performance
   summary: >
-    At Baidu AI Computing, I optimize LLM inference engines across runtime
-    scheduling, KV Cache, Mooncake TransferEngine, and heterogeneous accelerator
-    backends.
+    Current work clusters around three boundaries: runtime execution, KV state
+    lifecycle, and data movement across heterogeneous serving backends.
   bullets:
     - Measure throughput, latency, cache hit rate, memory use, and runtime bottlenecks in inference workloads.
     - Trace prefix cache and KV Cache lifecycle across prefill/decode paths.
     - Validate Mooncake TransferEngine planning, descriptors, readiness checks, and backend integration.
-    - "Apply SGLang runtime patterns to request lifecycle, scheduling, cache management, and transfer boundaries."
+    - 'Apply SGLang runtime patterns to request lifecycle, scheduling, cache management, and transfer boundaries.'
   links:
-    - label: sglang-rs
-      href: https://github.com/imReese/sglang-rs
     - label: Projects
       href: /projects
+    - label: Source notes
+      href: /blogs
+
+selectedWork:
+  - eyebrow: Runtime prototype
+    title: SGLang Rust Runtime
+    description: Implemented and tested explicit Rust boundaries for request lifecycle, scheduling, prefix reuse, protocol handling, and staged PD transfer integration.
+    problem: Make hidden runtime state and fallback behavior inspectable while the production execution path is still under construction.
+    evidence:
+      label: Current scope and tests
+      href: https://github.com/imReese/sglang-rs#current-scope
+  - eyebrow: KV cache platform
+    title: NexusKV
+    description: Split control policy, state/index planning, execution, and SGLang/vLLM lifecycle adapters across Go, Rust, and Python.
+    problem: Keep reuse planning and transfer policy out of connector-specific branching while the real data plane is developed incrementally.
+    evidence:
+      label: Architecture and execution boundary
+      href: https://github.com/imReese/NexusKV/blob/main/docs/design/execution-boundary.md
+  - eyebrow: Source analysis
+    title: Mooncake / HiCache internals
+    description: Traced page keys, host KV memory, Store objects, replica state, and shared Transfer Engine boundaries through concrete read/write paths.
+    problem: Separate cache hit, materialization, metadata visibility, and data transfer claims that are easy to blur together.
+    evidence:
+      label: SGLang to Mooncake KV path
+      href: /blogs/sglang-to-mooncake-store-kv-cache-path
 
 researchAreas:
   - title: Inference Engine
@@ -109,7 +131,7 @@ experience:
     team: AI Computing Department
     title: Software Engineer, Inference Engine
     logo: cpu
-    start: "2025.06.30"
+    start: '2025.06.30'
     end: Present
     highlights:
       - Optimize LLM inference engine performance.
@@ -120,8 +142,8 @@ experience:
     team: Shuhai Lab
     title: Computer Architecture Research Engineer
     logo: cpu
-    start: "2023.07"
-    end: "2024.07"
+    start: '2023.07'
+    end: '2024.07'
     highlights:
       - Built performance tooling for cloud workloads and characterized instruction-flow and microarchitectural behavior.
       - Used workload data and simulation to evaluate CPU architecture optimizations.
@@ -130,8 +152,8 @@ experience:
     team: Infrastructure Development Department
     title: Software Development Engineer
     logo: database
-    start: "2022.05"
-    end: "2023.07"
+    start: '2022.05'
+    end: '2023.07'
     highlights:
       - Developed high-availability and cluster-management components for distributed storage products.
       - Improved control-plane scalability and initialization efficiency through asynchronous communication and module decoupling.
@@ -141,8 +163,8 @@ education:
   - school: Nanjing University
     major: B.Eng. Environmental Engineering
     logo: college
-    start: "2017.09"
-    end: "2021.06"
+    start: '2017.09'
+    end: '2021.06'
     details:
       - GPA 4.2 / 5.0.
       - Computer organization, data structures, operating systems, networks, computer architecture, linear algebra, probability and statistics, and algorithm design.

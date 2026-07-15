@@ -1,4 +1,4 @@
-"use client"
+'use client'
 
 import {
   createContext,
@@ -7,40 +7,39 @@ import {
   useEffect,
   useMemo,
   useState,
-} from "react"
+} from 'react'
+import { localeToHtmlLang, type Locale } from '@/lib/language'
 
-type Locale = "en" | "zh"
-
-const STORAGE_KEY = "reese-language"
+const STORAGE_KEY = 'reese-language'
 
 const translations = {
   en: {
-    "common.menu": "Menu",
-    "common.closeMenu": "Close menu",
-    "common.switchLanguage": "Switch language",
-    "common.toggleTheme": "Toggle theme",
-    "common.githubRepo": "GitHub Profile",
-    "footer.rights": "All rights reserved.",
-    "nav.Home": "Home",
-    "nav.About": "About",
-    "nav.Projects": "Projects",
-    "nav.Blogs": "Blogs",
-    "home.viewProjects": "View projects",
-    "home.readNotes": "Read notes",
+    'common.menu': 'Menu',
+    'common.closeMenu': 'Close menu',
+    'common.switchLanguage': 'Switch language',
+    'common.toggleTheme': 'Toggle theme',
+    'common.githubRepo': 'GitHub Profile',
+    'footer.rights': 'All rights reserved.',
+    'nav.Home': 'Home',
+    'nav.About': 'About',
+    'nav.Projects': 'Projects',
+    'nav.Blogs': 'Blogs',
+    'home.viewProjects': 'View projects',
+    'home.readNotes': 'Read notes',
   },
   zh: {
-    "common.menu": "菜单",
-    "common.closeMenu": "关闭菜单",
-    "common.switchLanguage": "切换语言",
-    "common.toggleTheme": "切换主题",
-    "common.githubRepo": "GitHub 主页",
-    "footer.rights": "保留所有权利。",
-    "nav.Home": "首页",
-    "nav.About": "关于",
-    "nav.Projects": "项目",
-    "nav.Blogs": "博客",
-    "home.viewProjects": "查看项目",
-    "home.readNotes": "阅读笔记",
+    'common.menu': '菜单',
+    'common.closeMenu': '关闭菜单',
+    'common.switchLanguage': '切换语言',
+    'common.toggleTheme': '切换主题',
+    'common.githubRepo': 'GitHub 主页',
+    'footer.rights': '保留所有权利。',
+    'nav.Home': '首页',
+    'nav.About': '关于',
+    'nav.Projects': '项目',
+    'nav.Blogs': '博客',
+    'home.viewProjects': '查看项目',
+    'home.readNotes': '阅读笔记',
   },
 } as const
 
@@ -56,16 +55,16 @@ type LanguageContextValue = {
 const LanguageContext = createContext<LanguageContextValue | null>(null)
 
 function readInitialLocale(): Locale {
-  if (typeof window === "undefined") {
-    return "en"
+  if (typeof window === 'undefined') {
+    return 'en'
   }
 
   const stored = window.localStorage.getItem(STORAGE_KEY)
-  return stored === "zh" ? "zh" : "en"
+  return stored === 'zh' ? 'zh' : 'en'
 }
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>("en")
+  const [locale, setLocaleState] = useState<Locale>('en')
 
   useEffect(() => {
     setLocaleState(readInitialLocale())
@@ -74,11 +73,11 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const setLocale = useCallback((nextLocale: Locale) => {
     setLocaleState(nextLocale)
     window.localStorage.setItem(STORAGE_KEY, nextLocale)
-    document.documentElement.lang = nextLocale === "zh" ? "zh-CN" : "en"
+    document.documentElement.lang = localeToHtmlLang(nextLocale)
   }, [])
 
   const toggleLocale = useCallback(() => {
-    setLocale(locale === "zh" ? "en" : "zh")
+    setLocale(locale === 'zh' ? 'en' : 'zh')
   }, [locale, setLocale])
 
   const t = useCallback(
@@ -92,7 +91,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   )
 
   useEffect(() => {
-    document.documentElement.lang = locale === "zh" ? "zh-CN" : "en"
+    document.documentElement.lang = localeToHtmlLang(locale)
   }, [locale])
 
   return (
@@ -106,7 +105,7 @@ export function useLanguage() {
   const context = useContext(LanguageContext)
 
   if (!context) {
-    throw new Error("useLanguage must be used within LanguageProvider")
+    throw new Error('useLanguage must be used within LanguageProvider')
   }
 
   return context

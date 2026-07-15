@@ -1,5 +1,30 @@
 about:
-  headline: "I'm Reese, a backend engineer working on LLM inference systems."
+  headline: 'I build and study the runtime boundaries behind LLM serving.'
+  timelineTitle: Career timeline
+  timelineIntro: A short path through storage reliability, workload and CPU analysis, and LLM inference systems.
+  capabilitiesTitle: Engineering through-line
+  capabilitiesIntro: The work is organized around system boundaries and validation loops, not a flat keyword inventory.
+  representativeTitle: Representative work
+  representativeIntro: Projects and articles that make the implementation and source-analysis trail inspectable.
+  projectLabel: Project
+  articleLabel: Article
+  links:
+    - kind: project
+      title: SGLang Rust Runtime
+      description: Active Rust runtime prototype with explicit current scope and tests.
+      href: https://github.com/imReese/sglang-rs
+    - kind: project
+      title: NexusKV
+      description: LLM KV cache platform foundation with documented implemented and deferred layers.
+      href: https://github.com/imReese/NexusKV
+    - kind: article
+      title: SGLang to Mooncake Store KV path
+      description: A source-level walk through page keys, host memory, Store objects, and the shared TE boundary.
+      href: /blogs/sglang-to-mooncake-store-kv-cache-path
+    - kind: article
+      title: Mooncake / HiCache internals
+      description: The resource model that connects cache lifecycle, Store metadata, and transfer responsibilities.
+      href: /blogs/mooncake-kv-cache-system-resource
 
 home:
   hero:
@@ -15,6 +40,11 @@ home:
     intro: LLM serving, distributed systems, engineering practice, and the occasional life note.
     allNotes: All articles
     empty: No articles yet.
+  selectedWork:
+    title: Selected Engineering Work
+    intro: Three compact proof points, each paired with an implementation or source-analysis link.
+    problemLabel: Problem
+    evidenceLabel: Evidence
 
 projectsPage:
   githubActivityTitle: GitHub activity
@@ -44,16 +74,45 @@ blogPage:
     descriptionLabel: Article summary
   sections:
     featuredTitle: Recommended reading
-    featuredIntro: "A few of the more complete source analyses and systems notes."
+    featuredIntro: 'A few of the more complete source analyses and systems notes.'
     recentTitle: Recent articles
     recentIntro: Recently published articles.
     notesTitle: Notes and runbooks
-    notesIntro: "Commands, environment setup, and reading notes."
-    archiveTitle: All articles
-    archiveIntro: Sorted by publication date.
+    notesIntro: 'Commands, environment setup, and reading notes.'
+    archiveTitle: More articles
+    archiveIntro: The rest of the archive, without repeating the recommended set above.
+    resultsTitle: Filtered articles
+  seriesNav:
+    title: Browse by series
+    intro: Start with a system thread; operational runbooks stay available with lower visual weight.
+    items:
+      - value: sglang-runtime
+        label: SGLang Runtime
+        description: Scheduler, cache, request lifecycle, and runtime boundaries.
+        weight: primary
+      - value: mooncake-hicache
+        label: Mooncake / HiCache Internals
+        description: Store, Transfer Engine, and hierarchical cache paths.
+        weight: primary
+      - value: kv-cache-systems
+        label: KV Cache Systems
+        description: Memory, reuse, residency, and cross-node state.
+        weight: primary
+      - value: performance-engineering
+        label: Performance Engineering
+        description: Profiling, benchmarks, tail latency, and validation.
+        weight: primary
+      - value: distributed-storage
+        label: Distributed / Storage Systems
+        description: Consensus, WAL, compaction, leases, and recovery.
+        weight: primary
+      - value: runbooks
+        label: Runbooks
+        description: Command references and practical operating notes.
+        weight: reference
   readingMap:
     title: Archive
-    intro: Browse by year or topic.
+    intro: Browse by year or topic; series are available in the main index.
     latestLabel: Latest article
     archiveLabel: Archive
     topicsLabel: Topics

@@ -4,10 +4,11 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
 import { blogContentDir } from '@/lib/contentPaths'
+import { getAllBlogs } from '@/lib/blogs'
+import { absoluteUrl } from '@/lib/seo'
 
-export async function GET(req: Request) {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://imreese.github.io'
-
+export async function GET() {
+  const blogs = await getAllBlogs()
   let author = {
     name: name,
     email: email,
@@ -15,35 +16,37 @@ export async function GET(req: Request) {
 
   let feed = new Feed({
     title: author.name,
-    description: name + '\'s blog',
+    description: name + "'s blog",
     author,
-    id: siteUrl,
-    link: siteUrl,
-    image: `${siteUrl}/favicon.ico`,
-    favicon: `${siteUrl}/favicon.ico`,
+    id: absoluteUrl('/'),
+    link: absoluteUrl('/'),
+    language: 'zh-CN',
+    image: absoluteUrl('/social-card.png'),
+    favicon: absoluteUrl('/favicon.ico'),
     copyright: `All rights reserved ${name} ${new Date().getFullYear()}`,
+    updated: blogs[0] ? new Date(`${blogs[0].date}T00:00:00.000Z`) : undefined,
     feedLinks: {
-      rss2: `${siteUrl}/feed`,
+      rss2: absoluteUrl('/feed/'),
     },
   })
 
-  const blogFiles = await fs.readdir(blogContentDir)
-  const mdxFiles = blogFiles.filter(file => file.endsWith('.mdx'))
-
-  for (let file of mdxFiles) {
-    const slug = file.replace(/\.mdx$/, '')
-    const filePath = path.join(blogContentDir, file)
+  for (const blog of blogs) {
+    const filePath = path.join(blogContentDir, `${blog.slug}.mdx`)
     const source = await fs.readFile(filePath, 'utf-8')
-    const { data, content } = matter(source)
+    const { content } = matter(source)
 
     feed.addItem({
-      title: data.title,
-      id: `${siteUrl}/blogs/${slug}`,
-      link: `${siteUrl}/blogs/${slug}`,
-      description: data.description,
+      title: blog.title,
+      id: absoluteUrl(`/blogs/${blog.slug}/`),
+      link: absoluteUrl(`/blogs/${blog.slug}/`),
+      description: blog.description,
       content: content,
       author: [author],
-      date: new Date(data.date),
+      date: new Date(`${blog.date}T00:00:00.000Z`),
+      category: [
+        ...(blog.series ? [{ name: blog.series }] : []),
+        ...(blog.topics ?? []).map((topic) => ({ name: topic })),
+      ],
     })
   }
 
@@ -52,6 +55,7 @@ export async function GET(req: Request) {
     headers: {
       'Content-Type': 'application/xml',
       'cache-control': 's-maxage=86400',
+      'content-language': 'zh-CN',
     },
   })
 }
