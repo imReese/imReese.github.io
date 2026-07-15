@@ -1,5 +1,10 @@
 about:
   headline: '我在构建和研究大模型推理背后的 Runtime 边界。'
+  technicalPath:
+    - 分布式存储
+    - Workload / CPU 分析
+    - LLM Runtime
+    - KV Cache / Transfer
   timelineTitle: 职业时间线
   timelineIntro: 从存储可靠性、workload 与 CPU 分析，逐步走到大模型推理系统。
   capabilitiesTitle: 技术能力主线

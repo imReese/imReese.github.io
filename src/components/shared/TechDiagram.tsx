@@ -70,11 +70,11 @@ const toneClassNames: Record<
   }
 > = {
   teal: {
-    border: 'border-[#179299]/35 dark:border-[#94e2d5]/35',
-    bg: 'bg-[#179299]/10 dark:bg-[#94e2d5]/10',
-    text: 'text-primary dark:text-[#94e2d5]',
-    soft: 'bg-[#179299]/8 dark:bg-[#94e2d5]/8',
-    line: 'bg-[#179299] dark:bg-[#94e2d5]',
+    border: 'border-primary/35',
+    bg: 'bg-accent-soft/75',
+    text: 'text-primary',
+    soft: 'bg-accent-soft/55',
+    line: 'bg-primary',
   },
   blue: {
     border: 'border-[#1e66f5]/30 dark:border-[#89b4fa]/35',
@@ -129,18 +129,32 @@ function DiagramShell({
   title,
   caption,
   children,
+  compact = false,
 }: {
   eyebrow?: string
   title?: string
   caption?: string
   children: ReactNode
+  compact?: boolean
 }) {
   return (
-    <figure className="not-prose my-10 overflow-hidden rounded-[8px] border border-border/80 bg-card/55 shadow-[0_22px_70px_-42px_rgba(76,79,105,0.55)] dark:bg-card/55 dark:shadow-[0_22px_70px_-44px_rgba(17,17,27,0.95)]">
+    <figure
+      className={clsx(
+        'not-prose overflow-hidden rounded-lg border border-border/80 bg-surface/55',
+        compact
+          ? 'my-6'
+          : 'my-10 shadow-[0_22px_70px_-42px_rgba(76,79,105,0.35)] dark:shadow-[0_22px_70px_-44px_rgba(17,17,27,0.7)]',
+      )}
+    >
       {(eyebrow || title || caption) && (
-        <figcaption className="border-b border-border/70 px-4 py-4 sm:px-5">
+        <figcaption
+          className={clsx(
+            'border-b border-border/70 px-4',
+            compact ? 'py-3' : 'py-4 sm:px-5',
+          )}
+        >
           {eyebrow && (
-            <p className="mb-2 font-mono text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-primary">
+            <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-primary">
               {eyebrow}
             </p>
           )}
@@ -156,14 +170,14 @@ function DiagramShell({
           )}
         </figcaption>
       )}
-      <div className="p-4 sm:p-5">{children}</div>
+      <div className={compact ? 'p-3 sm:p-4' : 'p-4 sm:p-5'}>{children}</div>
     </figure>
   )
 }
 
 function Badge({ children }: { children: ReactNode }) {
   return (
-    <span className="rounded-md border border-border/70 bg-background/60 px-2 py-1 font-mono text-[0.72rem] font-medium leading-none text-muted-foreground">
+    <span className="rounded-md border border-border/70 bg-background/60 px-2 py-1 font-mono text-xs font-medium leading-none text-muted-foreground">
       {children}
     </span>
   )
@@ -275,7 +289,7 @@ export function SequenceDiagram({
                 <div className="flex items-center gap-3">
                   <span
                     className={clsx(
-                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-[0.72rem] font-semibold',
+                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-xs font-semibold',
                       currentTone.bg,
                       currentTone.text,
                     )}
@@ -283,17 +297,19 @@ export function SequenceDiagram({
                     {index + 1}
                   </span>
                   <div>
-                    <p className="font-mono text-[0.76rem] font-semibold text-foreground">
+                    <p className="font-mono text-xs font-semibold text-foreground">
                       {step.from}
                     </p>
-                    <p className="font-mono text-[0.76rem] text-muted-foreground">
+                    <p className="font-mono text-xs text-muted-foreground">
                       {step.to}
                     </p>
                   </div>
                 </div>
                 <div className="hidden items-center gap-2 sm:flex">
                   <span className="h-px w-8 bg-border" />
-                  <span className={clsx('h-2 w-2 rounded-full', currentTone.line)} />
+                  <span
+                    className={clsx('h-2 w-2 rounded-full', currentTone.line)}
+                  />
                   <span className="h-px w-8 bg-border" />
                 </div>
                 <div>
@@ -320,14 +336,21 @@ export function FlowDiagram({
   title,
   caption,
   steps,
+  compact = false,
 }: {
   eyebrow?: string
   title?: string
   caption?: string
   steps: FlowStep[]
+  compact?: boolean
 }) {
   return (
-    <DiagramShell eyebrow={eyebrow} title={title} caption={caption}>
+    <DiagramShell
+      eyebrow={eyebrow}
+      title={title}
+      caption={caption}
+      compact={compact}
+    >
       <ol
         className="grid gap-3 lg:grid-cols-[repeat(var(--flow-count),minmax(0,1fr))]"
         style={{ '--flow-count': steps.length } as CSSProperties}
@@ -336,10 +359,7 @@ export function FlowDiagram({
           const currentTone = tone(step.tone ?? 'teal')
 
           return (
-            <li
-              key={`${step.label}-${index}`}
-              className="relative min-w-0"
-            >
+            <li key={`${step.label}-${index}`} className="relative min-w-0">
               <div
                 className={clsx(
                   'h-full rounded-[8px] border p-4',
@@ -350,7 +370,7 @@ export function FlowDiagram({
                 <div className="flex items-start gap-3">
                   <span
                     className={clsx(
-                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-[0.72rem] font-semibold',
+                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-xs font-semibold',
                       'bg-background/70',
                       currentTone.text,
                     )}
@@ -367,7 +387,7 @@ export function FlowDiagram({
                       {step.label}
                     </p>
                     {step.meta && (
-                      <p className="mt-1 font-mono text-[0.72rem] leading-5 text-muted-foreground">
+                      <p className="mt-1 font-mono text-xs leading-5 text-muted-foreground">
                         {step.meta}
                       </p>
                     )}
@@ -389,7 +409,12 @@ export function FlowDiagram({
               {index < steps.length - 1 && (
                 <div className="hidden lg:block">
                   <span className="absolute left-full top-1/2 h-px w-3 -translate-y-1/2 bg-border" />
-                  <span className={clsx('absolute left-[calc(100%+0.75rem)] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full', currentTone.line)} />
+                  <span
+                    className={clsx(
+                      'absolute left-[calc(100%+0.75rem)] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full',
+                      currentTone.line,
+                    )}
+                  />
                 </div>
               )}
             </li>
@@ -405,14 +430,21 @@ export function SystemBoundaryDiagram({
   title,
   caption,
   groups,
+  compact = false,
 }: {
   eyebrow?: string
   title?: string
   caption?: string
   groups: BoundaryGroup[]
+  compact?: boolean
 }) {
   return (
-    <DiagramShell eyebrow={eyebrow} title={title} caption={caption}>
+    <DiagramShell
+      eyebrow={eyebrow}
+      title={title}
+      caption={caption}
+      compact={compact}
+    >
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {groups.map((group, index) => {
           const currentTone = tone(group.tone ?? 'teal')
@@ -446,7 +478,7 @@ export function SystemBoundaryDiagram({
               </div>
               {group.signals && group.signals.length > 0 && (
                 <div className="mt-4 border-t border-border/60 pt-3">
-                  <p className="mb-2 font-mono text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                     observable
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -479,7 +511,9 @@ export function CompareCallout({
     <DiagramShell eyebrow={eyebrow} title={title} caption={caption}>
       <div className="grid gap-4 md:grid-cols-2">
         {columns.map((column, index) => {
-          const currentTone = tone(column.tone ?? (index === 0 ? 'green' : 'amber'))
+          const currentTone = tone(
+            column.tone ?? (index === 0 ? 'green' : 'amber'),
+          )
 
           return (
             <section
@@ -500,8 +534,16 @@ export function CompareCallout({
               </p>
               <ul className="mt-3 space-y-2">
                 {column.items.map((item) => (
-                  <li key={item} className="flex gap-2 text-sm leading-6 text-muted-foreground">
-                    <span className={clsx('mt-2 h-1.5 w-1.5 shrink-0 rounded-full', currentTone.line)} />
+                  <li
+                    key={item}
+                    className="flex gap-2 text-sm leading-6 text-muted-foreground"
+                  >
+                    <span
+                      className={clsx(
+                        'mt-2 h-1.5 w-1.5 shrink-0 rounded-full',
+                        currentTone.line,
+                      )}
+                    />
                     <span>{item}</span>
                   </li>
                 ))}
@@ -604,7 +646,7 @@ export function StateDiagram({
                 >
                   <p
                     className={clsx(
-                      'font-mono text-[0.78rem] font-semibold',
+                      'font-mono text-xs font-semibold',
                       currentTone.text,
                     )}
                   >
@@ -619,7 +661,7 @@ export function StateDiagram({
                 {index < states.length - 1 && (
                   <div className="flex w-20 flex-col items-center gap-1">
                     {state.next && (
-                      <span className="text-center font-mono text-[0.68rem] font-medium leading-4 text-muted-foreground">
+                      <span className="text-center font-mono text-xs font-medium leading-4 text-muted-foreground">
                         {state.next}
                       </span>
                     )}
@@ -664,10 +706,7 @@ export function MappingDiagram({
           )}
         >
           <p
-            className={clsx(
-              'font-mono text-[0.8rem] font-semibold',
-              sourceTone.text,
-            )}
+            className={clsx('font-mono text-xs font-semibold', sourceTone.text)}
           >
             {source.label}
           </p>

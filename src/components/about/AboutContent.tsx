@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { ArrowUpRight } from 'lucide-react'
+import { ArrowRight, ArrowUpRight } from 'lucide-react'
 
 import { Container } from '@/components/layout/Container'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
@@ -17,6 +17,36 @@ function SectionHeading({ title, intro }: { title: string; intro: string }) {
         {intro}
       </p>
     </div>
+  )
+}
+
+function TechnicalPath({ items }: { items: string[] }) {
+  return (
+    <ol
+      aria-label={items.join(' → ')}
+      className="grid gap-5 border-y border-border/70 py-5 md:grid-cols-4 md:gap-4"
+    >
+      {items.map((item, index) => (
+        <li
+          key={item}
+          className="relative flex min-h-12 items-center border-l-2 border-primary bg-surface/45 px-4 py-3 text-sm font-semibold leading-5 text-foreground"
+        >
+          <span>{item}</span>
+          {index < items.length - 1 ? (
+            <>
+              <span
+                className="absolute left-4 top-full h-5 w-px bg-border md:hidden"
+                aria-hidden="true"
+              />
+              <ArrowRight
+                className="absolute left-full top-1/2 hidden h-4 w-4 -translate-x-0.5 -translate-y-1/2 text-primary md:block"
+                aria-hidden="true"
+              />
+            </>
+          ) : null}
+        </li>
+      ))}
+    </ol>
   )
 }
 
@@ -46,13 +76,17 @@ export function AboutContent() {
               height={320}
               sizes="(min-width: 1024px) 20rem, 20rem"
               placeholder="blur"
-              className="aspect-square rotate-3 rounded-2xl bg-[#e6e9ef] object-cover dark:bg-[#313244]"
+              className="aspect-square rotate-3 rounded-2xl bg-surface-elevated object-cover"
             />
           </div>
         </div>
       </div>
 
-      <section className="mt-20">
+      <section className="mt-14 sm:mt-16">
+        <TechnicalPath items={about.technicalPath} />
+      </section>
+
+      <section className="mt-16 sm:mt-20">
         <SectionHeading
           title={about.timelineTitle}
           intro={about.timelineIntro}
@@ -87,7 +121,7 @@ export function AboutContent() {
         </ol>
       </section>
 
-      <section className="mt-20">
+      <section className="mt-16 sm:mt-20">
         <SectionHeading
           title={about.capabilitiesTitle}
           intro={about.capabilitiesIntro}
@@ -102,7 +136,7 @@ export function AboutContent() {
                 <h3 className="text-base font-semibold text-foreground">
                   {area.title}
                 </h3>
-                <span className="font-mono text-[0.68rem] text-primary">
+                <span className="font-mono text-xs text-primary">
                   {area.label}
                 </span>
               </div>
@@ -117,7 +151,7 @@ export function AboutContent() {
         </div>
       </section>
 
-      <section className="mt-20">
+      <section className="mt-16 sm:mt-20">
         <SectionHeading
           title={about.representativeTitle}
           intro={about.representativeIntro}
@@ -136,7 +170,7 @@ export function AboutContent() {
                 rel={isExternal ? 'noopener noreferrer' : undefined}
                 className="group border-b border-border/70 py-6"
               >
-                <span className="font-mono text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-primary">
+                <span className="font-mono text-xs font-semibold uppercase tracking-[0.1em] text-primary">
                   {kindLabel}
                 </span>
                 <span className="mt-2 flex items-start justify-between gap-4">

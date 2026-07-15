@@ -27,7 +27,7 @@ function MobileNavItem({
 }) {
   return (
     <li>
-      <Popover.Button as={Link} href={href} className="block py-2">
+      <Popover.Button as={Link} href={href} className="block py-3">
         {children}
       </Popover.Button>
     </li>
@@ -42,7 +42,7 @@ function MobileNavigation(
 
   return (
     <Popover {...props}>
-      <Popover.Button className="group flex items-center rounded-full bg-card/80 px-4 py-2 text-sm font-medium shadow-lg ring-1 ring-border/70 backdrop-blur">
+      <Popover.Button className="group flex h-10 items-center rounded-md border border-border/70 bg-surface px-3 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:border-primary/40 hover:text-primary">
         {t('common.menu')}
         <ChevronDownIcon className="ml-3 h-auto w-2" />
       </Popover.Button>
@@ -56,7 +56,7 @@ function MobileNavigation(
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <Popover.Overlay className="fixed inset-0 z-50 backdrop-blur-sm dark:bg-background/80" />
+          <Popover.Overlay className="fixed inset-0 z-50 bg-background/85" />
         </Transition.Child>
         <Transition.Child
           as={Fragment}
@@ -69,12 +69,12 @@ function MobileNavigation(
         >
           <Popover.Panel
             focus
-            className="fixed inset-x-4 top-8 z-50 origin-top rounded-3xl bg-card p-8 ring-1 ring-muted"
+            className="fixed inset-x-4 top-6 z-50 origin-top rounded-xl border border-border bg-surface p-6"
           >
             <div className="flex flex-row-reverse items-center justify-between">
               <Popover.Button
                 aria-label={t('common.closeMenu')}
-                className="-m-1 p-1"
+                className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent-soft hover:text-primary"
               >
                 <XIcon className="h-6 w-6 text-muted-foreground" />
               </Popover.Button>
@@ -125,12 +125,9 @@ function NavItem({
         )}
       >
         {children}
-        {isActive && (
-          <>
-            <span className="absolute inset-x-0 -bottom-0.5 z-10 h-0.5 bg-gradient-to-r from-primary/0 via-current to-primary/0" />
-            <span className="absolute inset-x-0 -bottom-1 h-2 rounded-full bg-current opacity-20 blur-md" />
-          </>
-        )}
+        {isActive ? (
+          <span className="absolute inset-x-3 -bottom-0.5 h-0.5 bg-current" />
+        ) : null}
       </Link>
     </li>
   )
@@ -141,7 +138,7 @@ function DesktopNavigation(props: React.ComponentPropsWithoutRef<'nav'>) {
 
   return (
     <nav {...props}>
-      <ul className="relative flex px-2 text-sm font-medium before:absolute before:-inset-x-4 before:-bottom-0.5 before:h-0.5 before:bg-gradient-to-r before:from-transparent before:via-muted-foreground/30 before:to-transparent before:content-['']">
+      <ul className="relative flex px-2 text-sm font-medium before:absolute before:-inset-x-4 before:-bottom-0.5 before:h-px before:bg-border/60 before:content-['']">
         {navItems.map((item, index) => (
           <Fragment key={item.name}>
             {index > 0 && (
@@ -173,7 +170,7 @@ function AvatarContainer({
       <div
         className={clsx(
           className,
-          'h-10 w-10 rounded-full bg-[#eff1f5]/90 p-0.5 shadow-lg shadow-[#4c4f69]/5 ring-1 ring-[#bcc0cc]/70 backdrop-blur dark:bg-[#313244]/85 dark:ring-[#45475a]/80',
+          'h-10 w-10 rounded-full bg-surface p-0.5 ring-1 ring-border/80',
         )}
         {...props}
       />
@@ -207,7 +204,7 @@ function Avatar({
         height={large ? 64 : 36}
         sizes={large ? '4rem' : '2.25rem'}
         className={clsx(
-          'rounded-full bg-[#e6e9ef] object-cover dark:bg-[#313244]',
+          'rounded-full bg-surface-elevated object-cover',
           large ? 'h-16 w-16' : 'h-9 w-9',
         )}
         priority
@@ -225,7 +222,7 @@ export function Header() {
       >
         <div className="header-glass" aria-hidden="true" />
         <Container className="w-full">
-          <div className="relative flex min-w-0 items-center gap-4">
+          <div className="relative flex min-w-0 items-center gap-2 sm:gap-4">
             <div className="flex min-w-0 flex-1">
               <AvatarContainer showName={true}>
                 <Avatar />

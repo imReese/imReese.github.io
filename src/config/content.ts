@@ -269,6 +269,7 @@ export type ProjectsContent = {
 export type PagesContent = {
   about: {
     headline: string
+    technicalPath: string[]
     timelineTitle: string
     timelineIntro: string
     capabilitiesTitle: string

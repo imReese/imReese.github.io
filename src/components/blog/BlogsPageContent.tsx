@@ -24,7 +24,12 @@ function BlogMeta({
   seriesLabels: BlogPageContent['series']
   readingMap: BlogPageContent['readingMap']
 }) {
-  const chips = getBlogMetaChips(blog, categoryLabels, seriesLabels, readingMap)
+  const chips = getBlogMetaChips(
+    blog,
+    categoryLabels,
+    seriesLabels,
+    readingMap,
+  ).slice(0, 3)
 
   return (
     <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs leading-5 text-muted-foreground">
@@ -59,7 +64,7 @@ function Blog({
     <article className="group relative border-t border-border/65 py-6 first:border-t-0 first:pt-0 sm:grid sm:grid-cols-[8.25rem_minmax(0,1fr)] sm:gap-7">
       <time
         dateTime={blog.date}
-        className="block font-mono text-[0.78rem] leading-6 text-muted-foreground/80 sm:pt-1"
+        className="block font-mono text-xs leading-6 text-muted-foreground sm:pt-1"
       >
         {formatDate(blog.date, locale)}
       </time>
@@ -106,10 +111,10 @@ function LeadFeaturedBlog({
   locale: 'en' | 'zh'
 }) {
   return (
-    <article className="group relative min-w-0 border-y border-border/70 py-7 sm:py-8">
+    <article className="group relative min-w-0 border-y border-l-2 border-border/70 border-l-primary py-7 pl-5 sm:py-8 sm:pl-6">
       <time
         dateTime={blog.date}
-        className="block font-mono text-[0.78rem] text-muted-foreground/80"
+        className="block font-mono text-xs text-muted-foreground"
       >
         {formatDate(blog.date, locale)}
       </time>
@@ -157,7 +162,7 @@ function SupportingFeaturedBlog({
       <div className="grid gap-3 sm:grid-cols-[6.75rem_minmax(0,1fr)]">
         <time
           dateTime={blog.date}
-          className="font-mono text-[0.78rem] leading-6 text-muted-foreground/80"
+          className="font-mono text-xs leading-6 text-muted-foreground"
         >
           {formatDate(blog.date, locale)}
         </time>
@@ -240,7 +245,7 @@ function BlogSection({
   children: React.ReactNode
 }) {
   return (
-    <section className="mt-20 min-w-0 first:mt-0">
+    <section className="mt-16 min-w-0 first:mt-0 sm:mt-20">
       <div className="border-b border-border/70 pb-4">
         <h2 className="text-2xl font-semibold tracking-tight text-foreground">
           {title}
@@ -340,7 +345,7 @@ function BlogReadingMap({
 
         {latestBlog ? (
           <div className="mt-7 border-t border-border/70 pt-5">
-            <div className="font-mono text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-primary">
+            <div className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-primary">
               {copy.latestLabel}
             </div>
             <Link
@@ -360,7 +365,7 @@ function BlogReadingMap({
 
         <div className="mt-7 grid gap-7 border-t border-border/70 pt-5">
           <div>
-            <div className="font-mono text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-primary">
+            <div className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-primary">
               {copy.archiveLabel}
             </div>
             <div className="mt-3 grid gap-2">
@@ -387,7 +392,7 @@ function BlogReadingMap({
                       'font-mono text-xs transition',
                       selectedYear === year
                         ? 'text-primary'
-                        : 'text-muted-foreground/70 group-hover:text-primary',
+                        : 'text-muted-foreground group-hover:text-primary',
                     )}
                   >
                     {count}
@@ -398,7 +403,7 @@ function BlogReadingMap({
           </div>
 
           <div>
-            <div className="font-mono text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-primary">
+            <div className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-primary">
               {copy.topicsLabel}
             </div>
             <div className="mt-3 grid gap-2">
@@ -429,7 +434,7 @@ function BlogReadingMap({
                   )}
                 >
                   {topic.label}
-                  <span className="font-mono text-xs text-muted-foreground/70 transition group-hover:text-primary">
+                  <span className="font-mono text-xs text-muted-foreground transition group-hover:text-primary">
                     {topicCounts.get(topic.value) ?? 0}
                   </span>
                 </Link>
@@ -482,10 +487,10 @@ function SeriesNavigation({
               scroll={false}
               aria-current={isSelected ? 'true' : undefined}
               className={clsx(
-                'group border-b border-border/70 py-5 transition',
+                'group border-b border-border/70 px-3 py-5 transition-colors duration-150',
                 item.weight === 'reference'
-                  ? 'text-muted-foreground/80'
-                  : 'text-foreground',
+                  ? 'border-l border-l-border text-muted-foreground hover:border-l-primary'
+                  : 'border-l-2 border-l-primary bg-surface/35 text-foreground hover:bg-surface/60',
               )}
             >
               <span

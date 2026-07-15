@@ -1,6 +1,5 @@
 'use client'
 
-import { motion } from 'framer-motion'
 import { ArrowRight, BookOpen, Github } from 'lucide-react'
 import { SystemsPanel } from '@/components/home/SystemsPanel'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
@@ -29,12 +28,7 @@ export function ElegantIntro() {
 
   return (
     <section className="grid min-w-0 gap-10 lg:grid-cols-[0.98fr_1.02fr] lg:items-center lg:gap-14">
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: 'easeOut' }}
-        className="min-w-0 max-w-2xl"
-      >
+      <div className="min-w-0 max-w-2xl">
         <h1 className="max-w-4xl break-words font-semibold text-foreground">
           {headlineLines.map((line, index) => (
             <span
@@ -83,7 +77,7 @@ export function ElegantIntro() {
             <ArrowRight className="h-4 w-4" />
           </a>
         </div>
-      </motion.div>
+      </div>
 
       <SystemsPanel />
     </section>

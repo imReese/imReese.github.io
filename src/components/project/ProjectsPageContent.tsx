@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowUpRight } from 'lucide-react'
+import { ArrowUpRight, ChevronDown } from 'lucide-react'
 
 import GitHubSnake from '@/components/home/GitHubSnake'
 import { Container } from '@/components/layout/Container'
@@ -9,6 +9,7 @@ import {
   FlowDiagram,
   SystemBoundaryDiagram,
 } from '@/components/shared/TechDiagram'
+import { useLanguage } from '@/components/shared/LanguageProvider'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 import { utm_source } from '@/config/siteConfig'
 import { isExternalHref, withUtmSource } from '@/lib/externalLinks'
@@ -64,7 +65,7 @@ function RelatedLinks({
             href={withUtmSource(link.href, utm_source)}
             target={isExternal ? '_blank' : undefined}
             rel={isExternal ? 'noopener noreferrer' : undefined}
-            className="inline-flex items-center gap-1.5 text-xs transition hover:text-primary"
+            className="inline-flex min-h-10 items-center gap-1.5 text-xs transition-colors duration-150 hover:text-primary"
           >
             {link.label}
             <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -75,14 +76,14 @@ function RelatedLinks({
   )
 }
 
-function TagLine({ tags }: { tags: string[] }) {
+function TagLine({ tags, limit = 3 }: { tags: string[]; limit?: number }) {
   if (tags.length === 0) {
     return null
   }
 
   return (
     <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs leading-5 text-muted-foreground">
-      {tags.map((tag, index) => (
+      {tags.slice(0, limit).map((tag, index) => (
         <span key={tag} className="inline-flex items-center gap-x-2">
           {index > 0 ? (
             <span className="h-1 w-1 rounded-full bg-muted-foreground/35" />
@@ -91,6 +92,47 @@ function TagLine({ tags }: { tags: string[] }) {
         </span>
       ))}
     </div>
+  )
+}
+
+function EvidenceLinks({ links }: { links: WorkItem['evidenceLinks'] }) {
+  const { t } = useLanguage()
+
+  if (!links || links.length === 0) {
+    return null
+  }
+
+  return (
+    <details className="group mt-6 border-t border-border/70 pt-3">
+      <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-muted-foreground transition-colors duration-150 hover:text-primary">
+        <span>{t('projects.evidence')}</span>
+        <ChevronDown
+          className="h-4 w-4 shrink-0 transition-transform duration-150 group-open:rotate-180"
+          aria-hidden="true"
+        />
+      </summary>
+      <div className="grid gap-2 pb-1 pt-2 sm:grid-cols-2">
+        {links.map((link) => {
+          const isExternal = isExternalHref(link.href)
+
+          return (
+            <a
+              key={`${link.label}-${link.href}`}
+              href={withUtmSource(link.href, utm_source)}
+              target={isExternal ? '_blank' : undefined}
+              rel={isExternal ? 'noopener noreferrer' : undefined}
+              className="inline-flex min-h-10 items-center justify-between gap-3 border-l-2 border-border px-3 py-2 text-sm text-muted-foreground transition-colors duration-150 hover:border-primary hover:text-primary"
+            >
+              {link.label}
+              <ArrowUpRight
+                className="h-3.5 w-3.5 shrink-0"
+                aria-hidden="true"
+              />
+            </a>
+          )
+        })}
+      </div>
+    </details>
   )
 }
 
@@ -121,7 +163,7 @@ function OverviewIndex({
       <div className="grid gap-6 md:grid-cols-3 md:gap-10">
         {items.map((item) => (
           <div key={item.label} className="min-w-0">
-            <p className="font-mono text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-primary">
+            <p className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-primary">
               {item.label}
             </p>
             <p className="mt-3 text-lg font-semibold tracking-tight text-foreground">
@@ -137,7 +179,15 @@ function OverviewIndex({
   )
 }
 
-function FeaturedSystems({ items }: { items: WorkItem[] }) {
+function FeaturedSystems({
+  items,
+  diagrams,
+}: {
+  items: WorkItem[]
+  diagrams: ReturnType<typeof useLocalizedContent>['projects']['diagrams']
+}) {
+  const { t } = useLanguage()
+
   if (items.length === 0) {
     return null
   }
@@ -148,16 +198,16 @@ function FeaturedSystems({ items }: { items: WorkItem[] }) {
         role="list"
         className="divide-y divide-border/70 border-y border-border/70"
       >
-        {items.map((item) => {
+        {items.map((item, index) => {
           const isExternal = isExternalHref(item.href)
 
           return (
-            <li key={item.name} className="py-8 sm:px-3">
-              <article className="grid gap-6 sm:grid-cols-[minmax(0,0.82fr)_minmax(0,1.35fr)]">
+            <li key={item.name} className="py-9 sm:px-3">
+              <article className="grid gap-7 lg:grid-cols-[minmax(15rem,0.78fr)_minmax(0,1.22fr)] lg:gap-10">
                 <div className="flex min-w-0 items-start justify-between gap-4">
                   <div className="min-w-0">
                     {item.status ? (
-                      <span className="mb-3 inline-flex rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 font-mono text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-primary">
+                      <span className="mb-3 inline-flex rounded-full border border-primary/25 bg-accent-soft px-2.5 py-1 font-mono text-xs font-semibold uppercase tracking-[0.06em] text-primary">
                         {item.status.label}
                       </span>
                     ) : null}
@@ -172,37 +222,76 @@ function FeaturedSystems({ items }: { items: WorkItem[] }) {
                         <LinkArrow />
                       </a>
                     </h2>
-                    <p className="mt-3 truncate font-mono text-xs text-muted-foreground">
-                      {item.label}
-                    </p>
-                    {item.status ? (
-                      <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                        {item.status.description}
-                      </p>
-                    ) : null}
+                    <a
+                      href={withUtmSource(item.href, utm_source)}
+                      target={isExternal ? '_blank' : undefined}
+                      rel={isExternal ? 'noopener noreferrer' : undefined}
+                      className="mt-4 inline-flex min-h-10 max-w-full items-center gap-1.5 font-mono text-xs text-muted-foreground transition-colors duration-150 hover:text-primary"
+                    >
+                      <span className="truncate">
+                        {t('projects.repository')} · {item.label}
+                      </span>
+                      <ArrowUpRight
+                        className="h-3.5 w-3.5 shrink-0"
+                        aria-hidden="true"
+                      />
+                    </a>
                   </div>
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm leading-6 text-muted-foreground">
                     {item.description}
                   </p>
+                  {item.status ? (
+                    <div className="mt-5 border-l-2 border-primary/60 pl-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">
+                        {t('projects.scope')}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                        {item.status.description}
+                      </p>
+                    </div>
+                  ) : null}
                   {item.capabilities && item.capabilities.length > 0 ? (
-                    <ul className="mt-5 space-y-2">
-                      {item.capabilities.map((capability) => (
-                        <li
-                          key={capability}
-                          className="flex gap-2.5 text-sm leading-6 text-muted-foreground"
-                        >
-                          <span className="mt-2.5 h-1 w-1 shrink-0 rounded-full bg-primary" />
-                          <span>{capability}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    <div className="mt-6">
+                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">
+                        {t('projects.capabilities')}
+                      </p>
+                      <ul className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+                        {item.capabilities.slice(0, 4).map((capability) => (
+                          <li
+                            key={capability}
+                            className="flex gap-2.5 text-sm leading-6 text-muted-foreground"
+                          >
+                            <span className="mt-2.5 h-1 w-1 shrink-0 rounded-full bg-primary" />
+                            <span>{capability}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ) : null}
                   <TagLine tags={item.tags} />
-                  <RelatedLinks links={item.evidenceLinks} />
+                  <EvidenceLinks links={item.evidenceLinks} />
                 </div>
               </article>
+              {index === 0 && diagrams?.runtime ? (
+                <FlowDiagram
+                  eyebrow={diagrams.runtime.eyebrow}
+                  title={diagrams.runtime.title}
+                  caption={diagrams.runtime.caption}
+                  steps={diagrams.runtime.steps}
+                  compact
+                />
+              ) : null}
+              {index === 1 && diagrams?.platform ? (
+                <SystemBoundaryDiagram
+                  eyebrow={diagrams.platform.eyebrow}
+                  title={diagrams.platform.title}
+                  caption={diagrams.platform.caption}
+                  groups={diagrams.platform.groups}
+                  compact
+                />
+              ) : null}
             </li>
           )
         })}
@@ -224,7 +313,7 @@ function WorkSectionList({ section }: { section: WorkSection }) {
               <article className="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
                 <div className="min-w-0">
                   {item.relation ? (
-                    <span className="mb-2 block font-mono text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-primary">
+                    <span className="mb-2 block font-mono text-xs font-semibold uppercase tracking-[0.06em] text-primary">
                       {item.relation}
                     </span>
                   ) : null}
@@ -260,37 +349,6 @@ function WorkSectionList({ section }: { section: WorkSection }) {
           )
         })}
       </ul>
-    </section>
-  )
-}
-
-function ArchitectureViews({
-  diagrams,
-}: {
-  diagrams: ReturnType<typeof useLocalizedContent>['projects']['diagrams']
-}) {
-  if (!diagrams?.runtime && !diagrams?.platform) {
-    return null
-  }
-
-  return (
-    <section className="mt-16">
-      {diagrams.runtime ? (
-        <FlowDiagram
-          eyebrow={diagrams.runtime.eyebrow}
-          title={diagrams.runtime.title}
-          caption={diagrams.runtime.caption}
-          steps={diagrams.runtime.steps}
-        />
-      ) : null}
-      {diagrams.platform ? (
-        <SystemBoundaryDiagram
-          eyebrow={diagrams.platform.eyebrow}
-          title={diagrams.platform.title}
-          caption={diagrams.platform.caption}
-          groups={diagrams.platform.groups}
-        />
-      ) : null}
     </section>
   )
 }
@@ -399,8 +457,7 @@ export function ProjectsPageContent() {
 
       <div className="mt-12">
         <OverviewIndex items={overviewItems} />
-        <FeaturedSystems items={featuredSystems} />
-        <ArchitectureViews diagrams={projects.diagrams} />
+        <FeaturedSystems items={featuredSystems} diagrams={projects.diagrams} />
 
         {workSections.map((section) => (
           <WorkSectionList key={section.title} section={section} />

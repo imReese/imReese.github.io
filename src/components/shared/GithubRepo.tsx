@@ -1,8 +1,8 @@
-"use client"
+'use client'
 
-import { GithubLogo } from "@phosphor-icons/react"
-import Link from "next/link"
-import { useLanguage } from "@/components/shared/LanguageProvider"
+import { GithubLogo } from '@phosphor-icons/react'
+import Link from 'next/link'
+import { useLanguage } from '@/components/shared/LanguageProvider'
 
 export function GithubRepo() {
   const { t } = useLanguage()
@@ -12,10 +12,10 @@ export function GithubRepo() {
       href="https://github.com/imReese"
       target="_blank"
       rel="noopener noreferrer nofollow"
-      className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
+      className="inline-flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent-soft hover:text-primary"
     >
       <GithubLogo size={18} weight="duotone" />
-      <span className="sr-only">{t("common.githubRepo")}</span>
+      <span className="sr-only">{t('common.githubRepo')}</span>
     </Link>
   )
 }

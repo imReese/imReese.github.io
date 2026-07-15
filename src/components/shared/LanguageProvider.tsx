@@ -25,6 +25,10 @@ const translations = {
     'nav.Blogs': 'Blogs',
     'home.viewProjects': 'View projects',
     'home.readNotes': 'Read notes',
+    'projects.scope': 'Scope and limits',
+    'projects.capabilities': 'Implemented capabilities',
+    'projects.evidence': 'Evidence and implementation links',
+    'projects.repository': 'Primary repository',
   },
   zh: {
     'common.menu': '菜单',
@@ -38,6 +42,10 @@ const translations = {
     'nav.Blogs': '博客',
     'home.viewProjects': '查看项目',
     'home.readNotes': '阅读笔记',
+    'projects.scope': '范围与限制',
+    'projects.capabilities': '已实现能力',
+    'projects.evidence': '证据与实现链接',
+    'projects.repository': '主仓库',
   },
 } as const
 
