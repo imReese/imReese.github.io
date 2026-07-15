@@ -20,11 +20,11 @@ about:
     - kind: article
       title: SGLang to Mooncake Store KV path
       description: A source-level walk through page keys, host memory, Store objects, and the shared TE boundary.
-      href: /blogs/sglang-to-mooncake-store-kv-cache-path
+      href: /blogs/sglang-to-mooncake-store-kv-cache-path/
     - kind: article
       title: Mooncake / HiCache internals
       description: The resource model that connects cache lifecycle, Store metadata, and transfer responsibilities.
-      href: /blogs/mooncake-kv-cache-system-resource
+      href: /blogs/mooncake-kv-cache-system-resource/
 
 home:
   hero:

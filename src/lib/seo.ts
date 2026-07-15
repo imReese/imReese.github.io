@@ -1,10 +1,10 @@
 import { type Metadata } from 'next'
 
-export const SITE_URL = (
-  process.env.NEXT_PUBLIC_SITE_URL ?? 'https://imreese.github.io'
-).replace(/\/$/, '')
+export const SITE_URL = 'https://imreese.github.io'
 
 export const DEFAULT_SOCIAL_IMAGE_PATH = '/social-card.png'
+export const RSS_PATH = '/rss.xml'
+export const RSS_TITLE = "Reese's Blog"
 
 export function absoluteUrl(pathname: string) {
   const path = pathname.startsWith('/') ? pathname : `/${pathname}`
@@ -74,4 +74,49 @@ export function createPageMetadata({
 
 export function serializeJsonLd(value: unknown) {
   return JSON.stringify(value).replace(/</g, '\\u003c')
+}
+
+type ArticleJsonLdInput = {
+  title: string
+  description: string
+  slug: string
+  publishedTime: string
+  author: string
+  language: 'zh-CN'
+  topics?: string[]
+}
+
+export function createArticleJsonLd({
+  title,
+  description,
+  slug,
+  publishedTime,
+  author,
+  language,
+  topics,
+}: ArticleJsonLdInput) {
+  const canonical = absoluteUrl(`/blogs/${slug}/`)
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: title,
+    description,
+    url: canonical,
+    datePublished: publishedTime,
+    inLanguage: language,
+    mainEntityOfPage: canonical,
+    image: absoluteUrl(DEFAULT_SOCIAL_IMAGE_PATH),
+    author: {
+      '@type': 'Person',
+      name: author,
+      url: absoluteUrl('/about/'),
+    },
+    publisher: {
+      '@type': 'Person',
+      name: author,
+      url: absoluteUrl('/'),
+    },
+    ...(topics?.length ? { keywords: topics } : {}),
+  }
 }

@@ -24,9 +24,9 @@ currentFocus:
     - 'Apply SGLang runtime patterns to request lifecycle, scheduling, cache management, and transfer boundaries.'
   links:
     - label: Projects
-      href: /projects
+      href: /projects/
     - label: Source notes
-      href: /blogs
+      href: /blogs/
 
 selectedWork:
   - eyebrow: Runtime prototype
@@ -49,7 +49,7 @@ selectedWork:
     problem: Separate cache hit, materialization, metadata visibility, and data transfer claims that are easy to blur together.
     link:
       label: SGLang to Mooncake KV path
-      href: /blogs/sglang-to-mooncake-store-kv-cache-path
+      href: /blogs/sglang-to-mooncake-store-kv-cache-path/
 
 researchAreas:
   - title: Inference Engine

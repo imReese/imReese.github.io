@@ -7,7 +7,13 @@ import { Layout } from '@/components/layout/Layout'
 import { Analytics } from '@/components/analytics/analytics'
 import { name, headline, introduction } from '@/config/infoConfig'
 import { assetVersion } from '@/config/assets'
-import { absoluteUrl, DEFAULT_SOCIAL_IMAGE_PATH, SITE_URL } from '@/lib/seo'
+import {
+  absoluteUrl,
+  DEFAULT_SOCIAL_IMAGE_PATH,
+  RSS_PATH,
+  RSS_TITLE,
+  SITE_URL,
+} from '@/lib/seo'
 import '@/styles/globals.css'
 
 const jetBrainsMono = JetBrains_Mono({
@@ -49,9 +55,6 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: absoluteUrl('/'),
-    types: {
-      'application/rss+xml': absoluteUrl('/feed/'),
-    },
   },
   openGraph: {
     title: `${name} - ${headline}`,
@@ -89,6 +92,12 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        <link
+          rel="alternate"
+          type="application/rss+xml"
+          title={RSS_TITLE}
+          href={absoluteUrl(RSS_PATH)}
+        />
         <link rel="manifest" href={`/manifest.json?v=${assetVersion}`} />
         <link
           rel="icon"

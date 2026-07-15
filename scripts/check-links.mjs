@@ -6,6 +6,7 @@ import fg from 'fast-glob'
 const outputDir = path.resolve(process.argv[2] ?? 'out')
 const checkExternal = process.argv.includes('--external')
 const siteOrigin = 'https://imreese.github.io'
+const rssUrl = `${siteOrigin}/rss.xml`
 const htmlFiles = await fg('**/*.html', { cwd: outputDir, absolute: true })
 const errors = []
 const externalLinks = new Set()
@@ -15,6 +16,39 @@ const descriptionOwners = new Map()
 
 function capture(html, expression) {
   return [...html.matchAll(expression)].map((match) => match[1])
+}
+
+function attribute(tag, name) {
+  const match = tag.match(new RegExp(`\\b${name}=["']([^"']*)["']`, 'i'))
+  return match?.[1]
+}
+
+function decodeHtmlAttribute(value) {
+  return value
+    ?.replace(/&#x27;|&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, '&')
+}
+
+function expectedCanonicalPath(relativeFile) {
+  if (relativeFile === 'index.html') {
+    return '/'
+  }
+
+  if (relativeFile.endsWith('/index.html')) {
+    return `/${relativeFile.slice(0, -'index.html'.length)}`
+  }
+
+  return `/${relativeFile.replace(/\.html$/, '/')}`
+}
+
+function isDirectoryPage(pathname) {
+  if (pathname === '/' || pathname.endsWith('/')) {
+    return false
+  }
+
+  const lastSegment = pathname.split('/').at(-1) ?? ''
+  return !lastSegment.includes('.')
 }
 
 async function internalTargetExists(pathname) {
@@ -56,6 +90,13 @@ for (const file of htmlFiles) {
     html,
     /<meta\b[^>]*\bname=["']description["'][^>]*\bcontent=["']([^"']+)["']/gi,
   )
+  const htmlLanguages = capture(html, /<html\b[^>]*\blang=["']([^"']+)["']/gi)
+  const linkTags = capture(html, /(<link\b[^>]*>)/gi)
+  const rssLinks = linkTags.filter(
+    (tag) =>
+      attribute(tag, 'rel') === 'alternate' &&
+      attribute(tag, 'type') === 'application/rss+xml',
+  )
 
   if (canonicals.length !== 1) {
     errors.push(
@@ -68,6 +109,37 @@ for (const file of htmlFiles) {
   if (descriptions.length !== 1) {
     errors.push(
       `${relativeFile}: expected one description, found ${descriptions.length}`,
+    )
+  }
+  if (htmlLanguages.length !== 1 || htmlLanguages[0] !== 'en') {
+    errors.push(
+      `${relativeFile}: expected one server-rendered html lang="en", found ${htmlLanguages.join(', ') || 'none'}`,
+    )
+  }
+  if (/\bhreflang=/i.test(html)) {
+    errors.push(`${relativeFile}: unexpected hreflang without language routes`)
+  }
+  if (rssLinks.length !== 1) {
+    errors.push(
+      `${relativeFile}: expected one RSS discovery link, found ${rssLinks.length}`,
+    )
+  } else {
+    const rssHref = attribute(rssLinks[0], 'href')
+    const rssTitle = decodeHtmlAttribute(attribute(rssLinks[0], 'title'))
+    if (rssHref !== rssUrl) {
+      errors.push(`${relativeFile}: incorrect RSS discovery URL (${rssHref})`)
+    }
+    if (rssTitle !== "Reese's Blog") {
+      errors.push(
+        `${relativeFile}: incorrect RSS discovery title (${rssTitle})`,
+      )
+    }
+  }
+
+  const expectedCanonical = `${siteOrigin}${expectedCanonicalPath(relativeFile)}`
+  if (canonicals[0] && canonicals[0] !== expectedCanonical) {
+    errors.push(
+      `${relativeFile}: canonical ${canonicals[0]} does not match ${expectedCanonical}`,
     )
   }
 
@@ -142,12 +214,30 @@ for (const file of htmlFiles) {
     }
 
     if (url.origin === siteOrigin) {
+      if (isDirectoryPage(url.pathname)) {
+        errors.push(
+          `${relativeFile}: internal page link is missing / (${href})`,
+        )
+      }
       if (!(await internalTargetExists(url.pathname))) {
         errors.push(`${relativeFile}: missing internal target (${href})`)
       }
     } else {
       externalLinks.add(url.href)
     }
+  }
+}
+
+for (const requiredAsset of [
+  'rss.xml',
+  'robots.txt',
+  'sitemap.xml',
+  'social-card.png',
+]) {
+  try {
+    await readFile(path.join(outputDir, requiredAsset))
+  } catch {
+    errors.push(`missing production asset: /${requiredAsset}`)
   }
 }
 

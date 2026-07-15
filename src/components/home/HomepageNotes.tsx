@@ -24,7 +24,7 @@ export function HomepageNotes({ blogs }: { blogs: BlogType[] }) {
           </p>
         </div>
         <Link
-          href="/blogs"
+          href="/blogs/"
           className="inline-flex items-center gap-1 text-sm font-semibold text-primary"
         >
           {copy.allNotes}
@@ -37,7 +37,7 @@ export function HomepageNotes({ blogs }: { blogs: BlogType[] }) {
           blogs.map((blog) => (
             <Link
               key={blog.slug}
-              href={`/blogs/${blog.slug}`}
+              href={`/blogs/${blog.slug}/`}
               className="group grid min-w-0 gap-3 border-b border-border/70 py-6 transition sm:grid-cols-[8.5rem_minmax(0,1fr)_1.5rem] sm:gap-6"
             >
               <time

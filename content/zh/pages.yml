@@ -20,11 +20,11 @@ about:
     - kind: article
       title: SGLang 到 Mooncake Store 的 KV 路径
       description: 从 page key、Host memory、Store object 追到 shared TE 边界。
-      href: /blogs/sglang-to-mooncake-store-kv-cache-path
+      href: /blogs/sglang-to-mooncake-store-kv-cache-path/
     - kind: article
       title: Mooncake / HiCache 源码
       description: 连接 Cache 生命周期、Store metadata 与传输职责的资源模型。
-      href: /blogs/mooncake-kv-cache-system-resource
+      href: /blogs/mooncake-kv-cache-system-resource/
 
 home:
   hero:

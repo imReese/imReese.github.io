@@ -148,7 +148,7 @@ workSections:
           href: https://github.com/sgl-project/sglang
         evidenceLinks:
           - label: 相关源码分析
-            href: /blogs/sglang-hicache-read-path
+            href: /blogs/sglang-hicache-read-path/
         tags:
           - Serving
           - Scheduler
@@ -163,7 +163,7 @@ workSections:
           href: https://github.com/kvcache-ai/Mooncake
         evidenceLinks:
           - label: 相关源码分析
-            href: /blogs/mooncake-kv-cache-system-resource
+            href: /blogs/mooncake-kv-cache-system-resource/
         tags:
           - Store
           - Transfer Engine
@@ -186,7 +186,7 @@ workSections:
       - name: SGLang 到 Mooncake Store 的 KV 路径
         relation: Source analysis
         description: 沿着 page key、Host KV pointer、Store object 和 shared Transfer Engine 边界追踪一次写入与读回。
-        href: /blogs/sglang-to-mooncake-store-kv-cache-path
+        href: /blogs/sglang-to-mooncake-store-kv-cache-path/
         label: blogs/sglang-to-mooncake-store-kv-cache-path
         tags:
           - SGLang
@@ -195,11 +195,11 @@ workSections:
       - name: HiCache 读写路径
         relation: Source analysis
         description: 拆开 storage hit、Host load-back、GPU 复用、backup 与 batch persistence，让命中表述保持精确。
-        href: /blogs/sglang-hicache-read-path
+        href: /blogs/sglang-hicache-read-path/
         label: blogs/sglang-hicache-read-path
         evidenceLinks:
           - label: 写路径
-            href: /blogs/sglang-hicache-write-path
+            href: /blogs/sglang-hicache-write-path/
         tags:
           - HiCache
           - Read / Write
@@ -207,7 +207,7 @@ workSections:
       - name: Mooncake KV 资源模型
         relation: Source analysis
         description: 区分 runtime state、Store metadata、replica lifecycle 与 Transfer Engine 职责。
-        href: /blogs/mooncake-kv-cache-system-resource
+        href: /blogs/mooncake-kv-cache-system-resource/
         label: blogs/mooncake-kv-cache-system-resource
         tags:
           - Resource Model

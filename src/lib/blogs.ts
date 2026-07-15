@@ -2,7 +2,7 @@ import glob from 'fast-glob'
 import { promises as fs } from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
-import { blogContentDir } from './contentPaths'
+import { blogContentDir } from './contentPaths.ts'
 
 export type BlogType = {
   title: string
@@ -14,6 +14,7 @@ export type BlogType = {
   category?: string
   series?: string
   featured?: boolean
+  draft?: boolean
   language: 'zh-CN'
 }
 
@@ -26,9 +27,9 @@ async function importBlog(blogFilename: string): Promise<BlogType> {
   const { data } = matter(source)
 
   return {
+    ...data,
     language: 'zh-CN',
     slug: blogFilename.replace(/\.mdx$/, ''),
-    ...data,
   } as BlogType
 }
 
@@ -39,18 +40,35 @@ export async function getAllBlogs() {
 
   let blogs = await Promise.all(blogFileNames.map(importBlog))
 
-  return blogs.sort((a, z) => {
-    const aDate = a.date ? +new Date(a.date) : 0
-    const zDate = z.date ? +new Date(z.date) : 0
-    return zDate - aDate
-  })
+  return getPublishedBlogs(blogs)
+}
+
+export function getPublishedBlogs(blogs: BlogType[]) {
+  const seenSlugs = new Set<string>()
+
+  return blogs
+    .filter((blog) => blog.draft !== true)
+    .sort((a, z) => {
+      const aDate = a.date ? +new Date(a.date) : 0
+      const zDate = z.date ? +new Date(z.date) : 0
+      return zDate - aDate
+    })
+    .filter((blog) => {
+      if (seenSlugs.has(blog.slug)) {
+        return false
+      }
+
+      seenSlugs.add(blog.slug)
+      return true
+    })
 }
 
 export async function getBlogBySlug(slug: string): Promise<BlogType | null> {
   try {
     // 移除可能存在的 .mdx 扩展名
     const cleanSlug = slug.replace(/\.mdx$/, '')
-    return await importBlog(`${cleanSlug}.mdx`)
+    const blog = await importBlog(`${cleanSlug}.mdx`)
+    return blog.draft === true ? null : blog
   } catch (error) {
     console.error(`Failed to load blog with slug: ${slug}`, error)
     return null

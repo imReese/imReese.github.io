@@ -22,7 +22,7 @@ content/blogs/my-post.mdx
 The filename becomes the URL:
 
 ```text
-/blogs/my-post
+/blogs/my-post/
 ```
 
 Each post needs frontmatter:

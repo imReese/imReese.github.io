@@ -5,7 +5,7 @@ Write blog posts here as `.mdx` files.
 The filename becomes the public URL:
 
 ```text
-content/blogs/my-post.mdx -> /blogs/my-post
+content/blogs/my-post.mdx -> /blogs/my-post/
 ```
 
 Required frontmatter:

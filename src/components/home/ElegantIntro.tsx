@@ -68,14 +68,14 @@ export function ElegantIntro() {
 
         <div className="mt-8 flex max-w-full flex-wrap items-center gap-x-6 gap-y-3">
           <a
-            href="/projects"
+            href="/projects/"
             className="inline-flex h-10 max-w-full items-center justify-center gap-2 rounded-md bg-foreground px-4 text-sm font-semibold text-background transition hover:bg-primary hover:text-primary-foreground"
           >
             <Github className="h-4 w-4" />
             {home.hero.viewProjects}
           </a>
           <a
-            href="/blogs"
+            href="/blogs/"
             className="inline-flex h-10 max-w-full items-center justify-center gap-2 text-sm font-semibold text-foreground transition hover:text-primary"
           >
             <BookOpen className="h-4 w-4" />

@@ -24,9 +24,9 @@ currentFocus:
     - '将 SGLang runtime 的请求生命周期、调度、Cache 管理和传输边界用于服务系统设计。'
   links:
     - label: 项目
-      href: /projects
+      href: /projects/
     - label: 源码笔记
-      href: /blogs
+      href: /blogs/
 
 selectedWork:
   - eyebrow: Runtime prototype
@@ -49,7 +49,7 @@ selectedWork:
     problem: 区分容易混在一起的 Cache 命中、materialization、metadata 可见性与数据传输语义。
     link:
       label: SGLang 到 Mooncake KV 路径
-      href: /blogs/sglang-to-mooncake-store-kv-cache-path
+      href: /blogs/sglang-to-mooncake-store-kv-cache-path/
 
 researchAreas:
   - title: 推理引擎

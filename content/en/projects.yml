@@ -148,7 +148,7 @@ workSections:
           href: https://github.com/sgl-project/sglang
         evidenceLinks:
           - label: Related source analysis
-            href: /blogs/sglang-hicache-read-path
+            href: /blogs/sglang-hicache-read-path/
         tags:
           - Serving
           - Scheduler
@@ -163,7 +163,7 @@ workSections:
           href: https://github.com/kvcache-ai/Mooncake
         evidenceLinks:
           - label: Related source analysis
-            href: /blogs/mooncake-kv-cache-system-resource
+            href: /blogs/mooncake-kv-cache-system-resource/
         tags:
           - Store
           - Transfer Engine
@@ -186,7 +186,7 @@ workSections:
       - name: SGLang to Mooncake Store KV path
         relation: Source analysis
         description: Follow page keys, host KV pointers, Store objects, and the shared Transfer Engine boundary for a write/read cycle.
-        href: /blogs/sglang-to-mooncake-store-kv-cache-path
+        href: /blogs/sglang-to-mooncake-store-kv-cache-path/
         label: blogs/sglang-to-mooncake-store-kv-cache-path
         tags:
           - SGLang
@@ -195,11 +195,11 @@ workSections:
       - name: HiCache read and write paths
         relation: Source analysis
         description: Separate storage hits, host load-back, GPU reuse, backup, and batch persistence so cache-hit claims stay precise.
-        href: /blogs/sglang-hicache-read-path
+        href: /blogs/sglang-hicache-read-path/
         label: blogs/sglang-hicache-read-path
         evidenceLinks:
           - label: Write path
-            href: /blogs/sglang-hicache-write-path
+            href: /blogs/sglang-hicache-write-path/
         tags:
           - HiCache
           - Read / Write
@@ -207,7 +207,7 @@ workSections:
       - name: Mooncake KV resource model
         relation: Source analysis
         description: Separate runtime state, Store metadata, replica lifecycle, and Transfer Engine responsibilities.
-        href: /blogs/mooncake-kv-cache-system-resource
+        href: /blogs/mooncake-kv-cache-system-resource/
         label: blogs/mooncake-kv-cache-system-resource
         tags:
           - Resource Model

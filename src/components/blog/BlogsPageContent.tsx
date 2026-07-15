@@ -65,7 +65,7 @@ function Blog({
       </time>
       <div className="min-w-0">
         <h3 className="text-[1.05rem] font-semibold leading-7 text-foreground transition group-hover:text-primary">
-          <Link href={`/blogs/${blog.slug}`}>
+          <Link href={`/blogs/${blog.slug}/`}>
             <span className="absolute -inset-x-3 -inset-y-3 hidden rounded-lg transition group-hover:bg-muted/25 sm:block" />
             <span className="relative">{blog.title}</span>
           </Link>
@@ -114,7 +114,7 @@ function LeadFeaturedBlog({
         {formatDate(blog.date, locale)}
       </time>
       <h3 className="mt-5 max-w-xl text-[1.55rem] font-semibold leading-tight text-foreground transition group-hover:text-primary sm:text-[2.08rem]">
-        <Link href={`/blogs/${blog.slug}`}>
+        <Link href={`/blogs/${blog.slug}/`}>
           <span className="absolute inset-0" />
           {blog.title}
         </Link>
@@ -163,7 +163,7 @@ function SupportingFeaturedBlog({
         </time>
         <div className="min-w-0">
           <h3 className="text-base font-semibold leading-6 text-foreground transition group-hover:text-primary">
-            <Link href={`/blogs/${blog.slug}`}>
+            <Link href={`/blogs/${blog.slug}/`}>
               <span className="absolute inset-0" />
               {blog.title}
             </Link>
@@ -303,7 +303,7 @@ function getFilterHref({
   }
 
   const query = params.toString()
-  return query ? `/blogs?${query}` : '/blogs'
+  return query ? `/blogs/?${query}` : '/blogs/'
 }
 
 function BlogReadingMap({
@@ -344,7 +344,7 @@ function BlogReadingMap({
               {copy.latestLabel}
             </div>
             <Link
-              href={`/blogs/${latestBlog.slug}`}
+              href={`/blogs/${latestBlog.slug}/`}
               className="mt-2 block text-sm font-semibold leading-6 text-foreground transition hover:text-primary"
             >
               {latestBlog.title}
@@ -440,7 +440,7 @@ function BlogReadingMap({
 
         {hasActiveFilter ? (
           <Link
-            href="/blogs"
+            href="/blogs/"
             scroll={false}
             className="mt-7 inline-flex border-b border-primary/40 pb-0.5 text-xs font-semibold text-primary transition hover:border-primary"
           >

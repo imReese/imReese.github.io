@@ -20,3 +20,12 @@ test('keeps Chinese article content language independent from navigation locale'
   assert.match(blogLayout, /<article[^>]+lang=\{blog\.language\}/)
   assert.match(blogLayout, /formatDate\(blog\.date, locale\)/)
 })
+
+test('server defaults to English UI without inventing language routes', () => {
+  const rootLayout = readFileSync('src/app/layout.tsx', 'utf8')
+
+  assert.match(rootLayout, /<html[\s\S]*lang="en"/)
+  assert.equal(rootLayout.includes('hreflang'), false)
+  assert.equal(rootLayout.includes('/en/'), false)
+  assert.equal(rootLayout.includes('/zh/'), false)
+})

@@ -57,6 +57,83 @@ test('tracked forks are labeled and paired with their upstream repositories', ()
   }
 })
 
+test('project implementation links match the audited main-branch paths', () => {
+  const expectedSglangLinks = [
+    'https://github.com/imReese/sglang-rs#current-scope',
+    'https://github.com/imReese/sglang-rs/blob/main/crates/sglang-srt/tests/request_lifecycle.rs',
+    'https://github.com/imReese/sglang-rs/blob/main/crates/sglang-srt/tests/pd_transfer_plan.rs',
+    'https://github.com/imReese/sglang-rs/blob/main/scripts/run_cpu_pd_smoke.sh',
+  ]
+  const expectedNexusLinks = [
+    'https://github.com/imReese/NexusKV/blob/main/docs/architecture/target-platform.md',
+    'https://github.com/imReese/NexusKV/blob/main/docs/architecture/migration-status.md',
+    'https://github.com/imReese/NexusKV/blob/main/docs/design/python-rust-planner-bridge.md',
+    'https://github.com/imReese/NexusKV/blob/main/docs/design/connector-lifecycle.md',
+    'https://github.com/imReese/NexusKV/blob/main/docs/design/execution-boundary.md',
+  ]
+
+  for (const locale of locales) {
+    const projects = parse(
+      readFileSync(`content/${locale}/projects.yml`, 'utf8'),
+    )
+    const [sglang, nexus] = projects.items
+    const sglangLinks = sglang.evidenceLinks.map(
+      (link: { href: string }) => link.href,
+    )
+    const nexusLinks = nexus.evidenceLinks.map(
+      (link: { href: string }) => link.href,
+    )
+
+    assert.deepEqual(sglangLinks, expectedSglangLinks)
+    assert.deepEqual(nexusLinks, expectedNexusLinks)
+    assert.equal(
+      nexusLinks.some((href: string) =>
+        href.includes('engine-connector-lifecycle.md'),
+      ),
+      false,
+    )
+  }
+})
+
+test('localized content uses trailing slashes for internal page links', () => {
+  function collectHrefs(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value.flatMap(collectHrefs)
+    }
+    if (!value || typeof value !== 'object') {
+      return []
+    }
+
+    return Object.entries(value).flatMap(([key, child]) =>
+      key === 'href' && typeof child === 'string'
+        ? [child]
+        : collectHrefs(child),
+    )
+  }
+
+  for (const locale of locales) {
+    for (const file of ['site', 'pages', 'profile', 'projects']) {
+      const content = parse(
+        readFileSync(`content/${locale}/${file}.yml`, 'utf8'),
+      )
+
+      for (const href of collectHrefs(content)) {
+        if (!href.startsWith('/') || href === '/') {
+          continue
+        }
+        const pathname = href.split(/[?#]/, 1)[0]
+        const lastSegment = pathname.split('/').at(-1) ?? ''
+        if (!lastSegment.includes('.')) {
+          assert.ok(
+            pathname.endsWith('/'),
+            `${href} is missing a trailing slash`,
+          )
+        }
+      }
+    }
+  }
+})
+
 test('blog frontmatter has unique SEO fields and valid publication facts', () => {
   const files = readdirSync('content/blogs').filter((file) =>
     file.endsWith('.mdx'),
@@ -105,9 +182,12 @@ test('localized profile prose keeps scalar text shapes', () => {
   }
 })
 
-test('RSS generation uses the same date-sorted blog index as the site', () => {
+test('RSS routes use the same published blog source as the site', () => {
   const feedSource = readFileSync('src/app/feed/route.ts', 'utf8')
+  const rssSource = readFileSync('src/app/rss.xml/route.ts', 'utf8')
 
   assert.match(feedSource, /getAllBlogs/)
-  assert.match(feedSource, /for \(const blog of blogs\)/)
+  assert.match(rssSource, /getAllBlogs/)
+  assert.match(feedSource, /createRssResponse/)
+  assert.match(rssSource, /createRssResponse/)
 })
