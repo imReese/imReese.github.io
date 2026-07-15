@@ -11,7 +11,7 @@ const apiUrl = process.env.PLAUSIBLE_API_URL || 'https://plausible.io'
 
 if (!apiKey || !siteId) {
   console.log(
-    'Skipping homepage stats refresh: PLAUSIBLE_STATS_API_KEY and PLAUSIBLE_SITE_ID are required.',
+    'Skipping site stats refresh: PLAUSIBLE_STATS_API_KEY and PLAUSIBLE_SITE_ID are required.',
   )
   process.exit(0)
 }
@@ -26,7 +26,6 @@ const response = await fetch(`${apiUrl.replace(/\/$/, '')}/api/v2/query`, {
     site_id: siteId,
     metrics: ['pageviews', 'visits', 'visitors'],
     date_range: 'all',
-    filters: [['is', 'event:page', ['/']]],
   }),
 })
 
@@ -39,14 +38,25 @@ if (!response.ok) {
 
 const payload = await response.json()
 const metrics = payload?.results?.[0]?.metrics ?? []
-const [pageviews = 0, visits = 0, visitors = 0] = metrics
+const [pageviews, visits, visitors] = metrics
+
+if (
+  !Number.isInteger(pageviews) ||
+  pageviews < 0 ||
+  !Number.isInteger(visits) ||
+  visits < 0 ||
+  !Number.isInteger(visitors) ||
+  visitors < 0
+) {
+  throw new Error('Plausible stats response did not include valid metrics.')
+}
 
 const stats = {
   homepage: {
-    path: '/',
-    pageviews: Number.isFinite(pageviews) ? pageviews : 0,
-    visits: Number.isFinite(visits) ? visits : 0,
-    visitors: Number.isFinite(visitors) ? visitors : 0,
+    scope: 'site',
+    pageviews,
+    visits,
+    visitors,
     source: 'plausible',
     updatedAt: new Date().toISOString(),
   },
@@ -55,4 +65,4 @@ const stats = {
 await mkdir(dirname(outputPath), { recursive: true })
 await writeFile(outputPath, `${JSON.stringify(stats, null, 2)}\n`)
 
-console.log(`Wrote homepage stats to ${outputPath}`)
+console.log(`Wrote site stats to ${outputPath}`)

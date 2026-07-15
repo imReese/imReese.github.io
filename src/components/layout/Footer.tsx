@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 
 import { ContainerInner, ContainerOuter } from '@/components/layout/Container'
 import { footerItems } from '@/config/siteConfig'
@@ -27,8 +26,6 @@ function NavLink({
 
 export function Footer() {
   const { t } = useLanguage()
-  const pathname = usePathname()
-  const showHomepageStats = pathname === '/'
 
   return (
     <footer className="mt-32 flex-none">
@@ -60,9 +57,7 @@ export function Footer() {
                     <SocialLinks className="mt-0" />
                   </div>
                 </div>
-                {showHomepageStats ? (
-                  <HomepageViewStats className="justify-center sm:justify-end sm:self-end" />
-                ) : null}
+                <HomepageViewStats className="justify-center sm:justify-end sm:self-end" />
               </div>
             </div>
           </ContainerInner>

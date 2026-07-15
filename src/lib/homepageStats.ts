@@ -2,6 +2,7 @@ export type Locale = 'en' | 'zh'
 
 type HomepageStatsPayload = {
   homepage?: {
+    scope?: unknown
     pageviews?: unknown
   }
 }
@@ -15,8 +16,10 @@ export function getHomepageViewCount(payload: unknown) {
     return null
   }
 
+  const scope = payload.homepage?.scope
   const pageviews = payload.homepage?.pageviews
   if (
+    scope !== 'site' ||
     typeof pageviews !== 'number' ||
     !Number.isInteger(pageviews) ||
     pageviews < 0
@@ -37,6 +40,6 @@ export function formatHomepageViewText(count: number, locale: Locale) {
   const formattedCount = formatHomepageViewCount(count, locale)
 
   return locale === 'zh'
-    ? `本页浏览 ${formattedCount} 次`
-    : `${formattedCount} page views`
+    ? `本站浏览 ${formattedCount} 次`
+    : `${formattedCount} site views`
 }

@@ -4,11 +4,10 @@ import test from 'node:test'
 
 const footerSource = readFileSync('src/components/layout/Footer.tsx', 'utf8')
 
-test('footer shows the existing homepage pageview metric only on the homepage', () => {
-  assert.match(footerSource, /usePathname/)
-  assert.match(footerSource, /pathname === '\/'/)
+test('footer shows the shared site view metric on every page', () => {
   assert.match(footerSource, /HomepageViewStats/)
-  assert.equal(footerSource.includes('site views'), false)
+  assert.equal(footerSource.includes('usePathname'), false)
+  assert.equal(footerSource.includes("pathname === '/'"), false)
 })
 
 test('footer keeps the exact fixed copyright text across locales', () => {

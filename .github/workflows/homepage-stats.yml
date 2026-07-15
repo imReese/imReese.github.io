@@ -1,6 +1,11 @@
-name: Homepage Stats
+name: Site Stats
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/update-homepage-stats.mjs'
+      - '.github/workflows/homepage-stats.yml'
   schedule:
     - cron: '17 2 * * *'
   workflow_dispatch:
@@ -43,5 +48,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "chore: refresh homepage stats"
+          git commit -m "chore: refresh site stats"
           git push
