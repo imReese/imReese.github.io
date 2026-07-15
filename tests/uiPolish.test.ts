@@ -29,6 +29,8 @@ const systemsPanelSource = readFileSync(
   'utf8',
 )
 const globalsSource = readFileSync('src/styles/globals.css', 'utf8')
+const englishProfileSource = readFileSync('content/en/profile.yml', 'utf8')
+const chineseProfileSource = readFileSync('content/zh/profile.yml', 'utf8')
 
 test('defines the required semantic Catppuccin tokens for both themes', () => {
   const tokens = [
@@ -108,4 +110,18 @@ test('keeps the requested HEAD~2 treatment on the header and workspace panel', (
   assert.match(headerSource, /bg-gradient-to-r/)
   assert.match(headerSource, /blur-md/)
   assert.match(headerSource, /shadow-\[#4c4f69\]\/5/)
+})
+
+test('keeps the workspace company labels concise and the current company prominent', () => {
+  assert.match(englishProfileSource, /company: Huawei Data Storage\n/)
+  assert.equal(
+    englishProfileSource.includes('Data Storage Product Line'),
+    false,
+  )
+  assert.match(chineseProfileSource, /company: 华为数据存储\n/)
+  assert.equal(chineseProfileSource.includes('数据存储产品线'), false)
+  assert.match(
+    systemsPanelSource,
+    /text-base font-semibold text-foreground[\s\S]*currentExperience\.company/,
+  )
 })

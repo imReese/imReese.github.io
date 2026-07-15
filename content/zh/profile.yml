@@ -148,7 +148,7 @@ experience:
       - 面向云 workload 建设性能分析工具，刻画指令流和微架构行为。
       - 结合 workload 数据与仿真评估 CPU 体系结构优化方案。
       - 与芯片和操作系统团队协作，在鲲鹏平台验证软硬件协同优化。
-  - company: 华为数据存储产品线
+  - company: 华为数据存储
     team: 基础设施开发部
     title: 软件开发工程师
     logo: database

@@ -148,7 +148,7 @@ experience:
       - Built performance tooling for cloud workloads and characterized instruction-flow and microarchitectural behavior.
       - Used workload data and simulation to evaluate CPU architecture optimizations.
       - Worked across hardware and operating-system teams to validate software-hardware optimization on Kunpeng platforms.
-  - company: Huawei Data Storage Product Line
+  - company: Huawei Data Storage
     team: Infrastructure Development Department
     title: Software Development Engineer
     logo: database
