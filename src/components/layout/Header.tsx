@@ -126,7 +126,10 @@ function NavItem({
       >
         {children}
         {isActive ? (
-          <span className="absolute inset-x-3 -bottom-0.5 h-0.5 bg-current" />
+          <>
+            <span className="absolute inset-x-0 -bottom-0.5 z-10 h-0.5 bg-gradient-to-r from-primary/0 via-current to-primary/0" />
+            <span className="absolute inset-x-0 -bottom-1 h-2 rounded-full bg-current opacity-20 blur-md" />
+          </>
         ) : null}
       </Link>
     </li>
@@ -138,7 +141,7 @@ function DesktopNavigation(props: React.ComponentPropsWithoutRef<'nav'>) {
 
   return (
     <nav {...props}>
-      <ul className="relative flex px-2 text-sm font-medium before:absolute before:-inset-x-4 before:-bottom-0.5 before:h-px before:bg-border/60 before:content-['']">
+      <ul className="relative flex px-2 text-sm font-medium before:absolute before:-inset-x-4 before:-bottom-0.5 before:h-0.5 before:bg-gradient-to-r before:from-transparent before:via-muted-foreground/30 before:to-transparent before:content-['']">
         {navItems.map((item, index) => (
           <Fragment key={item.name}>
             {index > 0 && (
@@ -170,7 +173,7 @@ function AvatarContainer({
       <div
         className={clsx(
           className,
-          'h-10 w-10 rounded-full bg-surface p-0.5 ring-1 ring-border/80',
+          'h-10 w-10 rounded-full bg-[#eff1f5]/90 p-0.5 shadow-lg shadow-[#4c4f69]/5 ring-1 ring-[#bcc0cc]/70 backdrop-blur dark:bg-[#313244]/85 dark:ring-[#45475a]/80',
         )}
         {...props}
       />
@@ -204,7 +207,7 @@ function Avatar({
         height={large ? 64 : 36}
         sizes={large ? '4rem' : '2.25rem'}
         className={clsx(
-          'rounded-full bg-surface-elevated object-cover',
+          'rounded-full bg-[#e6e9ef] object-cover dark:bg-[#313244]',
           large ? 'h-16 w-16' : 'h-9 w-9',
         )}
         priority
@@ -222,7 +225,7 @@ export function Header() {
       >
         <div className="header-glass" aria-hidden="true" />
         <Container className="w-full">
-          <div className="relative flex min-w-0 items-center gap-2 sm:gap-4">
+          <div className="relative flex min-w-0 items-center gap-4">
             <div className="flex min-w-0 flex-1">
               <AvatarContainer showName={true}>
                 <Avatar />

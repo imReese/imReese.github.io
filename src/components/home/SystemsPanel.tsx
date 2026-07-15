@@ -1,5 +1,6 @@
 'use client'
 
+import { motion } from 'framer-motion'
 import { MapPin, SquareTerminal } from 'lucide-react'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 
@@ -10,7 +11,12 @@ export function SystemsPanel() {
   const copy = home.systemsPanel
 
   return (
-    <aside className="min-w-0 overflow-hidden rounded-lg border border-border/80 bg-card/65">
+    <motion.aside
+      initial={{ opacity: 0, y: 20, scale: 0.99 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.7, delay: 0.16, ease: 'easeOut' }}
+      className="min-w-0 overflow-hidden rounded-lg border border-border/80 bg-card/65"
+    >
       <div className="flex flex-col items-start gap-3 border-b border-border/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -37,7 +43,7 @@ export function SystemsPanel() {
             <span className="text-sm font-semibold text-foreground">
               {currentExperience.company}
             </span>
-            <span className="rounded-full border border-primary/25 bg-accent-soft px-2 py-0.5 text-xs font-semibold text-primary">
+            <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[0.68rem] font-semibold text-primary">
               {copy.current}
             </span>
           </div>
@@ -76,7 +82,7 @@ export function SystemsPanel() {
                   <span className="text-sm font-semibold text-foreground">
                     {experience.company}
                   </span>
-                  <span className="font-mono text-xs text-muted-foreground">
+                  <span className="font-mono text-[0.68rem] text-muted-foreground">
                     {experience.start}
                   </span>
                 </div>
@@ -88,6 +94,6 @@ export function SystemsPanel() {
           </div>
         </div>
       </div>
-    </aside>
+    </motion.aside>
   )
 }

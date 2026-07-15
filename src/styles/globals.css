@@ -32,13 +32,31 @@
   .header-glass {
     position: absolute;
     inset: 0 0 auto;
-    height: 4.5rem;
-    border-bottom: 1px solid hsl(var(--border) / 0.32);
-    background: hsl(var(--background) / 0.96);
+    height: 6.5rem;
+    background: linear-gradient(
+      to bottom,
+      hsl(var(--background) / 0.82),
+      hsl(var(--background) / 0.62) 58%,
+      hsl(var(--background) / 0)
+    );
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      #000 0%,
+      #000 58%,
+      transparent 100%
+    );
+    mask-image: linear-gradient(to bottom, #000 0%, #000 58%, transparent 100%);
   }
 
   .dark .header-glass {
-    background: hsl(var(--background) / 0.95);
+    background: linear-gradient(
+      to bottom,
+      hsl(var(--background) / 0.78),
+      hsl(var(--background) / 0.58) 58%,
+      hsl(var(--background) / 0)
+    );
   }
 
   .blog-prose > :where(p, ul, ol, blockquote, h2, h3, hr) {

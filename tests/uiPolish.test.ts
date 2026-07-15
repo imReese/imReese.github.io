@@ -23,6 +23,12 @@ const languageToggleSource = readFileSync(
   'src/components/shared/LanguageToggle.tsx',
   'utf8',
 )
+const headerSource = readFileSync('src/components/layout/Header.tsx', 'utf8')
+const systemsPanelSource = readFileSync(
+  'src/components/home/SystemsPanel.tsx',
+  'utf8',
+)
+const globalsSource = readFileSync('src/styles/globals.css', 'utf8')
 
 test('defines the required semantic Catppuccin tokens for both themes', () => {
   const tokens = [
@@ -91,4 +97,15 @@ test('keeps language controls spacious without a filled active state', () => {
   assert.match(languageToggleSource, /locale === 'en'/)
   assert.match(languageToggleSource, /locale === 'zh'/)
   assert.equal(languageToggleSource.includes('bg-accent-soft'), false)
+})
+
+test('keeps the requested HEAD~2 treatment on the header and workspace panel', () => {
+  assert.match(globalsSource, /backdrop-filter: blur\(18px\)/)
+  assert.match(globalsSource, /mask-image: linear-gradient/)
+  assert.match(systemsPanelSource, /motion\.aside/)
+  assert.match(systemsPanelSource, /bg-card\/65/)
+  assert.equal(systemsPanelSource.includes('backdrop-blur-xl'), false)
+  assert.match(headerSource, /bg-gradient-to-r/)
+  assert.match(headerSource, /blur-md/)
+  assert.match(headerSource, /shadow-\[#4c4f69\]\/5/)
 })
