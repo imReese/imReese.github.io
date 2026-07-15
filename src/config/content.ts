@@ -61,7 +61,7 @@ export type HomePageContent = {
     title: string
     intro: string
     problemLabel: string
-    evidenceLabel: string
+    linkLabel: string
   }
 }
 
@@ -134,7 +134,7 @@ export type ProfileContent = {
     title: string
     description: string
     problem: string
-    evidence: {
+    link: {
       label: string
       href: string
     }

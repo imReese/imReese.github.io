@@ -33,21 +33,21 @@ selectedWork:
     title: SGLang Rust Runtime
     description: Implemented and tested explicit Rust boundaries for request lifecycle, scheduling, prefix reuse, protocol handling, and staged PD transfer integration.
     problem: Make hidden runtime state and fallback behavior inspectable while the production execution path is still under construction.
-    evidence:
+    link:
       label: Current scope and tests
       href: https://github.com/imReese/sglang-rs#current-scope
   - eyebrow: KV cache platform
     title: NexusKV
     description: Split control policy, state/index planning, execution, and SGLang/vLLM lifecycle adapters across Go, Rust, and Python.
     problem: Keep reuse planning and transfer policy out of connector-specific branching while the real data plane is developed incrementally.
-    evidence:
+    link:
       label: Architecture and execution boundary
       href: https://github.com/imReese/NexusKV/blob/main/docs/design/execution-boundary.md
   - eyebrow: Source analysis
     title: Mooncake / HiCache internals
     description: Traced page keys, host KV memory, Store objects, replica state, and shared Transfer Engine boundaries through concrete read/write paths.
     problem: Separate cache hit, materialization, metadata visibility, and data transfer claims that are easy to blur together.
-    evidence:
+    link:
       label: SGLang to Mooncake KV path
       href: /blogs/sglang-to-mooncake-store-kv-cache-path
 

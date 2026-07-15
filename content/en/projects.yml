@@ -1,5 +1,5 @@
 headline: Systems work
-intro: A deliberately small set of verifiable systems projects, implementation work, and source studies around LLM serving. Status and evidence links are shown explicitly; tracked forks are separated from original projects.
+intro: A focused set of systems projects, implementation work, and source studies around LLM serving. Current scope is stated plainly, and tracked forks remain separate from original projects.
 
 overview:
   - label: Runtime
@@ -10,7 +10,7 @@ overview:
     description: An LLM KV cache platform foundation spanning control plane, state/index, execution, and engine adapters.
   - label: Source work
     value: Mooncake / HiCache
-    description: Reproducible source analysis of cache lifecycle, Store semantics, and Transfer Engine integration paths.
+    description: Source notes on cache lifecycle, Store semantics, and Transfer Engine integration paths.
 
 items:
   - name: SGLang Rust Runtime
@@ -41,7 +41,7 @@ items:
       - KV Cache
       - Mooncake
   - name: NexusKV
-    description: A staged LLM KV cache platform that separates policy and control, reuse planning and state/index, execution/data movement, and engine-facing lifecycle adapters. The current repository proves these boundaries with deterministic implementations and tests without claiming that planned transport paths already exist.
+    description: A staged LLM KV cache platform that separates policy and control, reuse planning and state/index, execution/data movement, and engine-facing lifecycle adapters. The current repository includes deterministic implementations and tests while transport paths continue to develop.
     href: https://github.com/imReese/NexusKV
     label: github.com/imReese/NexusKV
     status:
@@ -74,7 +74,7 @@ diagrams:
   runtime:
     eyebrow: execution path
     title: SGLang Rust Runtime — implemented request path
-    caption: The diagram shows the boundaries already represented in code and tests. Production model execution and complete transport backends are intentionally outside the claim.
+    caption: The diagram follows the boundaries currently represented in code and tests. Production model execution and complete transport backends remain outside the current scope.
     steps:
       - label: Protocol boundary
         meta: HTTP / gRPC / router
@@ -136,11 +136,11 @@ diagrams:
 
 workSections:
   - title: Tracked forks and source studies
-    intro: These entries are not original projects. Each link is labeled as a tracked fork/source-study surface and is paired with the upstream repository.
+    intro: Repositories used to follow upstream implementation and integration paths, paired with their upstream projects.
     items:
       - name: SGLang
         relation: Tracked fork · Source study
-        description: Used to follow scheduler, runtime, HiCache, and PD integration boundaries while writing reproducible source notes.
+        description: Used to follow scheduler, runtime, HiCache, and PD integration boundaries alongside related source notes.
         href: https://github.com/imReese/sglang
         label: tracked fork / imReese/sglang
         upstream:
@@ -180,8 +180,8 @@ workSections:
           - Structured Generation
           - Runtime
           - Parser
-  - title: Reproducible engineering analysis
-    intro: These articles are evidence of source paths traced and boundaries checked; they are not presented as ownership of the upstream systems.
+  - title: Source notes
+    intro: Selected notes that follow concrete runtime, cache, and transfer paths in upstream systems.
     items:
       - name: SGLang to Mooncake Store KV path
         relation: Source analysis

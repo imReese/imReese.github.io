@@ -5,7 +5,7 @@ about:
   capabilitiesTitle: Engineering through-line
   capabilitiesIntro: The work is organized around system boundaries and validation loops, not a flat keyword inventory.
   representativeTitle: Representative work
-  representativeIntro: Projects and articles that make the implementation and source-analysis trail inspectable.
+  representativeIntro: A few projects and articles that reflect the systems work behind this site.
   projectLabel: Project
   articleLabel: Article
   links:
@@ -42,9 +42,9 @@ home:
     empty: No articles yet.
   selectedWork:
     title: Selected Engineering Work
-    intro: Three compact proof points, each paired with an implementation or source-analysis link.
+    intro: Three pieces of recent systems work, with links for readers who want to go deeper.
     problemLabel: Problem
-    evidenceLabel: Evidence
+    linkLabel: Explore
 
 projectsPage:
   githubActivityTitle: GitHub activity

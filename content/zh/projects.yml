@@ -1,5 +1,5 @@
 headline: 系统工作
-intro: 只展示少量可验证的大模型推理系统项目、实现工作与源码研究。每项都明确当前状态和证据链接，并把 tracked fork 与自建项目分开。
+intro: 聚焦少量大模型推理系统项目、实现工作与源码研究，直接说明当前范围，并把 tracked fork 与自建项目分开。
 
 overview:
   - label: Runtime
@@ -10,7 +10,7 @@ overview:
     description: 面向 LLM 的 KV Cache platform foundation，拆分控制面、状态索引、执行层和引擎适配层。
   - label: Source work
     value: Mooncake / HiCache
-    description: 可复查的源码分析，聚焦 Cache 生命周期、Store 语义与 Transfer Engine 接入路径。
+    description: 围绕 Cache 生命周期、Store 语义与 Transfer Engine 接入路径整理的源码笔记。
 
 items:
   - name: SGLang Rust Runtime
@@ -41,7 +41,7 @@ items:
       - KV Cache
       - Mooncake
   - name: NexusKV
-    description: 一个分阶段建设的 LLM KV cache platform，明确拆分策略与控制、复用规划与状态索引、执行与数据搬运、引擎生命周期适配。当前仓库用确定性的实现和测试证明边界存在，不把规划中的传输能力写成已完成。
+    description: 一个分阶段建设的 LLM KV cache platform，明确拆分策略与控制、复用规划与状态索引、执行与数据搬运、引擎生命周期适配。当前仓库已包含确定性的实现和测试，传输路径仍在继续建设。
     href: https://github.com/imReese/NexusKV
     label: github.com/imReese/NexusKV
     status:
@@ -74,7 +74,7 @@ diagrams:
   runtime:
     eyebrow: execution path
     title: SGLang Rust Runtime — 已实现的请求路径
-    caption: 图中只展示已经进入代码和测试的边界；生产模型执行与完整传输 backend 不在当前完成声明内。
+    caption: 图中沿着当前代码和测试中的边界展开；生产模型执行与完整传输 backend 仍不在当前范围内。
     steps:
       - label: 协议边界
         meta: HTTP / gRPC / router
@@ -136,11 +136,11 @@ diagrams:
 
 workSections:
   - title: Tracked fork 与源码研究
-    intro: 这些不是自研项目。每项都明确标为 tracked fork/source study，并同时提供 upstream repository。
+    intro: 用于跟进上游实现与集成路径的仓库，同时保留 upstream repository 入口。
     items:
       - name: SGLang
         relation: Tracked fork · Source study
-        description: 用于持续跟踪 scheduler、runtime、HiCache 和 PD 集成边界，并支撑可复查的源码笔记。
+        description: 用于持续跟踪 scheduler、runtime、HiCache 和 PD 集成边界，并连接相关源码笔记。
         href: https://github.com/imReese/sglang
         label: tracked fork / imReese/sglang
         upstream:
@@ -180,8 +180,8 @@ workSections:
           - Structured Generation
           - Runtime
           - Parser
-  - title: 可复查的工程分析
-    intro: 这些文章用于证明读过、跟过和验证过具体源码路径，不代表对 upstream 系统的所有权。
+  - title: 源码笔记
+    intro: 选取几条具体的 Runtime、Cache 与传输路径展开记录。
     items:
       - name: SGLang 到 Mooncake Store 的 KV 路径
         relation: Source analysis

@@ -33,21 +33,21 @@ selectedWork:
     title: SGLang Rust Runtime
     description: 用 Rust 显式实现并测试请求生命周期、调度、Prefix 复用、协议处理与分阶段 PD 传输集成边界。
     problem: 在生产执行路径仍在建设时，让隐藏状态、能力缺口和 fallback 行为可检查。
-    evidence:
+    link:
       label: 当前范围与测试
       href: https://github.com/imReese/sglang-rs#current-scope
   - eyebrow: KV cache platform
     title: NexusKV
     description: 用 Go、Rust、Python 拆开控制策略、状态索引规划、执行层和 SGLang/vLLM lifecycle adapter。
     problem: 在真实 data plane 逐步开发时，避免让 reuse planning 和 transfer policy 滑进 connector 分支。
-    evidence:
+    link:
       label: 架构与执行边界
       href: https://github.com/imReese/NexusKV/blob/main/docs/design/execution-boundary.md
   - eyebrow: Source analysis
     title: Mooncake / HiCache 源码
     description: 沿着具体读写路径追踪 page key、Host KV memory、Store object、replica state 与 shared Transfer Engine 边界。
     problem: 区分容易混在一起的 Cache 命中、materialization、metadata 可见性与数据传输语义。
-    evidence:
+    link:
       label: SGLang 到 Mooncake KV 路径
       href: /blogs/sglang-to-mooncake-store-kv-cache-path
 

@@ -5,7 +5,7 @@ about:
   capabilitiesTitle: 技术能力主线
   capabilitiesIntro: 按系统边界和验证闭环组织能力，不做关键词堆叠。
   representativeTitle: 代表工作
-  representativeIntro: 用项目和文章把实现路径与源码分析过程暴露出来，便于复查。
+  representativeIntro: 选取几个项目和文章，串起这个网站背后的系统工作。
   projectLabel: 项目
   articleLabel: 文章
   links:
@@ -42,9 +42,9 @@ home:
     empty: 还没有文章。
   selectedWork:
     title: Selected Engineering Work
-    intro: 精选三个工程证据点，每项都给出可复查的实现或源码分析链接。
+    intro: 三项近期系统工作，感兴趣时可以继续查看实现或源码笔记。
     problemLabel: 解决的问题
-    evidenceLabel: 证据
+    linkLabel: 继续了解
 
 projectsPage:
   githubActivityTitle: GitHub 动态

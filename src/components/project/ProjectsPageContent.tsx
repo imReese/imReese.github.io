@@ -44,7 +44,7 @@ function LinkArrow() {
   )
 }
 
-function EvidenceLinks({
+function RelatedLinks({
   links,
 }: {
   links: Array<{ label: string; href: string }> | undefined
@@ -54,7 +54,7 @@ function EvidenceLinks({
   }
 
   return (
-    <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2">
+    <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-muted-foreground">
       {links.map((link) => {
         const isExternal = isExternalHref(link.href)
 
@@ -64,7 +64,7 @@ function EvidenceLinks({
             href={withUtmSource(link.href, utm_source)}
             target={isExternal ? '_blank' : undefined}
             rel={isExternal ? 'noopener noreferrer' : undefined}
-            className="inline-flex items-center gap-1.5 border-b border-primary/30 pb-0.5 text-xs font-semibold text-primary transition hover:border-primary"
+            className="inline-flex items-center gap-1.5 text-xs transition hover:text-primary"
           >
             {link.label}
             <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -200,7 +200,7 @@ function FeaturedSystems({ items }: { items: WorkItem[] }) {
                     </ul>
                   ) : null}
                   <TagLine tags={item.tags} />
-                  <EvidenceLinks links={item.evidenceLinks} />
+                  <RelatedLinks links={item.evidenceLinks} />
                 </div>
               </article>
             </li>
@@ -248,7 +248,7 @@ function WorkSectionList({ section }: { section: WorkSection }) {
                     {item.description}
                   </p>
                   <TagLine tags={item.tags} />
-                  <EvidenceLinks
+                  <RelatedLinks
                     links={[
                       ...(item.upstream ? [item.upstream] : []),
                       ...(item.evidenceLinks ?? []),

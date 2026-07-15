@@ -73,18 +73,18 @@ export function OpenSourcePulse() {
                   {work.problem}
                 </p>
                 <a
-                  href={work.evidence.href}
+                  href={work.link.href}
                   target={
-                    work.evidence.href.startsWith('http') ? '_blank' : undefined
+                    work.link.href.startsWith('http') ? '_blank' : undefined
                   }
                   rel={
-                    work.evidence.href.startsWith('http')
+                    work.link.href.startsWith('http')
                       ? 'noopener noreferrer'
                       : undefined
                   }
-                  className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-primary transition hover:text-primary/80"
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs text-muted-foreground transition hover:text-primary"
                 >
-                  {home.selectedWork.evidenceLabel}: {work.evidence.label}
+                  {home.selectedWork.linkLabel} · {work.link.label}
                   <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
                 </a>
               </div>
