@@ -207,7 +207,7 @@ function FeaturedSystems({
                 <div className="flex min-w-0 items-start justify-between gap-4">
                   <div className="min-w-0">
                     {item.status ? (
-                      <span className="mb-3 inline-flex rounded-full border border-primary/25 bg-accent-soft px-2.5 py-1 font-mono text-xs font-semibold uppercase tracking-[0.06em] text-primary">
+                      <span className="mb-3 inline-flex rounded-sm border border-border/80 px-2 py-0.5 font-mono text-xs font-semibold uppercase tracking-[0.06em] text-primary">
                         {item.status.label}
                       </span>
                     ) : null}

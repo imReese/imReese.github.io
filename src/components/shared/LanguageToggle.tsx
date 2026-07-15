@@ -21,10 +21,8 @@ export function LanguageToggle({ className }: { className?: string }) {
       <Languages className="h-4 w-4" aria-hidden="true" />
       <span
         className={cn(
-          'rounded px-1.5 py-0.5 transition-colors duration-150',
-          locale === 'en'
-            ? 'bg-accent-soft text-primary'
-            : 'text-muted-foreground',
+          'px-0.5 transition-colors duration-150',
+          locale === 'en' ? 'text-primary' : 'text-muted-foreground',
         )}
       >
         EN
@@ -34,10 +32,8 @@ export function LanguageToggle({ className }: { className?: string }) {
       </span>
       <span
         className={cn(
-          'rounded px-1.5 py-0.5 transition-colors duration-150',
-          locale === 'zh'
-            ? 'bg-accent-soft text-primary'
-            : 'text-muted-foreground',
+          'px-0.5 transition-colors duration-150',
+          locale === 'zh' ? 'text-primary' : 'text-muted-foreground',
         )}
       >
         中

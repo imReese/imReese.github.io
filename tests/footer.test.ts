@@ -11,10 +11,9 @@ test('footer shows the existing homepage pageview metric only on the homepage', 
   assert.equal(footerSource.includes('site views'), false)
 })
 
-test('footer keeps the copyright text fixed across locales with a current year', () => {
-  assert.match(footerSource, /new Date\(\)\.getFullYear\(\)/)
-  assert.match(footerSource, /Reese\. All rights/)
-  assert.match(footerSource, /reserved\./)
+test('footer keeps the exact fixed copyright text across locales', () => {
+  assert.match(footerSource, /&copy; 2026 Reese\. All rights reserved\./)
+  assert.equal(footerSource.includes('new Date()'), false)
   assert.equal(footerSource.includes('useLocalizedContent'), false)
   assert.equal(footerSource.includes('site.name'), false)
   assert.equal(footerSource.includes('footer.rights'), false)

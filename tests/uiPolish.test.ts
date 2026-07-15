@@ -19,6 +19,10 @@ const aboutSource = readFileSync(
   'src/components/about/AboutContent.tsx',
   'utf8',
 )
+const languageToggleSource = readFileSync(
+  'src/components/shared/LanguageToggle.tsx',
+  'utf8',
+)
 
 test('defines the required semantic Catppuccin tokens for both themes', () => {
   const tokens = [
@@ -47,10 +51,10 @@ test('defines the required semantic Catppuccin tokens for both themes', () => {
   }
 })
 
-test('keeps the homepage system map accessible and removes entrance fading', () => {
-  assert.match(homeSource, /role="img"/)
-  assert.match(homeSource, /aria-label=/)
-  assert.match(homeSource, /md:grid-cols-4/)
+test('keeps the homepage editorial two-column layout without a system map', () => {
+  assert.match(homeSource, /lg:grid-cols-\[0\.82fr_1\.18fr\]/)
+  assert.match(homeSource, /sm:grid-cols-\[2\.5rem_11rem_minmax\(0,1fr\)\]/)
+  assert.equal(homeSource.includes('SystemBoundaryMap'), false)
   assert.equal(homeSource.includes('framer-motion'), false)
 })
 
@@ -63,13 +67,28 @@ test('keeps project limits visible while evidence uses native disclosure', () =>
 })
 
 test('limits blog card metadata without changing filter parameters', () => {
+  const seriesNavigation = blogsSource.slice(
+    blogsSource.indexOf('function SeriesNavigation'),
+    blogsSource.indexOf('function BlogsPageContentView'),
+  )
+
   assert.match(blogsSource, /\.slice\(0, 3\)/)
   assert.match(blogsSource, /params\.set\('series', series\)/)
   assert.match(blogsSource, /searchParams\.get\('series'\)/)
+  assert.match(seriesNavigation, /lg:grid-cols-3/)
+  assert.equal(seriesNavigation.includes('bg-surface'), false)
+  assert.equal(seriesNavigation.includes('border-l'), false)
 })
 
-test('renders the About technical path from localized content', () => {
-  assert.match(aboutSource, /TechnicalPath/)
-  assert.match(aboutSource, /about\.technicalPath/)
-  assert.match(aboutSource, /md:grid-cols-4/)
+test('keeps About editorial flow without a duplicate technical path', () => {
+  assert.equal(aboutSource.includes('TechnicalPath'), false)
+  assert.equal(aboutSource.includes('about.technicalPath'), false)
+  assert.match(aboutSource, /about\.timelineTitle/)
+})
+
+test('keeps language controls spacious without a filled active state', () => {
+  assert.match(languageToggleSource, /h-10/)
+  assert.match(languageToggleSource, /locale === 'en'/)
+  assert.match(languageToggleSource, /locale === 'zh'/)
+  assert.equal(languageToggleSource.includes('bg-accent-soft'), false)
 })

@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { ArrowRight, ArrowUpRight } from 'lucide-react'
+import { ArrowUpRight } from 'lucide-react'
 
 import { Container } from '@/components/layout/Container'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
@@ -17,36 +17,6 @@ function SectionHeading({ title, intro }: { title: string; intro: string }) {
         {intro}
       </p>
     </div>
-  )
-}
-
-function TechnicalPath({ items }: { items: string[] }) {
-  return (
-    <ol
-      aria-label={items.join(' → ')}
-      className="grid gap-5 border-y border-border/70 py-5 md:grid-cols-4 md:gap-4"
-    >
-      {items.map((item, index) => (
-        <li
-          key={item}
-          className="relative flex min-h-12 items-center border-l-2 border-primary bg-surface/45 px-4 py-3 text-sm font-semibold leading-5 text-foreground"
-        >
-          <span>{item}</span>
-          {index < items.length - 1 ? (
-            <>
-              <span
-                className="absolute left-4 top-full h-5 w-px bg-border md:hidden"
-                aria-hidden="true"
-              />
-              <ArrowRight
-                className="absolute left-full top-1/2 hidden h-4 w-4 -translate-x-0.5 -translate-y-1/2 text-primary md:block"
-                aria-hidden="true"
-              />
-            </>
-          ) : null}
-        </li>
-      ))}
-    </ol>
   )
 }
 
@@ -82,11 +52,7 @@ export function AboutContent() {
         </div>
       </div>
 
-      <section className="mt-14 sm:mt-16">
-        <TechnicalPath items={about.technicalPath} />
-      </section>
-
-      <section className="mt-16 sm:mt-20">
+      <section className="mt-20">
         <SectionHeading
           title={about.timelineTitle}
           intro={about.timelineIntro}
@@ -121,7 +87,7 @@ export function AboutContent() {
         </ol>
       </section>
 
-      <section className="mt-16 sm:mt-20">
+      <section className="mt-20">
         <SectionHeading
           title={about.capabilitiesTitle}
           intro={about.capabilitiesIntro}
@@ -151,7 +117,7 @@ export function AboutContent() {
         </div>
       </section>
 
-      <section className="mt-16 sm:mt-20">
+      <section className="mt-20">
         <SectionHeading
           title={about.representativeTitle}
           intro={about.representativeIntro}

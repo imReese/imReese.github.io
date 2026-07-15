@@ -1,10 +1,5 @@
 about:
   headline: 'I build and study the runtime boundaries behind LLM serving.'
-  technicalPath:
-    - Distributed Storage
-    - Workload / CPU Analysis
-    - LLM Runtime
-    - KV Cache / Transfer
   timelineTitle: Career timeline
   timelineIntro: A short path through storage reliability, workload and CPU analysis, and LLM inference systems.
   capabilitiesTitle: Engineering through-line

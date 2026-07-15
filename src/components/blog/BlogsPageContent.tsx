@@ -487,10 +487,10 @@ function SeriesNavigation({
               scroll={false}
               aria-current={isSelected ? 'true' : undefined}
               className={clsx(
-                'group border-b border-border/70 px-3 py-5 transition-colors duration-150',
+                'group border-b border-border/70 py-5 transition-colors duration-150',
                 item.weight === 'reference'
-                  ? 'border-l border-l-border text-muted-foreground hover:border-l-primary'
-                  : 'border-l-2 border-l-primary bg-surface/35 text-foreground hover:bg-surface/60',
+                  ? 'text-muted-foreground'
+                  : 'text-foreground',
               )}
             >
               <span
@@ -500,7 +500,10 @@ function SeriesNavigation({
                 )}
               >
                 {item.label}
-                <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <ChevronRight
+                  className="h-4 w-4 shrink-0 transition-transform duration-150 group-hover:translate-x-0.5"
+                  aria-hidden="true"
+                />
               </span>
               <span className="mt-2 block text-xs leading-5 text-muted-foreground">
                 {item.description}

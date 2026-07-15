@@ -53,8 +53,7 @@ export function Footer() {
               <div className="flex flex-col items-center gap-2 sm:items-end">
                 <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 sm:justify-end">
                   <p className="text-sm text-muted-foreground">
-                    &copy; {new Date().getFullYear()} Reese. All rights
-                    reserved.
+                    &copy; 2026 Reese. All rights reserved.
                   </p>
                   <div className="flex items-center gap-1">
                     <ThemeToggle />
