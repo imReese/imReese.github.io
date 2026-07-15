@@ -1,10 +1,10 @@
 {
   "homepage": {
-    "path": "/",
-    "pageviews": 47,
-    "visits": 28,
-    "visitors": 20,
+    "scope": "site",
+    "pageviews": 182,
+    "visits": 52,
+    "visitors": 30,
     "source": "plausible",
-    "updatedAt": "2026-07-15T05:09:56.819Z"
+    "updatedAt": "2026-07-15T14:05:50.976Z"
   }
 }
