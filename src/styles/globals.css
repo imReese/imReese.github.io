@@ -59,12 +59,12 @@
     );
   }
 
-  .blog-prose > :where(p, ul, ol, blockquote, h2, h3, hr) {
-    max-width: 48rem;
+  .blog-prose {
+    --blog-content-width: 72rem;
   }
 
-  .blog-prose > :where(.not-prose, table) {
-    width: min(100%, 72rem);
+  .blog-prose > :where(p, ul, ol, blockquote, h2, h3, hr, .not-prose, table) {
+    width: min(100%, var(--blog-content-width));
     max-width: 100%;
   }
 
@@ -78,7 +78,7 @@
   }
 
   .blog-prose > .mathjax-display-shell {
-    width: min(100%, 48rem);
+    width: min(100%, var(--blog-content-width));
     max-width: 100%;
     margin: 2rem 0;
     overflow-x: auto;

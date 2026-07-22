@@ -5,6 +5,7 @@ import { RegisterHTMLHandler } from '@mathjax/src/js/handlers/html.js'
 import { TeX } from '@mathjax/src/js/input/tex.js'
 import '@mathjax/src/js/input/tex/ams/AmsConfiguration.js'
 import '@mathjax/src/js/input/tex/base/BaseConfiguration.js'
+import '@mathjax/src/js/input/tex/boldsymbol/BoldsymbolConfiguration.js'
 import '@mathjax/src/js/input/tex/newcommand/NewcommandConfiguration.js'
 import '@mathjax/src/js/input/tex/noundefined/NoUndefinedConfiguration.js'
 import { mathjax } from '@mathjax/src/js/mathjax.js'
@@ -24,7 +25,7 @@ const adaptor = liteAdaptor({ fontSize: EM_SIZE })
 AssistiveMmlHandler(RegisterHTMLHandler(adaptor))
 
 const tex = new TeX({
-  packages: ['base', 'ams', 'newcommand', 'noundefined'],
+  packages: ['base', 'ams', 'boldsymbol', 'newcommand', 'noundefined'],
   formatError(_jax: unknown, error: { message: string }) {
     throw new Error(error.message)
   },
@@ -114,6 +115,10 @@ async function renderMath(tree: Root, file: VFile) {
         node as Parameters<typeof adaptor.outerHTML>[0],
       )
 
+      if (/<mjx-mtext[^>]*style="[^"]*color:\s*red/i.test(markup)) {
+        throw new Error(`Undefined TeX command in: ${value}`)
+      }
+
       const index = target.parent.children.indexOf(target.scope)
 
       if (index !== -1) {
@@ -128,7 +133,7 @@ async function renderMath(tree: Root, file: VFile) {
         })
       }
     } catch (error) {
-      file.message('Could not render math with MathJax 4', {
+      file.fail('Could not render math with MathJax 4', {
         cause: error as Error,
         place: target.element.position,
         ruleId: 'mathjax-v4',
