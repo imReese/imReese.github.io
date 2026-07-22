@@ -72,6 +72,39 @@
     display: block;
     overflow-x: auto;
   }
+
+  .blog-prose .katex {
+    color: hsl(var(--foreground));
+  }
+
+  .blog-prose > .katex-display {
+    width: min(100%, 48rem);
+    max-width: 100%;
+  }
+
+  .blog-prose .katex-display {
+    margin: 2rem 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.5rem 0 0.75rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .blog-prose .katex-display > .katex {
+    min-width: max-content;
+    font-size: 1.08em;
+  }
+}
+
+@media (max-width: 640px) {
+  .blog-prose .katex-display {
+    margin: 1.75rem 0;
+  }
+
+  .blog-prose .katex-display > .katex {
+    font-size: 1em;
+  }
 }
 
 @layer base {

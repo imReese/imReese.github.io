@@ -191,3 +191,26 @@ test('RSS routes use the same published blog source as the site', () => {
   assert.match(feedSource, /createRssResponse/)
   assert.match(rssSource, /createRssResponse/)
 })
+
+test('MDX math uses KaTeX with accessible HTML and mobile-safe styles', () => {
+  const packageJson = JSON.parse(readFileSync('package.json', 'utf8'))
+  const mdxSource = readFileSync('src/lib/mdx.ts', 'utf8')
+  const layoutSource = readFileSync('src/app/layout.tsx', 'utf8')
+  const globalStyles = readFileSync('src/styles/globals.css', 'utf8')
+  const kimiArticle = readFileSync(
+    'content/blogs/kimi-kda-cache-sglang-vllm-mooncake-store.mdx',
+    'utf8',
+  )
+
+  assert.ok(packageJson.dependencies['remark-math'])
+  assert.ok(packageJson.dependencies['rehype-katex'])
+  assert.ok(packageJson.dependencies.katex)
+  assert.match(mdxSource, /remarkPlugins: \[remarkMath\]/)
+  assert.match(mdxSource, /rehypeKatex/)
+  assert.match(mdxSource, /output: 'htmlAndMathml'/)
+  assert.match(layoutSource, /import 'katex\/dist\/katex\.min\.css'/)
+  assert.match(globalStyles, /\.blog-prose \.katex-display/)
+  assert.match(globalStyles, /overflow-x: auto/)
+  assert.match(kimiArticle, /\\tag\{1\}/)
+  assert.match(kimiArticle, /\\mathbf S_t/)
+})

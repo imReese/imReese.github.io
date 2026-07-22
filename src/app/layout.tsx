@@ -14,6 +14,7 @@ import {
   RSS_TITLE,
   SITE_URL,
 } from '@/lib/seo'
+import 'katex/dist/katex.min.css'
 import '@/styles/globals.css'
 
 const jetBrainsMono = JetBrains_Mono({
