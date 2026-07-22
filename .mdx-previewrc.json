@@ -1,0 +1,17 @@
+{
+  "framework": "nextjs",
+  "enableScripts": true,
+  "tailwind": {
+    "enabled": "disabled"
+  },
+  "components": {
+    "CompareCallout": "./src/components/shared/mdx-preview/CompareCallout.tsx",
+    "ExpandableNotes": "./src/components/shared/mdx-preview/ExpandableNotes.tsx",
+    "FlowDiagram": "./src/components/shared/mdx-preview/FlowDiagram.tsx",
+    "LayerDiagram": "./src/components/shared/mdx-preview/LayerDiagram.tsx",
+    "MappingDiagram": "./src/components/shared/mdx-preview/MappingDiagram.tsx",
+    "SequenceDiagram": "./src/components/shared/mdx-preview/SequenceDiagram.tsx",
+    "StateDiagram": "./src/components/shared/mdx-preview/StateDiagram.tsx",
+    "SystemBoundaryDiagram": "./src/components/shared/mdx-preview/SystemBoundaryDiagram.tsx"
+  }
+}

@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import * as React from 'react'
 import { type CSSProperties, type ReactNode } from 'react'
 
 type DiagramTone =
