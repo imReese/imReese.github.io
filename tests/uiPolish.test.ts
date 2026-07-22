@@ -24,6 +24,10 @@ const languageToggleSource = readFileSync(
   'utf8',
 )
 const headerSource = readFileSync('src/components/layout/Header.tsx', 'utf8')
+const blogLayoutSource = readFileSync(
+  'src/components/layout/BlogLayout.tsx',
+  'utf8',
+)
 const systemsPanelSource = readFileSync(
   'src/components/home/SystemsPanel.tsx',
   'utf8',
@@ -86,6 +90,11 @@ test('limits blog card metadata without changing filter parameters', () => {
   assert.match(seriesNavigation, /lg:grid-cols-3/)
   assert.equal(seriesNavigation.includes('bg-surface'), false)
   assert.equal(seriesNavigation.includes('border-l'), false)
+})
+
+test('uses one shared content rail across every blog article', () => {
+  assert.match(blogLayoutSource, /mx-auto w-full max-w-6xl/)
+  assert.match(globalsSource, /--blog-content-width: 72rem/)
 })
 
 test('keeps About editorial flow without a duplicate technical path', () => {

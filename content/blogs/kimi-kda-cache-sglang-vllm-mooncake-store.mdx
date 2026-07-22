@@ -402,7 +402,10 @@ attention 输出 o_t 与 output gate
 
 ## KDA cache 是卷积前 Q/K/V 历史加递归矩阵
 
-Kimi Linear 的 decoder layer 根据 `config.is_kda_layer(layer_idx)` 在 KDA 与 MLA 之间选择。vLLM 的 KDA 层实例化 `KimiGatedDeltaNetAttention`，入口见 [`KimiDecoderLayer`](https://github.com/vllm-project/vllm/blob/387189c42997b27e2c04b5d97ef8190ffa2bf909/vllm/model_executor/models/kimi_linear.py#L288-L326)；SGLang 对应地实例化 `KimiDeltaAttention`，入口见 [`KimiDecoderLayer`](https://github.com/sgl-project/sglang/blob/297f9336c8bf81e2fcf06b930d2dd3551f7dec15/python/sglang/srt/models/kimi_linear.py#L415-L449)。两边的命名和 kernel 封装不同，但要保存的时间状态相同。
+Kimi Linear 的 decoder layer 根据 `config.is_kda_layer(layer_idx)` 在 KDA 与 MLA 之间选择。
+vLLM 的 KDA 层实例化 `KimiGatedDeltaNetAttention`，入口见 [`KimiDecoderLayer`](https://github.com/vllm-project/vllm/blob/387189c42997b27e2c04b5d97ef8190ffa2bf909/vllm/model_executor/models/kimi_linear.py#L288-L326)；
+SGLang 对应地实例化 `KimiDeltaAttention`，入口见 [`KimiDecoderLayer`](https://github.com/sgl-project/sglang/blob/297f9336c8bf81e2fcf06b930d2dd3551f7dec15/python/sglang/srt/models/kimi_linear.py#L415-L449)。
+两边的命名和 kernel 封装不同，但要保存的时间状态相同。
 
 一个 KDA 层的 cache 由两部分组成：
 
