@@ -159,7 +159,7 @@ Mooncake Store API
 
 ## KDA 的计算原理：先遗忘，再纠错
 
-KDA 的核心是一张固定大小的关联记忆矩阵 `S`。每个 KDA layer 的每个 head 都用它记录 key 到 value 的映射；新 token 到来时，KDA 不会把 `k vᵀ` 永远累加，而是依次做三件事：
+KDA 的核心是一张固定大小的关联记忆矩阵 $\mathbf S$。每个 KDA layer 的每个 head 都用它记录 key 到 value 的映射；新 token 到来时，KDA 不会把 $\boldsymbol{k}\boldsymbol{v}^{\top}$ 永远累加，而是依次做三件事：
 
 ```text
 1. 按 key channel 衰减旧状态             fine-grained forgetting
@@ -171,15 +171,15 @@ KDA 的核心是一张固定大小的关联记忆矩阵 `S`。每个 KDA layer �
 
 $$
 \begin{aligned}
-\mathbf q_t,\mathbf k_t &\in \mathbb R^{d_k}, \\
-\mathbf v_t &\in \mathbb R^{d_v}, \\
+\boldsymbol{q}_t,\boldsymbol{k}_t &\in \mathbb R^{d_k}, \\
+\boldsymbol{v}_t &\in \mathbb R^{d_v}, \\
 \mathbf S_t &\in \mathbb R^{d_k \times d_v}, \\
-\widehat{\mathbf v}_t &= \mathbf S_t^\top \mathbf k_t, \\
-\mathbf o_t &= \mathbf S_t^\top \mathbf q_t.
+\widehat{\boldsymbol{v}}_t &= \mathbf S_t^\top \boldsymbol{k}_t, \\
+\boldsymbol{o}_t &= \mathbf S_t^\top \boldsymbol{q}_t.
 \end{aligned}
 $$
 
-其中 $\widehat{\mathbf v}_t$ 是用 key $\mathbf k_t$ 从记忆中预测出的 value，$\mathbf o_t$ 是当前 token 的 attention 输出。
+其中 $\widehat{\boldsymbol{v}}_t$ 是用 key $\boldsymbol{k}_t$ 从记忆中预测出的 value，$\boldsymbol{o}_t$ 是当前 token 的 attention 输出。
 
 ### 从普通 linear attention 到 DeltaNet
 
@@ -187,19 +187,19 @@ $$
 
 $$
 \begin{aligned}
-\mathbf S_t &= \mathbf S_{t-1} + \mathbf k_t \mathbf v_t^\top, \\
-\mathbf o_t &= \mathbf S_t^\top \mathbf q_t.
+\mathbf S_t &= \mathbf S_{t-1} + \boldsymbol{k}_t \boldsymbol{v}_t^\top, \\
+\boldsymbol{o}_t &= \mathbf S_t^\top \boldsymbol{q}_t.
 \end{aligned}
 $$
 
 这等价于不停加强关联，却没有“同一个 key 已经写过时应该覆盖什么”的规则。序列变长后，彼此相似的 key 会在有限矩阵里持续叠加并互相干扰。
 
-DeltaNet 把状态更新改写成一次在线回归。它先看旧状态能否由 `k_t` 重建 `v_t`：
+DeltaNet 把状态更新改写成一次在线回归。它先看旧状态能否由 $\boldsymbol{k}_t$ 重建 $\boldsymbol{v}_t$：
 
 $$
 \begin{aligned}
-\widehat{\mathbf v}_t &= \mathbf S_{t-1}^\top \mathbf k_t, \\
-\mathbf e_t &= \mathbf v_t - \widehat{\mathbf v}_t.
+\widehat{\boldsymbol{v}}_t &= \mathbf S_{t-1}^\top \boldsymbol{k}_t, \\
+\boldsymbol{e}_t &= \boldsymbol{v}_t - \widehat{\boldsymbol{v}}_t.
 \end{aligned}
 $$
 
@@ -208,25 +208,25 @@ $$
 $$
 \begin{aligned}
 \mathbf S_t
-&= \mathbf S_{t-1} + \beta_t \mathbf k_t \mathbf e_t^\top \\
-&= \left(\mathbf I - \beta_t \mathbf k_t \mathbf k_t^\top\right)\mathbf S_{t-1}
-   + \beta_t \mathbf k_t \mathbf v_t^\top.
+&= \mathbf S_{t-1} + \beta_t \boldsymbol{k}_t \boldsymbol{e}_t^\top \\
+&= \left(\mathbf I - \beta_t \boldsymbol{k}_t \boldsymbol{k}_t^\top\right)\mathbf S_{t-1}
+   + \beta_t \boldsymbol{k}_t \boldsymbol{v}_t^\top.
 \end{aligned}
 $$
 
-`beta_t ∈ [0, 1]` 可以理解为这个 token 的写入强度，也就是在线梯度下降的学习率。若旧状态已经能正确预测 `v_t`，`e_t` 接近 0，几乎不用再写；若预测错误，就沿 `k_t` 对应的方向纠正记忆。
+$\beta_t \in [0,1]$ 可以理解为这个 token 的写入强度，也就是在线梯度下降的学习率。若旧状态已经能正确预测 $\boldsymbol{v}_t$，$\boldsymbol{e}_t$ 接近 0，几乎不用再写；若预测错误，就沿 $\boldsymbol{k}_t$ 对应的方向纠正记忆。
 
 ### Gated DeltaNet 的标量遗忘为什么还不够
 
-Delta rule 会纠错，但旧关联仍可能长期存在。Gated DeltaNet 因此给每个 head 增加一个标量 `alpha_t`：
+Delta rule 会纠错，但旧关联仍可能长期存在。Gated DeltaNet 因此给每个 head 增加一个标量 $\alpha_t$：
 
 $$
 \mathbf S_t
-= \alpha_t\left(\mathbf I - \beta_t \mathbf k_t \mathbf k_t^\top\right)\mathbf S_{t-1}
-+ \beta_t \mathbf k_t \mathbf v_t^\top.
+= \alpha_t\left(\mathbf I - \beta_t \boldsymbol{k}_t \boldsymbol{k}_t^\top\right)\mathbf S_{t-1}
++ \beta_t \boldsymbol{k}_t \boldsymbol{v}_t^\top.
 $$
 
-同一个 head 的整个状态只能用一个遗忘率：要么一起记得久一点，要么一起忘得快一点。KDA 的核心变化，就是把这个 head-wise scalar 换成长度为 `d_k` 的 channel-wise vector。
+同一个 head 的整个状态只能用一个遗忘率：要么一起记得久一点，要么一起忘得快一点。KDA 的核心变化，就是把这个 head-wise scalar 换成长度为 $d_k$ 的 channel-wise vector。
 
 ### KDA 的逐 token 递推
 
@@ -246,10 +246,10 @@ $$
 \boxed{
 \begin{aligned}
 \mathbf S_t
-&= \left(\mathbf I - \beta_t \mathbf k_t \mathbf k_t^\top\right)
+&= \left(\mathbf I - \beta_t \boldsymbol{k}_t \boldsymbol{k}_t^\top\right)
    \mathbf D_t \mathbf S_{t-1}
-   + \beta_t \mathbf k_t \mathbf v_t^\top, \\
-\mathbf o_t &= \mathbf S_t^\top \mathbf q_t.
+   + \beta_t \boldsymbol{k}_t \boldsymbol{v}_t^\top, \\
+\boldsymbol{o}_t &= \mathbf S_t^\top \boldsymbol{q}_t.
 \end{aligned}}
 \tag{1}
 $$
@@ -261,24 +261,24 @@ $$
 \overline{\mathbf S}_t
   &= \mathbf D_t \mathbf S_{t-1}
   && \text{channel-wise decay}, \\
-\widehat{\mathbf v}_t
-  &= \overline{\mathbf S}_t^\top \mathbf k_t
+\widehat{\boldsymbol{v}}_t
+  &= \overline{\mathbf S}_t^\top \boldsymbol{k}_t
   && \text{read}, \\
-\mathbf e_t
-  &= \mathbf v_t - \widehat{\mathbf v}_t
+\boldsymbol{e}_t
+  &= \boldsymbol{v}_t - \widehat{\boldsymbol{v}}_t
   && \text{reconstruction error}, \\
 \mathbf S_t
-  &= \overline{\mathbf S}_t + \beta_t \mathbf k_t \mathbf e_t^\top
+  &= \overline{\mathbf S}_t + \beta_t \boldsymbol{k}_t \boldsymbol{e}_t^\top
   && \text{delta write}, \\
-\mathbf o_t
-  &= \frac{\mathbf S_t^\top \mathbf q_t}{\sqrt{d_k}}
+\boldsymbol{o}_t
+  &= \frac{\mathbf S_t^\top \boldsymbol{q}_t}{\sqrt{d_k}}
   && \text{query}.
 \end{aligned}
 $$
 
-这里有一个容易忽略的顺序：**KDA 是先做 `D_t S_(t-1)`，再用 `k_t` 计算 delta error**。因为 `D_t` 不再是标量，它不能像 GDN 的 scalar gate 那样随便与 rank-1 变换交换位置。
+这里有一个容易忽略的顺序：**KDA 是先做 $\mathbf D_t\mathbf S_{t-1}$，再用 $\boldsymbol{k}_t$ 计算 delta error**。因为 $\mathbf D_t$ 不再是标量，它不能像 GDN 的 scalar gate 那样随便与 rank-1 变换交换位置。
 
-这也与 SGLang 的 recurrent kernel 一一对应：先执行 `h *= exp(g)`，再做 `v -= h^T k`，随后 `v *= beta`、`h += k v^T`，最后计算 `h^T q`。对应实现见 [`fused_sigmoid_gating_recurrent.py`](https://github.com/sgl-project/sglang/blob/297f9336c8bf81e2fcf06b930d2dd3551f7dec15/python/sglang/kernels/ops/attention/fla/fused_sigmoid_gating_recurrent.py#L145-L200)。源码里的临时变量 `v` 在减去预测值后，已经变成了上式的 `e_t`。
+这也与 SGLang 的 recurrent kernel 一一对应：先执行 `h *= exp(g)`，再做 `v -= h^T k`，随后 `v *= beta`、`h += k v^T`，最后计算 `h^T q`。对应实现见 [`fused_sigmoid_gating_recurrent.py`](https://github.com/sgl-project/sglang/blob/297f9336c8bf81e2fcf06b930d2dd3551f7dec15/python/sglang/kernels/ops/attention/fla/fused_sigmoid_gating_recurrent.py#L145-L200)。源码里的临时变量 `v` 在减去预测值后，已经变成了上式的 $\boldsymbol{e}_t$。
 
 ### alpha、beta、Q/K/V 是怎样从 x_t 得到的
 
@@ -286,30 +286,30 @@ $$
 
 $$
 \begin{aligned}
-\widetilde{\mathbf q}_t &= \mathbf W_q \mathbf x_t,
-&\widetilde{\mathbf k}_t &= \mathbf W_k \mathbf x_t,
-&\widetilde{\mathbf v}_t &= \mathbf W_v \mathbf x_t, \\
-\mathbf q_t
+\widetilde{\boldsymbol{q}}_t &= \mathbf W_q \boldsymbol{x}_t,
+&\widetilde{\boldsymbol{k}}_t &= \mathbf W_k \boldsymbol{x}_t,
+&\widetilde{\boldsymbol{v}}_t &= \mathbf W_v \boldsymbol{x}_t, \\
+\boldsymbol{q}_t
   &= \operatorname{L2Norm}\!\left(\operatorname{SiLU}\!\left(
-     \operatorname{ShortConv}(\widetilde{\mathbf q}_t)\right)\right), \\
-\mathbf k_t
+     \operatorname{ShortConv}(\widetilde{\boldsymbol{q}}_t)\right)\right), \\
+\boldsymbol{k}_t
   &= \operatorname{L2Norm}\!\left(\operatorname{SiLU}\!\left(
-     \operatorname{ShortConv}(\widetilde{\mathbf k}_t)\right)\right), \\
-\mathbf v_t
+     \operatorname{ShortConv}(\widetilde{\boldsymbol{k}}_t)\right)\right), \\
+\boldsymbol{v}_t
   &= \operatorname{SiLU}\!\left(\operatorname{ShortConv}(
-     \widetilde{\mathbf v}_t)\right), \\
-\mathbf a_t
-  &= \mathbf W_\alpha^\top \mathbf W_\alpha^\downarrow \mathbf x_t, \\
-\mathbf g_t
+     \widetilde{\boldsymbol{v}}_t)\right), \\
+\boldsymbol{a}_t
+  &= \mathbf W_\alpha^\top \mathbf W_\alpha^\downarrow \boldsymbol{x}_t, \\
+\boldsymbol{g}_t
   &= -\exp(A_{\log})\,
-     \operatorname{softplus}(\mathbf a_t + \mathbf b_{\Delta t}), \\
-\boldsymbol\alpha_t &= \exp(\mathbf g_t), \\
-b_t &= \mathbf W_\beta \mathbf x_t,
+     \operatorname{softplus}(\boldsymbol{a}_t + \boldsymbol{b}_{\Delta t}), \\
+\boldsymbol\alpha_t &= \exp(\boldsymbol{g}_t), \\
+b_t &= \mathbf W_\beta \boldsymbol{x}_t,
 &\beta_t &= \sigma(b_t).
 \end{aligned}
 $$
 
-所以 `g_t` 是 **log-decay**，不是另一个需要持久化的 RNN state；`alpha_t = exp(g_t)` 才是公式中的逐通道遗忘率。`A_log` 是每个 head 的缩放参数，`dt_bias` 则细化到 channel。因为 `g_t ≤ 0`，`alpha_t` 不会大于 1。
+所以 $\boldsymbol{g}_t$ 是 **log-decay**，不是另一个需要持久化的 RNN state；$\boldsymbol\alpha_t = \exp(\boldsymbol{g}_t)$ 才是公式中的逐通道遗忘率。`A_log` 是每个 head 的缩放参数，`dt_bias` 则细化到 channel。因为 $\boldsymbol{g}_t \le 0$，$\boldsymbol\alpha_t$ 不会大于 1。
 
 SGLang 模型层先生成 `mixed_qkv`、raw `forget_gate` 和 raw `beta`。prefill 在模型层对 `beta` 做 sigmoid，再把 raw forget gate 交给 chunk kernel，在 kernel 内融合 `softplus`、`exp` 与 chunk-local cumulative sum；decode kernel 则在单 token 递推里完成 forget-gate activation、beta sigmoid、Q/K L2Norm 和状态更新。入口分别见 [`KimiDeltaAttention.forward`](https://github.com/sgl-project/sglang/blob/297f9336c8bf81e2fcf06b930d2dd3551f7dec15/python/sglang/srt/models/kimi_linear.py#L332-L409)、[`KDAAttnBackend.forward_extend`](https://github.com/sgl-project/sglang/blob/297f9336c8bf81e2fcf06b930d2dd3551f7dec15/python/sglang/srt/layers/attention/linear/kda_backend.py#L384-L487)和 [`kda_gate_chunk_cumsum`](https://github.com/sgl-project/sglang/blob/297f9336c8bf81e2fcf06b930d2dd3551f7dec15/python/sglang/kernels/ops/attention/fla/kda.py#L964-L1029)。
 
@@ -319,25 +319,25 @@ vLLM 做的是同一件事：prefill 调用 `chunk_kda_with_fused_gate(..., outp
 
 ### 为什么它是特殊的 DPLR transition
 
-把单 token 递推中作用于旧状态的矩阵记作 `T_t`：
+把单 token 递推中作用于旧状态的矩阵记作 $\mathbf T_t$：
 
 $$
 \begin{aligned}
 \mathbf T_t
-&= \left(\mathbf I - \beta_t \mathbf k_t \mathbf k_t^\top\right)\mathbf D_t \\
+&= \left(\mathbf I - \beta_t \boldsymbol{k}_t \boldsymbol{k}_t^\top\right)\mathbf D_t \\
 &= \mathbf D_t
-   - \beta_t \mathbf k_t
-     \left(\mathbf k_t \odot \boldsymbol\alpha_t\right)^\top.
+   - \beta_t \boldsymbol{k}_t
+     \left(\boldsymbol{k}_t \odot \boldsymbol\alpha_t\right)^\top.
 \end{aligned}
 $$
 
-第一项是 diagonal，第二项是 rank 1，所以这是 Diagonal-Plus-Low-Rank（符号上实际为 diagonal minus low-rank）transition。一般 DPLR 写成 `D_t - a_t b_t^T`，要独立生成两根向量；KDA 把 low-rank 两侧都约束到同一个 `k_t` 及其 decay-scaled 版本，既保留 classical delta rule 的“按 key 纠错”含义，也让专用 kernel 少做一批中间矩阵乘法。
+第一项是 diagonal，第二项是 rank 1，所以这是 Diagonal-Plus-Low-Rank（符号上实际为 diagonal minus low-rank）transition。一般 DPLR 写成 $\mathbf D_t-\boldsymbol{a}_t\boldsymbol{b}_t^\top$，要独立生成两根向量；KDA 把 low-rank 两侧都约束到同一个 $\boldsymbol{k}_t$ 及其 decay-scaled 版本，既保留 classical delta rule 的“按 key 纠错”含义，也让专用 kernel 少做一批中间矩阵乘法。
 
 ### prefill 为什么能按 chunk 并行
 
 decode 每次只有一个 token，直接执行上面的五步即可。prefill 若也逐 token launch kernel，GPU 利用率会很差。论文因此把一个 kernel chunk 内的多个 transition 压缩起来。
 
-对于 chunk 中第 `1..r` 个 token，递推可以统一写成：
+对于 chunk 中第 $1,\ldots,r$ 个 token，递推可以统一写成：
 
 $$
 \mathbf S_r = \mathbf P_r \mathbf S_0 + \mathbf H_r,
@@ -347,7 +347,7 @@ $$
 
 其中 $\mathbf H_r$ 汇总当前 chunk 内所有 key/value 写入项经过后续 transition 后的贡献。
 
-KDA 利用 WY representation，把这一串 diagonal + rank-1 矩阵的乘积转成可批量计算的辅助量 `W` 与 `U`；再用 UT transform 把它们归结为一个小型下三角求解。最终的 chunk state update（论文 Eq. 8）可以概括为：
+KDA 利用 WY representation，把这一串 diagonal + rank-1 矩阵的乘积转成可批量计算的辅助量 $\mathbf W$ 与 $\mathbf U$；再用 UT transform 把它们归结为一个小型下三角求解。最终的 chunk state update（论文 Eq. 8）可以概括为：
 
 $$
 \mathbf S_{\mathrm{out}}
@@ -364,15 +364,15 @@ $$
 + \mathbf O_{\mathrm{causal\text{-}intra}}(\mathbf U,\mathbf W,\mathbf Q,\mathbf K).
 $$
 
-`inter_chunk` 读取 chunk 入口的旧状态，`causal_intra_chunk` 处理本 chunk 内 token 之间的因果依赖。这样绝大部分工作可落到半精度矩阵乘法；chunk 与 chunk 之间仍只传递最终的 `S`。
+`inter_chunk` 读取 chunk 入口的旧状态，`causal_intra_chunk` 处理本 chunk 内 token 之间的因果依赖。这样绝大部分工作可落到半精度矩阵乘法；chunk 与 chunk 之间仍只传递最终的 $\mathbf S$。
 
 论文伪代码默认 `chunk_size = 64`，当前 SGLang Triton KDA prefill 也在 [`chunk_kda_fwd`](https://github.com/sgl-project/sglang/blob/297f9336c8bf81e2fcf06b930d2dd3551f7dec15/python/sglang/kernels/ops/attention/fla/kda.py#L1032-L1075)中固定使用 64。但这个 64 是 **KDA kernel 内部的计算 tile**，不是 scheduler 的 chunked-prefill 大小，更不是 prefix cache checkpoint interval：
 
-| 名称                                | 所在层             | 作用                                         | 是否天然产生可复用 checkpoint              |
-| ----------------------------------- | ------------------ | -------------------------------------------- | ------------------------------------------ |
-| KDA kernel chunk（如 64）           | 算子               | 用 WY/UT 提高一次 forward 内的并行度         | 否，只产生临时 `W/U/gamma` 和 chunk 末 `S` |
-| scheduler prefill chunk（如 1k/4k） | 调度器             | 限制一次 forward 的 token 数、改善调度公平性 | 通常只保证 step 末状态已提交               |
-| prefix checkpoint interval          | cache/radix policy | 决定哪些 prefix 边界有可寻址的完整状态       | 是，但必须显式抽取并绑定到该边界           |
+| 名称                                | 所在层             | 作用                                         | 是否天然产生可复用 checkpoint                                                  |
+| ----------------------------------- | ------------------ | -------------------------------------------- | ------------------------------------------------------------------------------ |
+| KDA kernel chunk（如 64）           | 算子               | 用 WY/UT 提高一次 forward 内的并行度         | 否，只产生临时 $\mathbf W/\mathbf U/\boldsymbol\gamma$ 和 chunk 末 $\mathbf S$ |
+| scheduler prefill chunk（如 1k/4k） | 调度器             | 限制一次 forward 的 token 数、改善调度公平性 | 通常只保证 step 末状态已提交                                                   |
+| prefix checkpoint interval          | cache/radix policy | 决定哪些 prefix 边界有可寻址的完整状态       | 是，但必须显式抽取并绑定到该边界                                               |
 
 因此，不需要为了匹配论文的 64-token chunk，把服务层的 chunked prefill 也设成 64 或 1k。算子可以在一个很大的 scheduler forward 内自行切成许多 64-token tile；能否把其中某个 tile 末状态提升为 prefix checkpoint，是另一层机制。
 

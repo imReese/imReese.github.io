@@ -1,7 +1,7 @@
 import { type MDXComponents } from 'mdx/types'
 import Image, { type ImageProps } from 'next/image'
 import Link from 'next/link'
-import { type AnchorHTMLAttributes } from 'react'
+import { type AnchorHTMLAttributes, type TableHTMLAttributes } from 'react'
 import clsx from 'clsx'
 import { CodeBlock } from './CodeBlock'
 import {
@@ -44,6 +44,25 @@ const CustomLink = ({
   )
 }
 
+const ResponsiveTable = ({
+  className,
+  ...props
+}: TableHTMLAttributes<HTMLTableElement>) => (
+  <div className="not-prose my-8 w-full max-w-[72rem] overflow-x-auto rounded-xl border border-border bg-card/30 shadow-sm">
+    <table
+      {...props}
+      className={clsx(
+        'w-full min-w-[48rem] border-collapse text-left text-sm',
+        '[&_code]:rounded-md [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em] [&_code]:text-foreground',
+        '[&_td]:border-b [&_td]:border-border/70 [&_td]:px-4 [&_td]:py-3 [&_td]:align-top [&_td]:leading-6 [&_td]:text-muted-foreground',
+        '[&_th]:border-b [&_th]:border-border [&_th]:bg-muted/45 [&_th]:px-4 [&_th]:py-3 [&_th]:align-bottom [&_th]:font-semibold [&_th]:text-foreground',
+        '[&_tbody_tr:last-child_td]:border-b-0',
+        className,
+      )}
+    />
+  </div>
+)
+
 export const mdxComponents: MDXComponents = {
   CompareCallout,
   ExpandableNotes,
@@ -62,4 +81,5 @@ export const mdxComponents: MDXComponents = {
   ),
   a: CustomLink,
   pre: CodeBlock,
+  table: ResponsiveTable,
 }
