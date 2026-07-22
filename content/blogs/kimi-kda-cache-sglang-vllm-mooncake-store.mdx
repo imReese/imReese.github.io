@@ -18,9 +18,9 @@ series: 'Mooncake / HiCache Internals'
 featured: true
 ---
 
-Kimi Linear 的 prefix cache 不能只按普通 Transformer 的 KV block 来理解。模型里一部分层是 MLA，另一部分层是 KDA；前者需要一串可分页的 KV，后者只需要“前缀处理到当前位置以后”的有限状态。真正困难的地方不只是存下这个状态，而是让它和 token prefix、MLA block、scheduler step、HiCache 层级以及 Mooncake Store object 的命中边界始终一致。
+Kimi Linear 的 prefix cache 不能只按普通 Transformer 的 KV block 来理解。模型里一部分层是 MLA，另一部分层是 KDA；前者需要一串可分页的 KV，后者只需要“前缀处理到当前位置以后”的有限状态。难点不仅在于保存这份状态，还在于让它与 token prefix、MLA block、scheduler step、HiCache 层级以及 Mooncake Store object 的命中边界始终一致。
 
-本文不把 Mooncake 当作 vLLM 的一个 connector 附录，而是从同一份 Kimi KDA 状态出发，分别追踪两条完整调用链：
+本文以 Kimi KDA 状态为起点，分别追踪 SGLang 和 vLLM 如何将本地 checkpoint 接入 Mooncake Store：
 
 ```text
 Kimi KDA
@@ -41,10 +41,10 @@ Kimi KDA
 5. HiCache 怎样把 MLA 与 KDA 从 GPU 搬到 Host，再写入 Mooncake？
 6. vLLM 怎样在共享前缀分叉点按需补 KDA checkpoint？
 7. 两套 Mooncake adapter 的 key、value 与 lookup 规则有什么不同？
-8. 哪些链路已经闭环，哪些仍缺少控制面或端到端测试？
+8. 哪些链路已经打通，哪些仍缺少控制面或端到端测试？
 ```
 
-先给结论：**Mooncake Store 只负责按 opaque key 保存和搬运 bytes。KDA checkpoint 在哪个 token 边界创建、它是否和 MLA prefix 对齐、缺失时是否需要补算，全部由 SGLang 或 vLLM 的控制面决定。**
+核心结论是：**Mooncake Store 负责按 key 保存和搬运不透明的字节数据。KDA checkpoint 在哪个 token 边界创建、它是否和 MLA prefix 对齐、缺失时是否需要补算，全部由 SGLang 或 vLLM 的控制面决定。**
 
 两套引擎当前走的是不同路线：
 
@@ -62,9 +62,9 @@ vLLM
   → raw KDA page 可交给 MooncakeStoreConnector
 ```
 
-不过，两条外部存储链都不能只凭“Mooncake 能存 KDA bytes”就判定完全闭环。SGLang 的 HiCache 数据面已经显式支持 Mamba/KDA sidecar object，但启用 HiCache 时暂时跳过本地 branching-state fill；vLLM 本地能生成 junction checkpoint，但 connector 特殊路径会丢掉 `shared_prefix_boundary`。这两个缺口位于不同层。
+两条链都已具备 KDA 状态的数据传输能力，但远端共享前缀复用尚未完全打通：SGLang 缺少 HiCache 模式下的分叉状态补算，vLLM 则没有把分叉边界完整传入 `MooncakeStoreConnector`。后文会分别定位这两个控制面缺口。
 
-## 源码版本与证明边界
+## 源码版本与结论范围
 
 本文固定到以下源码快照：
 
@@ -79,12 +79,12 @@ Mooncake 3ae17993c15a7339229cd5cde386b0eda6397438  2026-07-22
 三个项目都在快速修改 hybrid cache、Mamba/KDA layout 和 connector，所以文中会区分三类判断：
 
 ```text
-源码已经闭环       可以从入口一直追到状态读写和测试
-接口形状允许       数据结构看起来能承载，但缺少完整调用链或专项测试
-尚未闭环 / 有风险  调度信息丢失、接口仍按旧布局假设，或测试没有覆盖
+源码调用链可确认      可以从入口一直追到状态读写和测试
+接口形状允许          数据结构看起来能承载，但缺少完整调用链或专项测试
+调用链未打通/有风险   调度信息丢失、接口仍按旧布局假设，或测试没有覆盖
 ```
 
-本文不提供性能 benchmark，也不把 Mamba/GDN 的测试结果自动外推为 Kimi KDA 端到端验证。它证明的是：在这些 commit 上，KDA 状态、prefix 命中、HiCache/connector 与 Mooncake object 之间，哪些路径能由源码完整推出，哪些还不能。
+本文不做性能评测，也不把 Mamba/GDN 的测试结果直接视为 Kimi KDA 的端到端验证。下文结论仅覆盖固定提交中能够由源码和测试确认的状态读写与命中路径；未覆盖部分会单独标注。
 
 KDA 的数学部分以 Moonshot AI 的 [`Kimi Linear` 技术报告](https://arxiv.org/pdf/2510.26692)第 2、3、4 节和附录 B、C 为准，并用官方开源的 [`fla/ops/kda`](https://github.com/fla-org/flash-linear-attention/tree/main/fla/ops/kda)以及下文固定版本的 SGLang、vLLM 实现交叉核对。论文使用 `S ∈ R^(d_k × d_v)`；不同 kernel 可能为了访存把最后两维转置，本文讲公式时沿用论文方向。
 
@@ -159,7 +159,7 @@ Mooncake Store API
 
 ## KDA 的计算原理：先遗忘，再纠错
 
-先给结论。对每个 KDA layer、每个 head、每个 token，KDA 都在维护一张有限大小的“关联记忆表” `S`：给它一个 key，它尝试从 `S` 中读出对应的 value。新 token 到来时，KDA 不会把 `k vᵀ` 永远累加，而是依次做三件事：
+KDA 的核心是一张固定大小的关联记忆矩阵 `S`。每个 KDA layer 的每个 head 都用它记录 key 到 value 的映射；新 token 到来时，KDA 不会把 `k vᵀ` 永远累加，而是依次做三件事：
 
 ```text
 1. 按 key channel 衰减旧状态             fine-grained forgetting
@@ -404,7 +404,7 @@ conv_state      = mamba_cache_dtype 或由 model dtype 推导
 recurrent_state = float32
 ```
 
-vLLM 的 `kda_state_dtype` 明确规定这一点，见 [`mamba_utils.py`](https://github.com/vllm-project/vllm/blob/387189c42997b27e2c04b5d97ef8190ffa2bf909/vllm/model_executor/layers/mamba/mamba_utils.py#L119-L125)；SGLang 默认也令 conv 为 BF16、temporal 为 FP32，并允许分别覆盖，见 [`mamba2_state_dtype`](https://github.com/sgl-project/sglang/blob/297f9336c8bf81e2fcf06b930d2dd3551f7dec15/python/sglang/srt/configs/mamba_utils.py#L41-L107)。因此估算 KDA cache 不能只拿模型 dtype 乘元素数；递归矩阵通常是更贵的 FP32 部分。
+vLLM 的 `kda_state_dtype` 明确规定这一点，见 [`mamba_utils.py`](https://github.com/vllm-project/vllm/blob/387189c42997b27e2c04b5d97ef8190ffa2bf909/vllm/model_executor/layers/mamba/mamba_utils.py#L119-L125)；SGLang 默认也令 conv 为 BF16、temporal 为 FP32，并允许分别覆盖，见 [`mamba2_state_dtype`](https://github.com/sgl-project/sglang/blob/297f9336c8bf81e2fcf06b930d2dd3551f7dec15/python/sglang/srt/configs/mamba_utils.py#L41-L107)。因此估算 KDA cache 不能只拿模型 dtype 乘元素数；FP32 递归矩阵通常占用更多字节。
 
 ## “一个请求只有一个 KDA cache”要分逻辑与物理两层理解
 
@@ -418,7 +418,7 @@ C(P_t) = {
 
 从 scheduler/radix 的逻辑身份看，它是一个 checkpoint：同一个 token prefix hash、同一个逻辑 KDA block id、同一个可恢复边界。
 
-从物理存储看，它绝不是一个小 tensor。每个 KDA layer 都有自己的状态页，而同一个 block id 在每层页表中索引出该层的 `conv_state + recurrent_state`。所以更准确的说法是：
+从物理存储看，它并不是单个 tensor。每个 KDA layer 都有自己的状态页，而同一个 block id 在每层页表中索引出该层的 `conv_state + recurrent_state`。所以更准确的说法是：
 
 > 一个请求在某一可恢复边界上有一个逻辑 KDA checkpoint；这个 checkpoint 由所有 KDA 层的物理状态页共同组成。
 
@@ -538,7 +538,7 @@ mamba_track_interval
 
 ## SGLang 链路二：checkpoint 怎样进入 UnifiedRadixCache
 
-完成 forward 后，SGLang 不把整个 KDA tensor 塞进 radix node。radix node 保存的是 Mamba/KDA pool slot index：
+完成 forward 后，SGLang 不会把完整 KDA tensor 直接存入 radix node；radix node 保存的是 Mamba/KDA pool slot index：
 
 ```text
 UnifiedTreeNode
@@ -580,17 +580,17 @@ best Mamba value length = 0
 
 ```text
 SGLang local
-  forward 可以跨过 junction
+  forward 可以跨过分叉点
   → 从中间 h 抽取 checkpoint
 
 vLLM local
   Kimi operator 只暴露 step 末状态
-  → scheduler 让 forward 恰好停在 junction
+  → scheduler 让 forward 恰好停在分叉点
 ```
 
 ## SGLang 链路三：UnifiedRadixCache 到 HiCache Host
 
-HiCache 不是一个单独的“KV tensor copy”。对 hybrid 模型，它把 Full/MLA pool 当作 anchor，并让 KDA 作为 sidecar pool 与同一个 radix node 一起迁移。
+对 hybrid 模型，HiCache 会同时迁移 Full/MLA KV 和 KDA 状态：Full/MLA pool 作为主缓存条目，KDA sidecar pool 与它绑定到同一个 radix node。
 
 当 node 需要备份到 Host 时，`UnifiedRadixCache.write_backup` 分别向各 component 请求 transfer descriptor：
 
@@ -658,7 +658,7 @@ SGLang 侧实现见 [`_batch_io_v2`](https://github.com/sgl-project/sglang/blob/
 
 `batch_exists_v2` 对同一个 logical page 检查全部 temporal/conv component：只有这一页的所有 object 都存在，`page_exists` 才为 true。对于 Mamba/KDA 的 `TRAILING_PAGES` policy，它从候选 prefix 尾部向前寻找最近一个完整 checkpoint，再与 Full/MLA 的连续命中长度取最小值。实现见 [`MooncakeStore.batch_exists_v2`](https://github.com/sgl-project/sglang/blob/297f9336c8bf81e2fcf06b930d2dd3551f7dec15/python/sglang/srt/mem_cache/storage/mooncake_store/mooncake_store.py#L776-L829)。
 
-因此 SGLang 的 Mooncake object 原子性是逻辑上的：
+因此，SGLang 以完整 checkpoint 为单位判断 KDA 命中：
 
 ```text
 temporal exists AND every conv exists
@@ -796,7 +796,7 @@ Mooncake 只有 MLA(P_1k)，没有 C(P_1k)
     KDA forward 在 P_1k 生成 branching checkpoint
 ```
 
-这不是 Mooncake bytes 搬运失败，而是“缺失 checkpoint 的创建策略”没有穿过 HiCache 控制面。
+问题不在 Mooncake 的数据传输，而在于 HiCache 控制面尚未触发缺失 checkpoint 的创建。
 
 ## vLLM prefill 默认只把 step 末状态写回 state slot
 
@@ -827,7 +827,7 @@ C(P_4k) 不能反推回 C(P_1k)
 
 后来的请求如果只共享 1k prefix，而系统没有 `C(P_1k)`，保存着 `C(P_4k)` 对它没有帮助。
 
-## Kimi Linear 默认不是 all，而是 align
+## Kimi Linear 在 vLLM 中使用 align 模式
 
 vLLM 暴露三种 `mamba_cache_mode`：
 
@@ -863,7 +863,7 @@ align:
 
 ## align 模式如何让一个状态页跨 scheduler step 前进
 
-`MambaManager` 在 align 模式下维护 `last_state_block_idx`。每个 step 为当前运行状态准备一个新的尾部 state block；worker 在 forward 前，把上一步状态从旧 block 复制到这个新 block，然后本次 KDA 算子原地推进新 block。再过一个 step，旧的旧 block 才会被释放并替换成 null。
+`MambaManager` 在 align 模式下维护 `last_state_block_idx`。每个 step 为当前运行状态准备一个新的尾部 state block；worker 在 forward 前，把上一步状态从旧 block 复制到这个新 block，然后本次 KDA 算子原地推进新 block。再过一个 step，更早的 state block 才会被释放并替换成 null placeholder。
 
 可以把它理解成双缓冲式滚动：
 
@@ -898,7 +898,7 @@ MLA cache: P_1k、P_2k、P_3k、P_4k 对应的分页 KV 都在
 KDA cache: 只有 scheduler step 末尾的 C(P_4k)
 ```
 
-req2 不能使用 `C(P_4k)`，因此它第一次到来时，至少必须从头处理共享的 1k，才能生成 `C(P_1k)`。当前 vLLM 的妙处是，它不会因此要求所有请求预先每 1k 切一次。
+req2 不能使用 `C(P_4k)`，因此它第一次到来时，至少必须从头处理共享的 1k，才能生成 `C(P_1k)`。vLLM 会按需截断这次分叉请求，无需预先把所有请求固定切成 1k。
 
 本地 hybrid coordinator 会分别看各 cache group 的命中：
 
@@ -944,7 +944,7 @@ shared_prefix_boundary
     {
       from: 'Hybrid coordinator',
       to: 'Scheduler',
-      label: 'MLA hit=1k, KDA hit=0, junction=1k',
+      label: 'MLA hit=1k, KDA hit=0, 分叉点=1k',
       detail: '最终可复用命中仍是 0，但记录缺失分叉点',
       tone: 'amber',
     },
@@ -959,13 +959,13 @@ shared_prefix_boundary
       from: 'req3',
       to: 'KDA state cache',
       label: 'reuse C(P_1k)',
-      detail: 'MLA 与 KDA 终于在同一边界同时命中',
+      detail: '此时 MLA 与 KDA 在同一边界同时命中',
       tone: 'green',
     },
   ]}
 />
 
-这里最容易误解的一点是：req2 的第一次 1k 不是只算 KDA 层。当前 hybrid model forward 仍会经过整网，所以此前 MLA 已经有 P_1k，也要随这 1k 一起重算。系统做的是“一次性填补以后可复用的 junction”，不是只补一类层的旁路计算。
+这里最容易误解的一点是：req2 的第一次 1k 不是只算 KDA 层。当前 hybrid model forward 仍会经过整网，所以此前 MLA 已经有 P_1k，也要随这 1k 一起重算。系统做的是“一次性补齐后续可复用的分叉 checkpoint”，不是只补一类层的旁路计算。
 
 ## 不需要把全局 chunked prefill 设成 1k
 
@@ -988,15 +988,15 @@ shared_prefix_boundary
 没有已知分叉点
   -> 允许一个 4k、8k 或更大的 forward
 
-发现缺失的 P_1k junction
+发现缺失的 P_1k 分叉点
   -> 只让这次请求先停在 1k
   -> 下一 step 再继续后缀
 
-junction 已经存在
+分叉 checkpoint 已经存在
   -> 后来的请求直接从 1k 恢复，不再重复补点
 ```
 
-这正是相对“全局固定 1k chunk”更合理的折中：forward 次数随真实的共享分叉增长，而不是随每个长 prompt 的长度机械增长。
+在这种策略下，额外的 forward 次数由实际出现的共享分叉点决定，而不是按每个长 prompt 的长度固定增长。
 
 ## prefix_match_unit 只改变匹配粒度，不会生成状态
 
@@ -1014,7 +1014,7 @@ junction 已经存在
 “一次 P_4k forward 会自动额外产生 C(P_1k)、C(P_2k)、C(P_3k)”
 ```
 
-一个 KDA state 真正出现，仍然需要以下至少一种机制：
+要实际生成一个 KDA state，仍然需要以下至少一种机制：
 
 ```text
 forward 恰好在该位置结束
@@ -1042,11 +1042,11 @@ VLLM_PREFIX_CACHE_RETENTION_INTERVAL
 
 设置为 0
   -> 只保留 proven reachable boundaries
-     包括 replay boundary 和检测到的 shared-prefix junction
+     包括 replay boundary 和检测到的共享前缀分叉点
 
 设置为正数 N
   -> 每个 N-token segment 保留一个尾状态
-  -> 同时始终保留 replay boundary 与 shared-prefix junction
+  -> 同时始终保留 replay boundary 与共享前缀分叉点
 ```
 
 实现见 [`reachable_block_mask`](https://github.com/vllm-project/vllm/blob/387189c42997b27e2c04b5d97ef8190ffa2bf909/vllm/v1/core/single_type_kv_cache_manager.py#L1326-L1382)，跨请求分叉 pin 的单测见 [`test_mamba_shared_prefix_reuse_under_zero_retention`](https://github.com/vllm-project/vllm/blob/387189c42997b27e2c04b5d97ef8190ffa2bf909/tests/v1/core/test_prefix_caching.py#L4167-L4220)。
@@ -1090,7 +1090,7 @@ Request admission
 
 Scheduling
   -> _mamba_block_aligned_split
-  -> optional early stop at missing junction
+  -> optional early stop at missing shared-prefix boundary
   -> MambaManager allocates current tail state block
 
 Worker
@@ -1100,13 +1100,13 @@ Worker
 
 Cache commit
   -> MambaManager.cache_blocks attaches prefix hash
-  -> reachable_block_mask keeps replay/junction/interval states
+  -> reachable_block_mask keeps replay/boundary/interval states
   -> later request finds the rightmost matching KDA state
 ```
 
-这是本文可以判定为“源码已经闭环”的部分。
+这部分调用链可以由固定提交中的源码与测试确认。
 
-## MooncakeConnector 是 P/D 搬运，不等于共享 prefix Store
+## MooncakeConnector 用于 Prefill/Decode 传输，MooncakeStoreConnector 提供共享 prefix 存储
 
 vLLM 里有两个名字相近但语义不同的 Mooncake connector：
 
@@ -1123,7 +1123,7 @@ MooncakeStoreConnector
 
 但这里的测试标题和注释都写的是 GDN，测试 `mamba_type=GDN_ATTN`，没有以 Kimi Linear KDA 做端到端验证。KDA 确实继承 GDN base，并报告同一个 `GDN_ATTN` backend enum；这说明接口分派能走到同一类 `MambaSpec`，却不能自动证明 Kimi 的两种状态和布局都被正确搬运。
 
-更需要警惕的是，本文 commit 前一天统一了 Mamba raw-page layout：runner 现在给 connector 的是单个完整 raw tensor，而直接 Mooncake worker 的 Mamba 注册分支仍写着：
+在本文固定的 vLLM 提交中，Mamba raw-page layout 已统一为单个完整 raw tensor，但直接 Mooncake worker 的 Mamba 注册分支仍按 tuple 解包：
 
 ```python
 conv, _ = cache_or_caches
@@ -1132,7 +1132,7 @@ cache_list = [conv]
 
 见 [`MooncakeConnectorWorker.register_kv_caches`](https://github.com/vllm-project/vllm/blob/387189c42997b27e2c04b5d97ef8190ffa2bf909/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py#L1653-L1717)。对应单测仍手工传 `(gdn_conv_state, gdn_ssm_state)` tuple，见 [`test_mooncake_connector_hybrid_mamba.py`](https://github.com/vllm-project/vllm/blob/387189c42997b27e2c04b5d97ef8190ffa2bf909/tests/v1/kv_connector/unit/test_mooncake_connector_hybrid_mamba.py#L123-L163)。
 
-这说明当前 main 上 direct connector 与新 raw-page 接口至少存在需要重新核对的迁移边界。本文不会把它写成“已经验证 KDA P/D 可用”。
+因此，该固定提交中的 direct connector 与新 raw-page 接口仍需专项核对，现有证据不足以确认 KDA P/D 传输已经端到端可用。
 
 ## MooncakeStoreConnector 的数据结构能容纳完整 KDA page
 
@@ -1172,9 +1172,9 @@ same prefix hash @ group=KDA
 
 如果 Store 里已经同时存在 P_1k 的 MLA pages 与 `C(P_1k)`，consumer 可以协调出 1k hit，并把两组数据装回各自 GPU blocks。这是“接口形状允许”的部分。
 
-## 但 Mooncake Store 的分叉补点链路还没有闭环
+## Mooncake Store 尚未打通缺失分叉 checkpoint 的自动补算
 
-真正的问题不是“Store 能不能存 KDA bytes”，而是 `C(P_1k)` 不存在时，系统会不会发现并补出来。
+需要继续确认的是：当 `C(P_1k)` 不存在时，系统能否发现这个缺口并自动补算。
 
 本地路径依靠三项信息：
 
@@ -1186,7 +1186,7 @@ shared_prefix_boundary = 两者之间的缺口终点
 
 挂上 connector 且模型含 Mamba layer 后，scheduler 走特殊分支：它调用 `find_longest_cache_hit_per_group`，随后把 `num_new_local_computed_tokens` 设成所有 group hit 的最大值，并把 `request.shared_prefix_boundary` 清零。代码见 [`scheduler.py`](https://github.com/vllm-project/vllm/blob/387189c42997b27e2c04b5d97ef8190ffa2bf909/vllm/v1/core/sched/scheduler.py#L711-L759)。
 
-这条分支原本服务 P/D connector：注释说明 full-attention 本地命中可以避免重复传输，而 Mamba state 由 NIXL worker 无条件传输。这个假设不自然地等价于共享 Store 场景。
+这条分支原本服务 P/D connector：注释说明 full-attention 本地命中可以避免重复传输，而 Mamba state 由 NIXL worker 无条件传输。这套传输假设不能直接套用于共享 Store 的 prefix lookup。
 
 对前面的 req1/req2 例子：
 
@@ -1202,14 +1202,14 @@ local KDA hit = 0
 connector 特殊路径
   -> max(per_group_hits) = 1k
   -> shared_prefix_boundary = 0
-  -> Marconi 式补点信息丢失
+  -> shared_prefix_boundary 补点信息丢失
 ```
 
-Mooncake Store 自己的外部 coordinator 也只返回最终协调后的 hit length 与 load mask，没有向 scheduler 返回“某个 group 曾命中更长，因此这里存在待补 junction”。因此，当 Store 只有 P_1k 的 MLA object、没有 KDA object 时，它会返回 0 hit，却不会告诉 scheduler 应在 1k 停一次。
+Mooncake Store 自己的外部 coordinator 也只返回最终协调后的 hit length 与 load mask，没有向 scheduler 返回“某个 group 曾命中更长，因此这里存在待补分叉点”。因此，当 Store 只有 P_1k 的 MLA object、没有 KDA object 时，它会返回 0 hit，却不会告诉 scheduler 应在 1k 停一次。
 
 还有两个需要验证的边界：
 
-1. Store 的 save mask 只接收 prompt replay boundary，没有接收 `shared_prefix_boundary`。即使 scheduler 恢复补点，也需要把 junction pin 继续传到 Store retention 层，否则稀疏 retention 可能再次丢掉它。入口见 [`MooncakeStoreCoordinator.store_mask`](https://github.com/vllm-project/vllm/blob/387189c42997b27e2c04b5d97ef8190ffa2bf909/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/coordinator.py#L179-L253)。
+1. Store 的 save mask 只接收 prompt replay boundary，没有接收 `shared_prefix_boundary`。即使 scheduler 恢复补点，也需要把分叉点的 pin 信息继续传到 Store retention 层，否则稀疏 retention 可能再次丢掉它。入口见 [`MooncakeStoreCoordinator.store_mask`](https://github.com/vllm-project/vllm/blob/387189c42997b27e2c04b5d97ef8190ffa2bf909/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/coordinator.py#L179-L253)。
 
 2. align 模式的 KDA block table 含有大量 `NULL_BLOCK_ID`。直接 MooncakeConnector 显式过滤 null，而 MooncakeStore 的 `ChunkedTokenDatabase.prepare_value` 直接用逻辑位置取 block id 并计算地址，见 [`data.py`](https://github.com/vllm-project/vllm/blob/387189c42997b27e2c04b5d97ef8190ffa2bf909/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py#L196-L214)。当前 Store HMA 端到端测试覆盖的是 SWA + Full，不是 Mamba/KDA，见 [`test_mooncake_store_hma_e2e.py`](https://github.com/vllm-project/vllm/blob/387189c42997b27e2c04b5d97ef8190ffa2bf909/tests/v1/kv_connector/unit/test_mooncake_store_hma_e2e.py#L1-L4)。
 
@@ -1217,13 +1217,13 @@ Mooncake Store 自己的外部 coordinator 也只返回最终协调后的 hit le
 
 ```text
 req1 stores MLA(P_1k...) + KDA C(P_4k)
-  -> req2 detects remote MLA-only P_1k junction
+  -> req2 detects remote MLA-only P_1k boundary
   -> req2 computes exactly to P_1k
   -> Mooncake Store persists C(P_1k)
   -> req3 remotely reuses MLA(P_1k) + C(P_1k)
 ```
 
-它在本地 cache core 已有前半套机制，在 Mooncake Store 数据面已有保存完整 raw page 的能力，但 junction 信号还没有穿过 connector scheduler、Store metadata 与 Store retention 三层。
+本地 cache core 已具备识别分叉点的机制，Mooncake Store 数据面也能保存完整 raw page；缺失的是把分叉点信号继续传递到 connector scheduler、Store metadata 与 Store retention。
 
 <SequenceDiagram
   title="当前 Mooncake Store 链条在哪一段断开"
@@ -1247,13 +1247,13 @@ req1 stores MLA(P_1k...) + KDA C(P_4k)
       from: 'Scheduler',
       to: 'Mooncake Store lookup',
       label: 'query full prefix',
-      detail: 'Store 返回协调后的 hit，不返回 lagging-group junction',
+      detail: 'Store 返回协调后的 hit，不返回落后 cache group 的分叉边界',
       tone: 'blue',
     },
     {
       from: 'Mooncake Store lookup',
       to: 'KDA forward',
-      label: 'junction metadata missing',
+      label: 'boundary metadata missing',
       detail: '无法要求 forward 恰好停在缺失的 P_1k',
       tone: 'mauve',
     },
@@ -1280,7 +1280,7 @@ prefill 中间状态        kernel 可返回 h                当前 Kimi 路径
 
 本地 prefix 索引        radix node + component         block hash + cache group
 
-本地分叉补点            从大 forward 的 h 抽取         scheduler 在 junction split
+本地分叉补点            从大 forward 的 h 抽取         scheduler 在分叉点截断
 
 Host staging            HiCache MambaPoolHost          connector 注册 GPU raw pages
 
@@ -1288,7 +1288,7 @@ Mooncake value           temporal + conv objects        group raw-page object/se
 
 完整 KDA hit 条件        全部 temporal/conv 存在         KDA group 对应 page 可加载
 
-外部缺失 junction       HiCache 下暂不自动 fill         connector 分支丢 boundary
+远端缺失分叉点         HiCache 下暂不自动 fill         connector 分支丢 boundary
 ```
 
 能力状态可以更精确地归类为：
@@ -1305,7 +1305,7 @@ Kimi + Mooncake 专项 e2e     不适用        本文快照未发现
 Kimi KDA 状态页              已实现        raw-page 数据结构可承载
 大 forward 抽中间状态       未暴露        未暴露
 缺失分叉 checkpoint 自动补  已实现        boundary 未传播
-完整 checkpoint 远端读写    不适用        接口允许，KDA 专项闭环证据不足
+完整 checkpoint 远端读写    不适用        接口允许，KDA 专项端到端证据不足
 Kimi + Mooncake 专项 e2e     不适用        本文快照未发现
 ```
 
@@ -1363,7 +1363,7 @@ checkpoint policy 不同
   vLLM: align step-end state / scheduler split
 ```
 
-Mooncake 不会转换这些格式。跨引擎共享需要额外定义稳定的模型版本、token hash、并行 rank、layer 顺序、dtype、shape、byte layout 与 checkpoint boundary ABI；当前两套 adapter 不是这个 ABI。
+Mooncake 不会转换这些格式。跨引擎共享需要额外定义稳定的模型版本、token hash、并行 rank、layer 顺序、dtype、shape、byte layout 与 checkpoint boundary ABI；当前两套 adapter 尚未实现这样的公共 ABI。
 
 ## 同一个 req1 / req2 / req3 案例怎样穿过两条链
 
@@ -1425,11 +1425,11 @@ Store 已有 MLA(P_1k) + KDA raw pages @ P_1k
 
 Store 只有 MLA(P_1k)
   → connector 特殊路径不传播 shared_prefix_boundary
-  → Store coordinator 也不返回 lagging-group junction
-  → req2 不会自动沿用本地 Marconi split 补点
+  → Store coordinator 也不返回落后 cache group 的分叉边界
+  → req2 不会自动沿用本地的分叉点截断机制补算状态
 ```
 
-## 两条外部链真正闭环分别需要什么
+## 补齐两条远端复用链分别需要什么
 
 ### SGLang + HiCache + Mooncake
 
@@ -1446,13 +1446,13 @@ missing_branching_boundary
 
 ### vLLM + MooncakeStoreConnector
 
-最小改动是把本地已有的 junction 信息穿过 connector：
+最小改动是让本地已有的分叉点信息穿过 connector：
 
 ```text
 1. local + external lookup 都保留 per-group hit
 2. scheduler 对合并结果做 hybrid fixed point
-3. junction > final_hit 时设置 shared_prefix_boundary
-4. _mamba_block_aligned_split 在 junction 结束 forward
+3. missing_boundary > final_hit 时设置 shared_prefix_boundary
+4. _mamba_block_aligned_split 在 missing_boundary 结束 forward
 5. Store ReqMeta / save mask pin 住新 KDA state
 6. KDA group 保存完整 raw page，过滤 NULL placeholders
 ```
@@ -1516,18 +1516,18 @@ enable_chunked_prefill
   align 模式要求开启，但不代表全局 budget 必须设成 1k
 
 max_num_batched_tokens / long prefill budget
-  可以保持较大；本地 scheduler 只在真实 junction 额外截断
+  可以保持较大；本地 scheduler 只在实际分叉点额外截断
 
 prefix_match_unit
-  调 hash 命中粒度，不创建 KDA checkpoint
+  调整 hash 命中粒度，不创建 KDA checkpoint
 
 VLLM_PREFIX_CACHE_RETENTION_INTERVAL
-  调已创建 checkpoint 的保留密度，不创建 checkpoint
+  调整已创建 checkpoint 的保留密度，不创建 checkpoint
 ```
 
 验证时不要一开始就把两边的 prefill budget 都降到 1k，否则无法区分“按需补点生效”与“所有请求本来就被机械切成 1k”。如果目标是 Mooncake Store，也不能只看 server 能否启动或 Store 是否出现 Mamba/KDA key；必须检查 object 完整性、hybrid hit、补点传播和 replay logits。
 
-## 最容易踩错的六个边界
+## 六个常见误区
 
 ### 1. 把最后 3 个 token 理解成卷积输出
 
@@ -1545,9 +1545,9 @@ KDA conv cache 保存的是投影后、短卷积前的 Q/K/V 历史。卷积后�
 
 retention 只能删选已有 checkpoint，不能从 `C(P_4k)` 派生 `C(P_1k)`。
 
-### 5. 看到 Mamba/KDA 数据面 support 就认为分叉补点已闭环
+### 5. 看到 Mamba/KDA 数据面支持就认为可以自动补算分叉状态
 
-SGLang 已能把 Mamba temporal/conv sidecar 写进 Mooncake；vLLM 的 `MambaSpec` 也能让 KDA raw page 进入 group-aware layout。但数据面可搬运不自动解决 junction discovery、scheduler/backend 补点、Store pin 与端到端正确性测试。
+SGLang 已能把 Mamba temporal/conv sidecar 写进 Mooncake；vLLM 的 `MambaSpec` 也能让 KDA raw page 进入 group-aware layout。但数据面可搬运不自动解决分叉点发现、scheduler/backend 补点、Store pin 与端到端正确性测试。
 
 ### 6. 认为同一个 Mooncake 集群天然提供 SGLang ↔ vLLM 互操作
 
@@ -1555,7 +1555,7 @@ Store object 是 opaque bytes。两套引擎的 key namespace、并行 rank 编�
 
 ## 最终判断
 
-对最初的 req1/req2 问题，答案可以精确成三层：
+回到 req1/req2 示例，可以分三层判断：
 
 > req1 的 4k prefill 如果只留下 `C(P_4k)`，req2 第一次共享 1k 时确实必须重新计算这 1k；`C(P_4k)` 无法回滚，MLA pages 也不能替代 KDA state。
 
@@ -1563,6 +1563,6 @@ Store object 是 opaque bytes。两套引擎的 key namespace、并行 rank 编�
 
 再加上外部缓存限定：
 
-> SGLang + HiCache 已把 KDA 的 temporal/conv checkpoint 接到 Mooncake 的完整读写数据面，但 HiCache 模式暂时跳过 branching-state fill；vLLM 本地已有 shared-prefix junction split，但该信号尚未完整穿过 MooncakeStoreConnector。两条链都能复用一个已经存在且完整的 `C(P_t)`，却都不能在本文快照上宣称“MLA-only 远端命中会自动补出缺失的 KDA junction”。
+> SGLang + HiCache 已把 KDA 的 temporal/conv checkpoint 接到 Mooncake 的完整读写数据面，但 HiCache 模式暂时跳过 branching-state fill；vLLM 本地已有共享前缀分叉点截断机制，但该信号尚未完整穿过 `MooncakeStoreConnector`。两条链都能复用一个已经存在且完整的 `C(P_t)`；但在本文固定版本中，当远端只有 MLA 命中而缺少 KDA checkpoint 时，系统仍不会自动补算该状态。
 
-真正需要优化的不是“每隔 1k 强制 forward”，而是让系统只为真实出现且有复用价值的分叉点付一次计算成本，并让这个分叉点从本地 radix/scheduler 一直活到 Host staging、Mooncake key/value、lookup 与 retention policy 中。
+优化目标不是机械地每隔 1k 切一次 forward，而是在出现可复用分叉时仅补算一次，并把该边界持续传递到本地 radix/scheduler、Host staging、Mooncake key/value、lookup 与 retention policy 各层。
