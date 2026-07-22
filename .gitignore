@@ -107,6 +107,7 @@ out
 /workbox-*.js
 /public/sw.js
 /public/workbox-*.js
+/public/mathjax/
 
 # Legacy template icon assets
 /public/images/icon/

@@ -192,10 +192,14 @@ test('RSS routes use the same published blog source as the site', () => {
   assert.match(rssSource, /createRssResponse/)
 })
 
-test('MDX math uses KaTeX with accessible HTML and mobile-safe styles', () => {
+test('MDX math uses MathJax 4 CHTML with accessible and mobile-safe output', () => {
   const packageJson = JSON.parse(readFileSync('package.json', 'utf8'))
   const mdxSource = readFileSync('src/lib/mdx.ts', 'utf8')
-  const layoutSource = readFileSync('src/app/layout.tsx', 'utf8')
+  const mathjaxSource = readFileSync('src/lib/rehypeMathjaxV4.ts', 'utf8')
+  const mathjaxAssetsSource = readFileSync(
+    'scripts/prepare-mathjax-assets.mjs',
+    'utf8',
+  )
   const globalStyles = readFileSync('src/styles/globals.css', 'utf8')
   const mdxComponentsSource = readFileSync(
     'src/components/shared/MdxComponents.tsx',
@@ -208,15 +212,24 @@ test('MDX math uses KaTeX with accessible HTML and mobile-safe styles', () => {
 
   assert.ok(packageJson.dependencies['remark-math'])
   assert.ok(packageJson.dependencies['remark-gfm'])
-  assert.ok(packageJson.dependencies['rehype-katex'])
-  assert.ok(packageJson.dependencies.katex)
+  assert.ok(packageJson.dependencies['@mathjax/src'])
+  assert.ok(packageJson.dependencies['@mathjax/mathjax-newcm-font'])
+  assert.equal(packageJson.dependencies['rehype-katex'], undefined)
+  assert.equal(packageJson.dependencies.katex, undefined)
   assert.match(mdxSource, /remarkPlugins: \[remarkGfm, remarkMath\]/)
-  assert.match(mdxSource, /rehypeKatex/)
-  assert.match(mdxSource, /output: 'htmlAndMathml'/)
-  assert.match(layoutSource, /import 'katex\/dist\/katex\.min\.css'/)
-  assert.match(globalStyles, /\.blog-prose \.katex-display/)
+  assert.match(mdxSource, /rehypePlugins: \[rehypeMathjaxV4\]/)
+  assert.match(mathjaxSource, /MathJaxNewcmFont/)
+  assert.match(mathjaxSource, /AssistiveMmlHandler/)
+  assert.match(mathjaxSource, /fontURL: FONT_URL/)
+  assert.match(mathjaxSource, /tagName: 'math-jax'/)
+  assert.match(mathjaxAssetsSource, /public\/mathjax\/fonts\/newcm/)
+  assert.match(globalStyles, /mjx-container\[jax='CHTML'\]/)
+  assert.match(globalStyles, /\.mathjax-display-shell/)
   assert.match(globalStyles, /overflow-x: auto/)
+  assert.match(mdxComponentsSource, /'math-jax': MathJaxMarkup/)
   assert.match(mdxComponentsSource, /table: ResponsiveTable/)
+  assert.match(mdxComponentsSource, /style: TrustedStyle/)
+  assert.match(mdxComponentsSource, /dangerouslySetInnerHTML/)
   assert.match(mdxComponentsSource, /min-w-\[48rem\]/)
   assert.match(kimiArticle, /\\tag\{1\}/)
   assert.match(kimiArticle, /\\mathbf S_t/)

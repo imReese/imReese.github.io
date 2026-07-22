@@ -1,7 +1,11 @@
 import { type MDXComponents } from 'mdx/types'
 import Image, { type ImageProps } from 'next/image'
 import Link from 'next/link'
-import { type AnchorHTMLAttributes, type TableHTMLAttributes } from 'react'
+import {
+  type AnchorHTMLAttributes,
+  type StyleHTMLAttributes,
+  type TableHTMLAttributes,
+} from 'react'
 import clsx from 'clsx'
 import { CodeBlock } from './CodeBlock'
 import {
@@ -63,6 +67,34 @@ const ResponsiveTable = ({
   </div>
 )
 
+const TrustedStyle = ({
+  children,
+  ...props
+}: StyleHTMLAttributes<HTMLStyleElement>) => (
+  <style
+    {...props}
+    dangerouslySetInnerHTML={{ __html: String(children ?? '') }}
+  />
+)
+
+type MathJaxMarkupProps = {
+  display?: boolean
+  markup?: string
+}
+
+const MathJaxMarkup = ({
+  display = false,
+  markup = '',
+}: MathJaxMarkupProps) => {
+  const html = { __html: markup }
+
+  return display ? (
+    <div className="mathjax-display-shell" dangerouslySetInnerHTML={html} />
+  ) : (
+    <span className="mathjax-inline-shell" dangerouslySetInnerHTML={html} />
+  )
+}
+
 export const mdxComponents: MDXComponents = {
   CompareCallout,
   ExpandableNotes,
@@ -80,6 +112,8 @@ export const mdxComponents: MDXComponents = {
     />
   ),
   a: CustomLink,
+  'math-jax': MathJaxMarkup,
   pre: CodeBlock,
+  style: TrustedStyle,
   table: ResponsiveTable,
 }

@@ -73,16 +73,13 @@
     overflow-x: auto;
   }
 
-  .blog-prose .katex {
+  .blog-prose mjx-container[jax='CHTML'] {
     color: hsl(var(--foreground));
   }
 
-  .blog-prose > .katex-display {
+  .blog-prose > .mathjax-display-shell {
     width: min(100%, 48rem);
     max-width: 100%;
-  }
-
-  .blog-prose .katex-display {
     margin: 2rem 0;
     overflow-x: auto;
     overflow-y: hidden;
@@ -91,18 +88,25 @@
     scrollbar-width: thin;
   }
 
-  .blog-prose .katex-display > .katex {
+  .blog-prose
+    .mathjax-display-shell
+    mjx-container[jax='CHTML'][display='true'] {
     min-width: max-content;
-    font-size: 1.08em;
+    margin: 0;
+  }
+
+  .blog-prose .mathjax-display-shell mjx-math {
+    min-width: max-content;
+    font-size: 1.04em;
   }
 }
 
 @media (max-width: 640px) {
-  .blog-prose .katex-display {
+  .blog-prose > .mathjax-display-shell {
     margin: 1.75rem 0;
   }
 
-  .blog-prose .katex-display > .katex {
+  .blog-prose .mathjax-display-shell mjx-math {
     font-size: 1em;
   }
 }
