@@ -86,7 +86,7 @@ P_t=(\tau_1,\tau_2,\ldots,\tau_t),
 \tau_i\in\{0,\ldots,|\mathcal V|-1\}.
 $$
 
-这里的 \(\tau_i\) 是 token ID。后面 KDA 公式中的 \(x_t^{(l)}\) 才表示第 \(l\) 层当前位置的归一化 hidden state，二者不能混为一谈。
+这里的 $\tau_i$ 是 token ID。后面 KDA 公式中的 $x_t^{(l)}$ 才表示第 $l$ 层当前位置的归一化 hidden state，二者不能混为一谈。
 
 对第 `l` 个 KDA layer，定义：
 
@@ -109,9 +109,9 @@ $$
 }.
 $$
 
-这里 \(w_l\) 是 causal convolution kernel size；conv window 的物理实现也可能使用转置布局 `[dim, state_len]`。
+这里 $w_l$ 是 causal convolution kernel size；conv window 的物理实现也可能使用转置布局 `[dim, state_len]`。
 
-本文按数学语义将 \(\mathbf S_l(t)\) 记作 `[local_heads, d_k, d_v]`。部分 kernel 和 state pool 的物理 layout 使用 `[local_heads, d_v, d_k]`，即最后两个维度转置存放；两种 layout 表示同一个关联状态。
+本文按数学语义将 $\mathbf S_l(t)$ 记作 `[local_heads, d_k, d_v]`。部分 kernel 和 state pool 的物理 layout 使用 `[local_heads, d_v, d_k]`，即最后两个维度转置存放；两种 layout 表示同一个关联状态。
 
 一个 KDA layer 的完整续算状态是：
 
@@ -127,7 +127,7 @@ C(P_t)=\left\{C_l(t)\mid l\in\text{KDA layers}\right\}.
 }
 $$
 
-后文中的 \(\mathbf S_l(t)\) 始终只表示 recurrent matrices；\(C_l(t)\) 才表示某一层完整的 conv + recurrent state；\(C(P_t)\) 则表示所有 KDA layers 在同一 token 边界上的 checkpoint。
+后文中的 $\mathbf S_l(t)$ 始终只表示 recurrent matrices；$C_l(t)$ 才表示某一层完整的 conv + recurrent state；$C(P_t)$ 则表示所有 KDA layers 在同一 token 边界上的 checkpoint。
 
 MLA pages 不属于 `C(P_t)`。对 Kimi Linear 这样的 hybrid model，一个可直接恢复的 prefix 还必须同时拥有：
 
@@ -196,7 +196,7 @@ $$
 
 与普通 linear attention 的直接外积累加相比，delta rule 会先查看旧状态能否重建当前 value；只有预测错误的部分才被写回。KDA 又把 Gated DeltaNet 每个 head 一个标量遗忘率，细化成每个 key channel 一个遗忘率。
 
-Q/K/V 并不是直接进入 recurrence。对第 \(l\) 层的输入 \(x_t^{(l)}\)，实际模型会先做线性投影、因果短卷积和激活，Q/K 还会做 L2Norm：
+Q/K/V 并不是直接进入 recurrence。对第 $l$ 层的输入 $x_t^{(l)}$，实际模型会先做线性投影、因果短卷积和激活，Q/K 还会做 L2Norm：
 
 $$
 \begin{aligned}
@@ -224,7 +224,7 @@ prefill chunk 内的 WY / UT workspace
 attention 输出与 output gate 中间量
 ```
 
-它们要么已经被折叠进 \(\mathbf S_l(t)\)，要么在当前 kernel 结束后失效。
+它们要么已经被折叠进 $\mathbf S_l(t)$，要么在当前 kernel 结束后失效。
 
 这也解释了 prefix 复用的单向性：`C(P_1k)` 可以随 suffix 向前推进成 `C(P_2k)`，但只有 `C(P_4k)` 时无法倒推出 `C(P_1k)`。递推中的衰减和 delta correction 是有损更新，较早边界的 ShortConv window 也已经被覆盖。
 
@@ -385,7 +385,7 @@ C(P_L)\text{ 已物化、已注册且仍驻留}
 \right\},
 $$
 
-其中 \(\mathsf H_L=\operatorname{Hash}(P_L)\)。
+其中 $\mathsf H_L=\operatorname{Hash}(P_L)$。
 
 三类机制分别负责：
 
@@ -556,7 +556,7 @@ KDA component
   GPU Mamba slot → Host Mamba slot
 ```
 
-写入 Mooncake 时，SGLang 不上传一串历史 \(\mathbf S_l(t)\)，只上传 radix node 末尾的一个 `C(P_t)`。Mamba transfer 使用 `TRAILING_PAGES`，因为恢复目标 prefix 只需要末端 KDA checkpoint，而 Full/MLA 仍要求前缀 pages 连续存在。
+写入 Mooncake 时，SGLang 不上传一串历史 $\mathbf S_l(t)$，只上传 radix node 末尾的一个 `C(P_t)`。Mamba transfer 使用 `TRAILING_PAGES`，因为恢复目标 prefix 只需要末端 KDA checkpoint，而 Full/MLA 仍要求前缀 pages 连续存在。
 
 Mooncake adapter 会将一个逻辑 KDA page 展开成：
 
@@ -731,7 +731,7 @@ same prefix hash @ vLLM cache group=KDA
 
 ### 本地 fine-grained checkpoint 不等于远端 fine-grained object
 
-本地 prefix cache 可以在 `prefix_match_unit` 边界注册 partial checkpoint，但固定 MooncakeStoreConnector 的外部查询和写入仍按同一个 resolved scheduler block 对齐。下文将这个 lookup/store 共用的对齐单位记作 \(A_{\mathrm{store}}\)。
+本地 prefix cache 可以在 `prefix_match_unit` 边界注册 partial checkpoint，但固定 MooncakeStoreConnector 的外部查询和写入仍按同一个 resolved scheduler block 对齐。下文将这个 lookup/store 共用的对齐单位记作 $A_{\mathrm{store}}$。
 
 Scheduler 查询前会做：
 
