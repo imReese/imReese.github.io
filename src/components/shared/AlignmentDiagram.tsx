@@ -66,7 +66,7 @@ const toneClassNames: Record<
     border: 'border-[#1e66f5]/30 dark:border-[#89b4fa]/35',
     bg: 'bg-[#1e66f5]/10 dark:bg-[#89b4fa]/10',
     text: 'text-[#1e66f5] dark:text-[#89b4fa]',
-    soft: 'bg-[#1e66f5]/6 dark:bg-[#89b4fa]/7',
+    soft: 'bg-[#1e66f5]/[0.06] dark:bg-[#89b4fa]/[0.07]',
     dot: 'bg-[#1e66f5] ring-[#1e66f5]/20 dark:bg-[#89b4fa] dark:ring-[#89b4fa]/20',
     tick: 'bg-[#1e66f5]/30 dark:bg-[#89b4fa]/30',
   },
@@ -74,7 +74,7 @@ const toneClassNames: Record<
     border: 'border-[#40a02b]/30 dark:border-[#a6e3a1]/35',
     bg: 'bg-[#40a02b]/10 dark:bg-[#a6e3a1]/10',
     text: 'text-[#2f7d20] dark:text-[#a6e3a1]',
-    soft: 'bg-[#40a02b]/6 dark:bg-[#a6e3a1]/7',
+    soft: 'bg-[#40a02b]/[0.06] dark:bg-[#a6e3a1]/[0.07]',
     dot: 'bg-[#40a02b] ring-[#40a02b]/20 dark:bg-[#a6e3a1] dark:ring-[#a6e3a1]/20',
     tick: 'bg-[#40a02b]/30 dark:bg-[#a6e3a1]/30',
   },
@@ -82,7 +82,7 @@ const toneClassNames: Record<
     border: 'border-[#8839ef]/30 dark:border-[#cba6f7]/35',
     bg: 'bg-[#8839ef]/10 dark:bg-[#cba6f7]/10',
     text: 'text-[#8839ef] dark:text-[#cba6f7]',
-    soft: 'bg-[#8839ef]/6 dark:bg-[#cba6f7]/7',
+    soft: 'bg-[#8839ef]/[0.06] dark:bg-[#cba6f7]/[0.07]',
     dot: 'bg-[#8839ef] ring-[#8839ef]/20 dark:bg-[#cba6f7] dark:ring-[#cba6f7]/20',
     tick: 'bg-[#8839ef]/30 dark:bg-[#cba6f7]/30',
   },
@@ -90,7 +90,7 @@ const toneClassNames: Record<
     border: 'border-[#d20f39]/30 dark:border-[#f38ba8]/35',
     bg: 'bg-[#d20f39]/10 dark:bg-[#f38ba8]/10',
     text: 'text-[#d20f39] dark:text-[#f38ba8]',
-    soft: 'bg-[#d20f39]/6 dark:bg-[#f38ba8]/7',
+    soft: 'bg-[#d20f39]/[0.06] dark:bg-[#f38ba8]/[0.07]',
     dot: 'bg-[#d20f39] ring-[#d20f39]/20 dark:bg-[#f38ba8] dark:ring-[#f38ba8]/20',
     tick: 'bg-[#d20f39]/30 dark:bg-[#f38ba8]/30',
   },
@@ -98,7 +98,7 @@ const toneClassNames: Record<
     border: 'border-[#df8e1d]/35 dark:border-[#f9e2af]/35',
     bg: 'bg-[#df8e1d]/12 dark:bg-[#f9e2af]/10',
     text: 'text-[#9a5b00] dark:text-[#f9e2af]',
-    soft: 'bg-[#df8e1d]/7 dark:bg-[#f9e2af]/7',
+    soft: 'bg-[#df8e1d]/[0.07] dark:bg-[#f9e2af]/[0.07]',
     dot: 'bg-[#df8e1d] ring-[#df8e1d]/20 dark:bg-[#f9e2af] dark:ring-[#f9e2af]/20',
     tick: 'bg-[#df8e1d]/35 dark:bg-[#f9e2af]/30',
   },
@@ -210,12 +210,17 @@ export function AlignmentDiagram({
               {highlight && highlightPosition !== null && (
                 <span
                   className={clsx(
-                    'absolute top-0 max-w-44 font-mono text-xs font-semibold leading-4 text-primary',
+                    'absolute top-0 max-w-[11rem] font-mono text-xs font-semibold leading-4 text-primary',
                     markerAlignment(highlightPosition),
                   )}
                   style={{ left: `${highlightPosition}%` }}
                 >
                   {highlight.label}
+                  {highlight.detail && (
+                    <span className="block font-sans text-[11px] font-normal text-muted-foreground">
+                      {highlight.detail}
+                    </span>
+                  )}
                 </span>
               )}
             </div>
@@ -264,11 +269,12 @@ export function AlignmentDiagram({
                       currentTone.border,
                       currentTone.soft,
                     )}
+                    role="img"
                     aria-label={`${track.label}: ${track.markers
                       .map((marker) => formatBoundary(marker.value, unit))
                       .join(', ')}`}
                   >
-                    <span className="absolute inset-x-3 top-1/2 h-px -translate-y-1/2 bg-border" />
+                    <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border" />
 
                     {ticks.map((tick) => (
                       <span
@@ -306,7 +312,7 @@ export function AlignmentDiagram({
                           {(marker.label || marker.detail) && (
                             <span
                               className={clsx(
-                                'absolute z-20 max-w-40 font-mono text-xs leading-4',
+                                'absolute z-20 max-w-[10rem] font-mono text-xs leading-4',
                                 labelOnTop ? 'top-2' : 'bottom-2',
                                 markerAlignment(markerPosition),
                                 marker.emphasis
@@ -341,6 +347,7 @@ export function AlignmentDiagram({
             {highlight && (
               <span className="rounded-md border border-primary/30 bg-accent-soft/60 px-2 py-1 font-mono text-xs font-semibold text-primary">
                 {highlight.label}: {formatBoundary(highlight.value, unit)}
+                {highlight.detail ? ` · ${highlight.detail}` : ''}
               </span>
             )}
           </div>
@@ -387,6 +394,11 @@ export function AlignmentDiagram({
                       )}
                     >
                       {marker.label ?? formatBoundary(marker.value, unit)}
+                      {marker.detail && (
+                        <span className="block font-sans text-[11px] font-normal text-muted-foreground">
+                          {marker.detail}
+                        </span>
+                      )}
                     </span>
                   ))}
                 </div>
