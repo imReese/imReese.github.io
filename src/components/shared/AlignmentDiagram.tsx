@@ -1,4 +1,7 @@
+'use client'
+
 import clsx from 'clsx'
+import { motion, useReducedMotion, type Variants } from 'framer-motion'
 
 type AlignmentTone =
   | 'teal'
@@ -41,6 +44,77 @@ type AlignmentDiagramProps = {
   highlight?: AlignmentHighlight
   tracks: AlignmentTrack[]
   compact?: boolean
+}
+
+const revealEase = [0.22, 1, 0.36, 1] as const
+
+const containerVariants: Variants = {
+  hidden: {
+    opacity: 0,
+    y: 34,
+    scale: 0.985,
+    filter: 'blur(10px)',
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    filter: 'blur(0px)',
+    transition: {
+      duration: 0.82,
+      ease: revealEase,
+      when: 'beforeChildren',
+      delayChildren: 0.08,
+      staggerChildren: 0.1,
+    },
+  },
+}
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 18 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.6, ease: revealEase },
+  },
+}
+
+const trackVariants: Variants = {
+  hidden: {},
+  visible: {
+    transition: {
+      delayChildren: 0.08,
+      staggerChildren: 0.055,
+    },
+  },
+}
+
+const axisVariants: Variants = {
+  hidden: { scaleX: 0, opacity: 0 },
+  visible: {
+    scaleX: 1,
+    opacity: 1,
+    transition: { duration: 0.82, ease: revealEase },
+  },
+}
+
+const markerVariants: Variants = {
+  hidden: { opacity: 0, scale: 0.35, y: 8 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { type: 'spring', stiffness: 320, damping: 24, mass: 0.7 },
+  },
+}
+
+const highlightVariants: Variants = {
+  hidden: { opacity: 0, scaleY: 0 },
+  visible: {
+    opacity: 1,
+    scaleY: 1,
+    transition: { duration: 0.72, ease: revealEase },
+  },
 }
 
 const toneClassNames: Record<
@@ -161,12 +235,19 @@ export function AlignmentDiagram({
   tracks,
   compact = false,
 }: AlignmentDiagramProps) {
+  const prefersReducedMotion = useReducedMotion()
   const highlightPosition = highlight
     ? position(highlight.value, start, end)
     : null
 
+  const variantsEnabled = !prefersReducedMotion
+
   return (
-    <figure
+    <motion.figure
+      variants={variantsEnabled ? containerVariants : undefined}
+      initial={variantsEnabled ? 'hidden' : false}
+      whileInView={variantsEnabled ? 'visible' : undefined}
+      viewport={{ once: true, amount: 0.14, margin: '0px 0px -8% 0px' }}
       className={clsx(
         'not-prose overflow-hidden rounded-lg border border-border/80 bg-surface/55',
         compact
@@ -174,7 +255,8 @@ export function AlignmentDiagram({
           : 'my-10 shadow-[0_22px_70px_-42px_rgba(76,79,105,0.35)] dark:shadow-[0_22px_70px_-44px_rgba(17,17,27,0.7)]',
       )}
     >
-      <figcaption
+      <motion.figcaption
+        variants={variantsEnabled ? itemVariants : undefined}
         className={clsx(
           'border-b border-border/70 px-4',
           compact ? 'py-3' : 'py-4 sm:px-5',
@@ -189,18 +271,24 @@ export function AlignmentDiagram({
             {caption}
           </p>
         )}
-      </figcaption>
+      </motion.figcaption>
 
       <div className={compact ? 'p-3 sm:p-4' : 'p-4 sm:p-5'}>
         <div className="hidden md:block">
-          <div className="mb-3 grid grid-cols-[minmax(12rem,0.32fr)_minmax(0,1fr)] gap-4">
+          <motion.div
+            variants={variantsEnabled ? itemVariants : undefined}
+            className="mb-3 grid grid-cols-[minmax(12rem,0.32fr)_minmax(0,1fr)] gap-4"
+          >
             <div className="flex items-end">
               <span className="font-mono text-xs font-medium text-muted-foreground">
                 token boundary
               </span>
             </div>
             <div className="relative h-10">
-              <span className="absolute inset-x-0 bottom-2 h-px bg-border" />
+              <motion.span
+                variants={variantsEnabled ? axisVariants : undefined}
+                className="absolute inset-x-0 bottom-2 h-px origin-left bg-border"
+              />
               <span className="absolute bottom-3 left-0 font-mono text-xs text-muted-foreground">
                 {formatBoundary(start, unit)}
               </span>
@@ -208,7 +296,8 @@ export function AlignmentDiagram({
                 {formatBoundary(end, unit)}
               </span>
               {highlight && highlightPosition !== null && (
-                <span
+                <motion.span
+                  variants={variantsEnabled ? markerVariants : undefined}
                   className={clsx(
                     'absolute top-0 max-w-[11rem] font-mono text-xs font-semibold leading-4 text-primary',
                     markerAlignment(highlightPosition),
@@ -221,10 +310,10 @@ export function AlignmentDiagram({
                       {highlight.detail}
                     </span>
                   )}
-                </span>
+                </motion.span>
               )}
             </div>
-          </div>
+          </motion.div>
 
           <div className="space-y-3">
             {tracks.map((track, trackIndex) => {
@@ -232,13 +321,14 @@ export function AlignmentDiagram({
               const ticks = buildTicks(start, end, track.interval)
 
               return (
-                <section
+                <motion.section
+                  variants={variantsEnabled ? itemVariants : undefined}
                   key={`${track.label}-${trackIndex}`}
                   className="grid grid-cols-[minmax(12rem,0.32fr)_minmax(0,1fr)] gap-4"
                 >
                   <div
                     className={clsx(
-                      'rounded-[8px] border p-3',
+                      'rounded-[8px] border p-3 transition-shadow duration-300 hover:shadow-sm',
                       currentTone.border,
                       currentTone.bg,
                     )}
@@ -263,7 +353,8 @@ export function AlignmentDiagram({
                     )}
                   </div>
 
-                  <div
+                  <motion.div
+                    variants={variantsEnabled ? trackVariants : undefined}
                     className={clsx(
                       'relative min-h-24 rounded-[8px] border',
                       currentTone.border,
@@ -274,7 +365,10 @@ export function AlignmentDiagram({
                       .map((marker) => formatBoundary(marker.value, unit))
                       .join(', ')}`}
                   >
-                    <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border" />
+                    <motion.span
+                      variants={variantsEnabled ? axisVariants : undefined}
+                      className="absolute inset-x-0 top-1/2 h-px origin-left -translate-y-1/2 bg-border"
+                    />
 
                     {ticks.map((tick) => (
                       <span
@@ -288,8 +382,9 @@ export function AlignmentDiagram({
                     ))}
 
                     {highlightPosition !== null && (
-                      <span
-                        className="absolute inset-y-2 z-10 border-l border-dashed border-primary/60"
+                      <motion.span
+                        variants={variantsEnabled ? highlightVariants : undefined}
+                        className="absolute inset-y-2 z-10 origin-center border-l border-dashed border-primary/60"
                         style={{ left: `${highlightPosition}%` }}
                       />
                     )}
@@ -299,27 +394,30 @@ export function AlignmentDiagram({
                       const labelOnTop = markerIndex % 2 === 0
 
                       return (
-                        <div key={`${marker.value}-${marker.label ?? markerIndex}`}>
+                        <motion.div
+                          variants={variantsEnabled ? markerVariants : undefined}
+                          key={`${marker.value}-${marker.label ?? markerIndex}`}
+                          className="absolute inset-y-0 z-20"
+                          style={{ left: `${markerPosition}%` }}
+                        >
                           <span
                             className={clsx(
-                              'absolute top-1/2 z-20 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-4',
+                              'absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-4',
                               marker.emphasis
                                 ? 'bg-primary ring-primary/20'
                                 : currentTone.dot,
                             )}
-                            style={{ left: `${markerPosition}%` }}
                           />
                           {(marker.label || marker.detail) && (
                             <span
                               className={clsx(
-                                'absolute z-20 max-w-[10rem] font-mono text-xs leading-4',
+                                'absolute max-w-[10rem] font-mono text-xs leading-4',
                                 labelOnTop ? 'top-2' : 'bottom-2',
                                 markerAlignment(markerPosition),
                                 marker.emphasis
                                   ? 'font-semibold text-primary'
                                   : 'text-muted-foreground',
                               )}
-                              style={{ left: `${markerPosition}%` }}
                             >
                               {marker.label ?? formatBoundary(marker.value, unit)}
                               {marker.detail && (
@@ -329,18 +427,21 @@ export function AlignmentDiagram({
                               )}
                             </span>
                           )}
-                        </div>
+                        </motion.div>
                       )
                     })}
-                  </div>
-                </section>
+                  </motion.div>
+                </motion.section>
               )
             })}
           </div>
         </div>
 
         <div className="space-y-3 md:hidden">
-          <div className="flex flex-wrap items-center gap-2 rounded-[8px] border border-border/70 bg-background/55 p-3">
+          <motion.div
+            variants={variantsEnabled ? itemVariants : undefined}
+            className="flex flex-wrap items-center gap-2 rounded-[8px] border border-border/70 bg-background/55 p-3"
+          >
             <span className="font-mono text-xs text-muted-foreground">
               {formatBoundary(start, unit)} → {formatBoundary(end, unit)}
             </span>
@@ -350,16 +451,17 @@ export function AlignmentDiagram({
                 {highlight.detail ? ` · ${highlight.detail}` : ''}
               </span>
             )}
-          </div>
+          </motion.div>
 
           {tracks.map((track, trackIndex) => {
             const currentTone = tone(track.tone)
 
             return (
-              <section
+              <motion.section
+                variants={variantsEnabled ? itemVariants : undefined}
                 key={`${track.label}-mobile-${trackIndex}`}
                 className={clsx(
-                  'rounded-[8px] border p-4',
+                  'rounded-[8px] border p-4 transition-shadow duration-300 hover:shadow-sm',
                   currentTone.border,
                   currentTone.bg,
                 )}
@@ -402,11 +504,11 @@ export function AlignmentDiagram({
                     </span>
                   ))}
                 </div>
-              </section>
+              </motion.section>
             )
           })}
         </div>
       </div>
-    </figure>
+    </motion.figure>
   )
 }
