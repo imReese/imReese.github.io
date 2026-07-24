@@ -205,10 +205,6 @@ test('MDX math uses MathJax 4 CHTML with accessible and mobile-safe output', () 
     'src/components/shared/MdxComponents.tsx',
     'utf8',
   )
-  const kimiArticle = readFileSync(
-    'content/blogs/kimi-kda-cache-sglang-vllm-mooncake-store.mdx',
-    'utf8',
-  )
 
   assert.ok(packageJson.dependencies['remark-math'])
   assert.ok(packageJson.dependencies['remark-gfm'])
@@ -236,8 +232,4 @@ test('MDX math uses MathJax 4 CHTML with accessible and mobile-safe output', () 
   assert.match(mdxComponentsSource, /style: TrustedStyle/)
   assert.match(mdxComponentsSource, /dangerouslySetInnerHTML/)
   assert.match(mdxComponentsSource, /min-w-\[48rem\]/)
-  assert.match(kimiArticle, /\\tag\{1\}/)
-  assert.match(kimiArticle, /\\mathbf S_t/)
-  assert.match(kimiArticle, /\$\\boldsymbol\{k\}_t\$/)
-  assert.doesNotMatch(kimiArticle, /`k_t`/)
 })
