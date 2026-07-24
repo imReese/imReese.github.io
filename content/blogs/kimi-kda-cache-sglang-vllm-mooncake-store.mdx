@@ -253,30 +253,43 @@ KDA 利用 WY representation 和 UT transform，将 chunk 内的大部分工作�
 
 ## 五种容易混淆的“粒度”
 
-```text
-KDA kernel chunk
-  算子内部并行 tile；决定可导出的中间 recurrent-state 边界
-
-prefix_match_unit / hash block
-  rolling hash 与 prefix lookup 的最细 token 边界
-
-cache-group physical block
-  某一 cache group 的 block table 与物理 state/KV page 单位
-
-scheduler / LCM block
-  多 cache groups 和 connector 共同使用的调度、传输对齐单位
-
-Mooncake object chunk
-  一个 Store key 对应的一个或多个 memory slices
-```
-
-这五者可以相关，但不是同一个概念。尤其是：
-
-```text
-可形成 hash
-≠ 已生成 KDA checkpoint
-≠ 可作为 Mooncake 远端 object 边界
-```
+<LayerDiagram
+  eyebrow="five independent granularities"
+  title="同一个 prefix cache 链路里，至少有五种不同的边界"
+  caption="它们分别服务于算子、查找、物理分配、调度和远端存储。能够形成 hash，不等于已经生成 checkpoint，也不等于可以成为 Mooncake object boundary。"
+  layers={[
+    {
+      label: 'KDA kernel chunk',
+      detail: '算子内部并行 tile',
+      items: ['intermediate h', 'chunk-aligned state'],
+      tone: 'mauve',
+    },
+    {
+      label: 'prefix_match_unit / hash block',
+      detail: 'rolling hash 与本地 lookup 粒度',
+      items: ['addressable boundary', '不自动生成 state'],
+      tone: 'blue',
+    },
+    {
+      label: 'cache-group physical block',
+      detail: 'GPU allocator 与 block table 单位',
+      items: ['MLA page', 'KDA raw state page'],
+      tone: 'green',
+    },
+    {
+      label: 'scheduler / LCM block',
+      detail: '多 cache groups 与 connector 的共同对齐',
+      items: ['lookup alignment', 'store alignment'],
+      tone: 'amber',
+    },
+    {
+      label: 'Mooncake object chunk',
+      detail: '一个 key 对应一个或多个 memory slices',
+      items: ['opaque bytes', 'scatter-gather'],
+      tone: 'rose',
+    },
+  ]}
+/>
 
 ## 一个逻辑 checkpoint 如何展开
 
@@ -767,6 +780,64 @@ A_store % hash block size == 0
 A_store % 每个 cache-group block size == 0
 ```
 
+<AlignmentDiagram
+  eyebrow="local vs remote alignment"
+  title="6976 可以是本地 checkpoint，却不一定是远端 object boundary"
+  caption="示意参数：local prefix_match_unit = 64，Mooncake A_store = 4096。虚线标出已经物化的本地 C(P6976)。"
+  start={4096}
+  end={8192}
+  unit="tokens"
+  highlight={{
+    value: 6976,
+    label: 'C(P6976)',
+    detail: 'local checkpoint',
+  }}
+  tracks={[
+    {
+      label: 'Local hash boundaries',
+      detail: 'rolling hash 可以每 64 token 寻址',
+      tone: 'blue',
+      interval: 64,
+      intervalLabel: 'every 64 tokens',
+      markers: [
+        { value: 4096, label: '4096' },
+        {
+          value: 6976,
+          label: 'Hash(P6976)',
+          detail: 'addressable',
+          emphasis: true,
+        },
+        { value: 8192, label: '8192' },
+      ],
+    },
+    {
+      label: 'Actual KDA checkpoints',
+      detail: '只有真正物化并保留的 C(P_L)',
+      tone: 'green',
+      markers: [
+        { value: 4096, label: 'C(P4096)' },
+        {
+          value: 6976,
+          label: 'C(P6976)',
+          detail: 'materialized locally',
+          emphasis: true,
+        },
+      ],
+    },
+    {
+      label: 'Mooncake Store boundaries',
+      detail: '固定路径仍按 A_store 对齐',
+      tone: 'amber',
+      interval: 4096,
+      intervalLabel: 'A_store = 4096',
+      markers: [
+        { value: 4096, label: 'remote 4096' },
+        { value: 8192, label: 'remote 8192' },
+      ],
+    },
+  ]}
+/>
+
 因此，一个本地 `Hash(P6976) → C(P6976)` 条目，只有在 6976 同时满足外部 Store 对齐约束时，才可能成为远端 object boundary。`prefix_match_unit=64` 提供本地可寻址能力，不自动把 Mooncake 的传输和持久化粒度也降到 64。
 
 ### 远端 partial-group missing boundary
@@ -1030,27 +1101,48 @@ Prefix manifest
 
 ## 一次完整请求的控制流
 
-```text
-token IDs
-  ↓
-GPU / Host 本地 per-component prefix lookup
-  ↓
-hybrid convergence，或产生 missing boundary
-  ↓
-Mooncake external lookup（受 Store 对齐和 namespace 约束）
-  ↓
-分配 MLA blocks 与 request-private KDA state slot
-  ↓
-加载连续 MLA pages + 目标边界 C(P_t)
-  ↓
-Copy-on-Write / load-back 到请求工作状态
-  ↓
-replay 未命中的 suffix
-  ↓
-在合法边界注册新的本地 checkpoint
-  ↓
-按 scheduler/LCM 对齐把可达 objects 写入 Mooncake
-```
+<FlowDiagram
+  eyebrow="request lifecycle"
+  title="一个 hybrid prefix 从本地 lookup 到再次写回 Store"
+  caption="每一步都必须维持相同的 token boundary、prefix identity、position 和 cache ABI。"
+  steps={[
+    {
+      label: 'Local lookup',
+      meta: 'GPU + Host',
+      detail: '分别查询连续 MLA/KV pages 与边界 checkpoint。',
+      items: ['MLA/KV', 'C(P_t)'],
+      tone: 'blue',
+    },
+    {
+      label: 'Hybrid convergence',
+      meta: 'L_local',
+      detail: '求所有必要 components 共同支持的本地锚点；必要时产生 missing boundary。',
+      items: ['per-group hit', 'shared boundary'],
+      tone: 'mauve',
+    },
+    {
+      label: 'Mooncake lookup',
+      meta: 'external suffix',
+      detail: '按 Store 对齐查询连续 pages、trailing checkpoint 与所有 ranks。',
+      items: ['A_store', 'namespace'],
+      tone: 'amber',
+    },
+    {
+      label: 'Restore + CoW',
+      meta: 'request-private',
+      detail: '加载 cache，并复制或回填到请求自己的可写状态。',
+      items: ['load-back', 'copy-on-write'],
+      tone: 'green',
+    },
+    {
+      label: 'Replay + publish',
+      meta: 'model forward',
+      detail: '重算未命中的 suffix，在合法边界注册 checkpoint 并写回 Store。',
+      items: ['replay suffix', 'register', 'store'],
+      tone: 'teal',
+    },
+  ]}
+/>
 
 这条链上的 token length、prefix hash、position、MLA cache 和 `C(P_t)` 必须始终一致。任何一环只知道“KV 命中了多少”，却不知道“哪个 KDA checkpoint 与之对应”，都无法安全跳过模型 forward。
 
