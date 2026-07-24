@@ -54,15 +54,15 @@ SGLang 已有显式的 temporal/conv 远端读写链路；vLLM 的 raw-page/cach
 
 ## 源码版本与结论范围
 
-正文统一固定到 **2026-07-22 20:00（Asia/Tokyo，UTC+9；即 11:00 UTC）**。下面列的是各仓库 `main` 在该时刻之前的最后一个提交：
+正文统一固定到 **2026-07-22 20:00（北京时间，UTC+8；即 12:00 UTC）**。下面列的是各仓库 `main` 在该时刻之前的最后一个提交：
 
 ```text
-SGLang   977ea336cd3e960141c4c6e746b4efc24fdf312e  2026-07-22 18:49:51 JST
-vLLM     61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7  2026-07-22 19:56:23 JST
-Mooncake 4dbe5a4c194669850e9abad61172e9878b245b15  2026-07-22 17:58:35 JST
+SGLang   4f88206393b620f5a856c8719289cf845a72b4fb  2026-07-22 19:45:29 UTC+8
+vLLM     1a659a0c370942bae3c8567902e38bddbbae95f3  2026-07-22 19:52:56 UTC+8
+Mooncake 12df58c7de65f88f37f5da99ab95ff3418a9ebef  2026-07-22 19:02:55 UTC+8
 ```
 
-对应提交分别是 [`SGLang`](https://github.com/sgl-project/sglang/commit/977ea336cd3e960141c4c6e746b4efc24fdf312e)、[`vLLM`](https://github.com/vllm-project/vllm/commit/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7) 与 [`Mooncake`](https://github.com/kvcache-ai/Mooncake/commit/4dbe5a4c194669850e9abad61172e9878b245b15)。KDA 数学以 Moonshot AI 的 [`Kimi Linear` 技术报告（arXiv:2510.26692v2）](https://arxiv.org/pdf/2510.26692v2)为准；该版本于 2025-11-01 修订，运行时结论只以这里固定的三个代码快照为准。
+对应提交分别是 [`SGLang`](https://github.com/sgl-project/sglang/commit/4f88206393b620f5a856c8719289cf845a72b4fb)、[`vLLM`](https://github.com/vllm-project/vllm/commit/1a659a0c370942bae3c8567902e38bddbbae95f3) 与 [`Mooncake`](https://github.com/kvcache-ai/Mooncake/commit/12df58c7de65f88f37f5da99ab95ff3418a9ebef)。KDA 数学以 Moonshot AI 的 [`Kimi Linear` 技术报告（arXiv:2510.26692v2）](https://arxiv.org/pdf/2510.26692v2)为准；该版本于 2025-11-01 修订，运行时结论只以这里固定的三个代码快照为准。
 
 最后修订：**2026-07-24**。
 
@@ -492,9 +492,9 @@ if track_ssm:
 
 固定源码入口包括：
 
-- [`KDAAttnBackend.forward_extend`](https://github.com/sgl-project/sglang/blob/977ea336cd3e960141c4c6e746b4efc24fdf312e/python/sglang/srt/layers/attention/linear/kda_backend.py)
-- [`HybridLinearAttnBackend`](https://github.com/sgl-project/sglang/blob/977ea336cd3e960141c4c6e746b4efc24fdf312e/python/sglang/srt/layers/attention/hybrid_linear_attn_backend.py)
-- [`FlashKDA wrapper`](https://github.com/sgl-project/sglang/blob/977ea336cd3e960141c4c6e746b4efc24fdf312e/python/sglang/srt/layers/attention/linear/kernels/kda_flashkda.py)
+- [`KDAAttnBackend.forward_extend`](https://github.com/sgl-project/sglang/blob/4f88206393b620f5a856c8719289cf845a72b4fb/python/sglang/srt/layers/attention/linear/kda_backend.py)
+- [`HybridLinearAttnBackend`](https://github.com/sgl-project/sglang/blob/4f88206393b620f5a856c8719289cf845a72b4fb/python/sglang/srt/layers/attention/hybrid_linear_attn_backend.py)
+- [`FlashKDA wrapper`](https://github.com/sgl-project/sglang/blob/4f88206393b620f5a856c8719289cf845a72b4fb/python/sglang/srt/layers/attention/linear/kernels/kda_flashkda.py)
 
 checkpoint 同时包含两部分：
 
@@ -555,7 +555,7 @@ node.host_value 存在
 
 本地没有 HiCache controller 时，如果 Full/MLA prefix 比 KDA state 更长，`MambaComponent.finalize_match_result` 会产生 `mamba_branching_seqlen`。下一次 extend 可以继续按大预算执行，但 backend 会从中间 `h` 抽取这个分叉 checkpoint。
 
-固定实现见 [`mamba_component.py`](https://github.com/sgl-project/sglang/blob/977ea336cd3e960141c4c6e746b4efc24fdf312e/python/sglang/srt/mem_cache/unified_cache_components/mamba_component.py)。
+固定实现见 [`mamba_component.py`](https://github.com/sgl-project/sglang/blob/4f88206393b620f5a856c8719289cf845a72b4fb/python/sglang/srt/mem_cache/unified_cache_components/mamba_component.py)。
 
 ### HiCache 与 Mooncake 的数据面
 
@@ -580,7 +580,7 @@ Mooncake adapter 会将一个逻辑 KDA page 展开成：
 ...
 ```
 
-`batch_exists_v2` 只有在 temporal 和全部 conv components 都存在时，才将该逻辑 checkpoint 视为命中；任一 component 缺失都必须判 miss。固定实现见 [`mooncake_store.py`](https://github.com/sgl-project/sglang/blob/977ea336cd3e960141c4c6e746b4efc24fdf312e/python/sglang/srt/mem_cache/storage/mooncake_store/mooncake_store.py)。
+`batch_exists_v2` 只有在 temporal 和全部 conv components 都存在时，才将该逻辑 checkpoint 视为命中；任一 component 缺失都必须判 miss。固定实现见 [`mooncake_store.py`](https://github.com/sgl-project/sglang/blob/4f88206393b620f5a856c8719289cf845a72b4fb/python/sglang/srt/mem_cache/storage/mooncake_store/mooncake_store.py)。
 
 恢复路径反向执行：
 
@@ -619,7 +619,7 @@ chunk_kda_with_fused_gate(..., output_final_state=True)
   → write back to current state slot
 ```
 
-固定源码入口见 [`kimi_gdn_linear_attn.py`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py)。
+固定源码入口见 [`kimi_gdn_linear_attn.py`](https://github.com/vllm-project/vllm/blob/1a659a0c370942bae3c8567902e38bddbbae95f3/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py)。
 
 一次大 prefill 自然只产生该 scheduler step 末尾的 checkpoint。vLLM 的 Kimi 路径不像 SGLang 那样暴露 forward 内多个 chunk 的 `h`，因此缺失边界主要依靠 scheduler 让 forward 恰好停在那里。
 
@@ -687,7 +687,7 @@ local KDA hit = 0
   → 本地缺失 checkpoint 的 junction 信息不再向后传播
 ```
 
-固定逻辑见 [`scheduler.py`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/v1/core/sched/scheduler.py)。
+固定逻辑见 [`scheduler.py`](https://github.com/vllm-project/vllm/blob/1a659a0c370942bae3c8567902e38bddbbae95f3/vllm/v1/core/sched/scheduler.py)。
 
 这里的代码真实语义是采用 `max(per_group_hits)`，并不是显式选择 Full Attention group；只是在本文 `MLA hit = 1k, KDA hit = 0` 的例子中，最大值恰好等于 MLA/FA hit。
 
@@ -711,10 +711,10 @@ value
 
 固定实现见：
 
-- [`data.py`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py)
-- [`worker.py`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py)
-- [`scheduler.py`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/scheduler.py)
-- [`coordinator.py`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/coordinator.py)
+- [`data.py`](https://github.com/vllm-project/vllm/blob/1a659a0c370942bae3c8567902e38bddbbae95f3/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/data.py)
+- [`worker.py`](https://github.com/vllm-project/vllm/blob/1a659a0c370942bae3c8567902e38bddbbae95f3/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py)
+- [`scheduler.py`](https://github.com/vllm-project/vllm/blob/1a659a0c370942bae3c8567902e38bddbbae95f3/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/scheduler.py)
+- [`coordinator.py`](https://github.com/vllm-project/vllm/blob/1a659a0c370942bae3c8567902e38bddbbae95f3/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/coordinator.py)
 
 需要区分 GPU layout 与 Mooncake object layout：
 
@@ -1026,7 +1026,7 @@ object key → one or more memory slices
 
 Mooncake 同时提供显式 `Upsert` 生命周期，可以更新已有 key，甚至在布局不变时复用 allocation；因此“不可变”是 prefix-cache 协议应该坚持的不变量，而不是 Store 完全没有更新 API。对已经发布的 prefix-hash key 使用原地 Upsert，会破坏 hash → checkpoint 的稳定映射，不应作为普通缓存更新方式。
 
-固定设计文档见 [`mooncake-store.md`](https://github.com/kvcache-ai/Mooncake/blob/4dbe5a4c194669850e9abad61172e9878b245b15/docs/source/design/mooncake-store.md)。
+固定设计文档见 [`mooncake-store.md`](https://github.com/kvcache-ai/Mooncake/blob/12df58c7de65f88f37f5da99ab95ff3418a9ebef/docs/source/design/mooncake-store.md)。
 
 这里还要区分两个不同的 “group”：
 
