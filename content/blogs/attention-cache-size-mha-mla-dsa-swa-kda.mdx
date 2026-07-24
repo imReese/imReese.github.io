@@ -2,7 +2,7 @@
 title: '不同 Attention 架构的 KV Cache 怎么算：MHA、SWA、MLA、DSA、KDA 与 DeepSeek V4'
 description: '从每 token、每层究竟保存什么状态出发，结合 Llama、Mistral、DeepSeek V3/V3.2/V4、GLM-5.2 与 Kimi Linear 的公开参数，计算 BF16、FP8、FP4 下的 KV Cache、Indexer Cache 与 recurrent state。'
 author: 'Reese'
-date: '2026-04-30'
+date: '2026-06-22'
 topics:
   - attention
   - kv-cache
@@ -17,7 +17,7 @@ series: 'LLM Serving Internals'
 featured: true
 ---
 
-> 本文按站点归档日期发布于 2026-04-30；DeepSeek V4 与 GLM-5.2 的公开模型配置、论文和计算示例更新于 2026-07-24。
+> 本文按站点归档日期发布于 2026-06-22；DeepSeek V4 与 GLM-5.2 的公开模型配置、论文和计算示例更新于 2026-07-24。
 
 大模型推理里经常出现一句话：KV Cache 大小等于“层数 × token 数 × KV Heads × Head Dim × 2”。
 
