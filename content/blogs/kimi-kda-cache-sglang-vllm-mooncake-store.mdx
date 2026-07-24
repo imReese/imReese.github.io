@@ -50,19 +50,19 @@ vLLM
   → 将该 final state 注册为 prefix checkpoint
 ```
 
-两边都已具备完整 KDA checkpoint 的存储与传输数据面。真正尚未完全闭合的是 partial-group hit：当 MLA/KV 命中得更长、同边界 KDA state 却不存在时，runtime 是否能发现缺失边界，并只补算一次 KDA checkpoint。
+SGLang 已有显式的 temporal/conv 远端读写链路；vLLM 的 raw-page/cache-group 结构也能够承载完整 KDA checkpoint，但 Kimi KDA + MooncakeStoreConnector 的专项端到端验证仍有限。共同尚未完全闭合的是 partial-group hit：当 MLA/KV 命中得更长、同边界 KDA state 却不存在时，runtime 是否能发现缺失边界，并只补算一次 KDA checkpoint。
 
 ## 源码版本与结论范围
 
-正文的主要源码考据固定在：
+正文的源码考据统一固定到 **2026-07-22 20:00（Asia/Tokyo，UTC+9；即 11:00 UTC）**。下面列的是各仓库 `main` 在该时刻之前的最后一个提交：
 
 ```text
-SGLang   297f9336c8bf81e2fcf06b930d2dd3551f7dec15  2026-07-21
-vLLM     387189c42997b27e2c04b5d97ef8190ffa2bf909  2026-07-21
-Mooncake 3ae17993c15a7339229cd5cde386b0eda6397438  2026-07-22
+SGLang   977ea336cd3e960141c4c6e746b4efc24fdf312e  2026-07-22 18:49:51 JST
+vLLM     61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7  2026-07-22 19:56:23 JST
+Mooncake 4dbe5a4c194669850e9abad61172e9878b245b15  2026-07-22 17:58:35 JST
 ```
 
-对应提交分别是 [`SGLang`](https://github.com/sgl-project/sglang/commit/297f9336c8bf81e2fcf06b930d2dd3551f7dec15)、[`vLLM`](https://github.com/vllm-project/vllm/commit/387189c42997b27e2c04b5d97ef8190ffa2bf909) 与 [`Mooncake`](https://github.com/kvcache-ai/Mooncake/commit/3ae17993c15a7339229cd5cde386b0eda6397438)。KDA 数学以 Moonshot AI 的 [`Kimi Linear` 技术报告](https://arxiv.org/pdf/2510.26692)和官方开源的 [`fla/ops/kda`](https://github.com/fla-org/flash-linear-attention/tree/main/fla/ops/kda)为准。
+对应提交分别是 [`SGLang`](https://github.com/sgl-project/sglang/commit/977ea336cd3e960141c4c6e746b4efc24fdf312e)、[`vLLM`](https://github.com/vllm-project/vllm/commit/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7) 与 [`Mooncake`](https://github.com/kvcache-ai/Mooncake/commit/4dbe5a4c194669850e9abad61172e9878b245b15)。KDA 数学以 Moonshot AI 的 [`Kimi Linear` 技术报告](https://arxiv.org/pdf/2510.26692)和官方开源的 [`fla/ops/kda`](https://github.com/fla-org/flash-linear-attention/tree/main/fla/ops/kda)为准。
 
 下文区分三类判断：
 
@@ -74,9 +74,9 @@ Mooncake 3ae17993c15a7339229cd5cde386b0eda6397438  2026-07-22
 
 本文不做性能评测，也不把通用 Mamba/GDN 测试直接等价为 Kimi KDA 的生产级端到端验证。
 
-## 2026-07-24 更新：Kimi K3 与细粒度 checkpoint
+## 截至 2026-07-22 20:00 JST：Kimi K3 与细粒度 checkpoint
 
-vLLM 在 2026 年 7 月合入了 hybrid model 的 fine-grained partial prefix-cache 支持，并发布了 [Kimi K3 serving 预览](https://vllm.ai/blog/2026-07-22-kimi-k3-preview)。增量实现主要见 [PR #46384](https://github.com/vllm-project/vllm/pull/46384)。这批变化进一步明确了三个必须分开的概念：
+在该快照中，vLLM 已合入 hybrid model 的 fine-grained partial prefix-cache 支持，并发布了 [Kimi K3 serving 预览](https://vllm.ai/blog/2026-07-22-kimi-k3-preview)。增量实现主要见 [PR #46384](https://github.com/vllm-project/vllm/pull/46384)。这批变化进一步明确了三个必须分开的概念：
 
 ```text
 physical state block size
@@ -125,9 +125,9 @@ H8192 → C(P8192)
 
 但这是多个请求形成的唯一 `(prefix hash, token length)` checkpoint 集合，不是单个请求自动保存所有中间状态。相同 prefix 会去重，实际驻留数量还受 creation policy、retention、state-pool 容量和 LRU eviction 限制。
 
-最新 vLLM 也补上了一个本地控制面细节：当本地 cache group 命中分歧、connector 又没有返回 external tokens 时，scheduler 会回退到普通 hybrid fixed point，恢复各组一致的边界和 `shared_prefix_boundary`。剩余问题主要在远端 metadata：Mooncake Store lookup 返回最终协调后的 hit length 和 per-group load mask，但不会单独返回 MLA-only 更长命中对应的 missing KDA boundary。
+在该 vLLM 快照中，挂接 connector 且模型含 Mamba/KDA layer 时，scheduler 仍走一条特殊的 per-group lookup 路径：它将 `shared_prefix_boundary` 清零，并把本地命中长度设为 `max(per_group_hits)`。因此，当 MLA 本地命中更长、KDA state 却落后时，这条路径不会回退到普通 hybrid fixed point；如果 connector 又没有返回能支撑更深边界的状态，缺失 KDA checkpoint 的补点信号会丢失。对应逻辑见固定快照中的 [`scheduler.py`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/v1/core/sched/scheduler.py)。
 
-K3 预览可以视为 cache-core 设计的确认；Dynamo + vLLM + Mooncake 的分离部署、offload 和大规模生产验证仍需要独立的端到端结果。
+Mooncake Store lookup 同样只返回最终协调后的 hit length 和 per-group load mask，不会单独返回 MLA-only 更长命中对应的 missing KDA boundary。对应接口见 [`MooncakeStoreCoordinator`](https://github.com/vllm-project/vllm/blob/61c9ef986a807aa3b9c6ccd25bb223b8f4116ac7/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/coordinator.py)。K3 预览可以视为 cache-core 设计的确认；Dynamo + vLLM + Mooncake 的分离部署、offload 和大规模生产验证仍需要独立的端到端结果。
 
 ## KDA 的递推与充分状态
 
@@ -313,8 +313,8 @@ if track_ssm:
 
 对应入口包括：
 
-- [`KDAAttnBackend.forward_extend`](https://github.com/sgl-project/sglang/blob/297f9336c8bf81e2fcf06b930d2dd3551f7dec15/python/sglang/srt/layers/attention/linear/kda_backend.py#L390-L487)
-- [`HybridLinearAttnBackend`](https://github.com/sgl-project/sglang/blob/297f9336c8bf81e2fcf06b930d2dd3551f7dec15/python/sglang/srt/layers/attention/hybrid_linear_attn_backend.py#L245-L315)
+- [`KDAAttnBackend.forward_extend`](https://github.com/sgl-project/sglang/blob/977ea336cd3e960141c4c6e746b4efc24fdf312e/python/sglang/srt/layers/attention/linear/kda_backend.py#L390-L487)
+- [`HybridLinearAttnBackend`](https://github.com/sgl-project/sglang/blob/977ea336cd3e960141c4c6e746b4efc24fdf312e/python/sglang/srt/layers/attention/hybrid_linear_attn_backend.py#L245-L315)
 
 checkpoint 同时包含两部分：
 
@@ -459,7 +459,7 @@ final hybrid hit = 0
 missing shared-prefix boundary = 1k
 ```
 
-scheduler 将 req2 的首次 prefill 截到 1k。forward 结束后生成并注册 `C(P_1k)`，下一 step 再继续 req2 的 suffix。req3 到来时，MLA 与 KDA 就能在 1k 同时命中。
+在不挂 connector 的本地路径中，scheduler 将 req2 的首次 prefill 截到 1k。forward 结束后生成并注册 `C(P_1k)`，下一 step 再继续 req2 的 suffix。req3 到来时，MLA 与 KDA 就能在 1k 同时命中。
 
 这里重算的是完整模型 forward，而不是只运行 KDA 层。第一次分叉请求付出一次补算成本，收益由后续共享同一 prefix 的请求获得。
 
@@ -515,22 +515,29 @@ prefix hash @ group=KDA
 
 如果 Store 中同时存在 `MLA(P_1k)` 和完整 `C(P_1k)`，external coordinator 可以得到完整 1k hit，并将两个 group 装入各自 GPU blocks。
 
-### 远端 partial-group missing boundary
+### connector 路径中的 partial-group missing boundary
 
-最新 vLLM 已能处理下面的本地情况：
+在本文固定的 vLLM 快照中，同样的本地命中分歧在是否挂接 connector 时会走不同路径：
 
 ```text
 local MLA hit = 1k
 local KDA hit = 0
-external hit  = 0
 
-→ fallback to hybrid fixed point
-→ final local hit = 0
-→ shared_prefix_boundary = 1k
-→ scheduler 可以停在 1k 补 C(P_1k)
+无 connector
+  → ordinary hybrid fixed point
+  → final local hit = 0
+  → shared_prefix_boundary = 1k
+  → scheduler 可以停在 1k 补 C(P_1k)
+
+有 connector + Mamba/KDA
+  → shared_prefix_boundary = 0
+  → num_new_local_computed_tokens = max(per_group_hits) = 1k
+  → 本地缺失 checkpoint 的 junction 信息不再向后传播
 ```
 
-剩余缺口在远端 lookup。当前 `MooncakeStoreCoordinator` 对外主要返回：
+这条特殊路径原本面向 P/D connector：Full Attention 已有的本地 block 可以避免重复传输，而 Mamba state 由对应 worker 另行传递。把同一假设直接用于共享 Store prefix lookup 时，不能自动表达“MLA 已命中到 1k、KDA checkpoint 尚缺失”的补点需求。
+
+远端 lookup 还有第二层信息损失。该快照中的 `MooncakeStoreCoordinator` 对外主要返回：
 
 ```text
 final reconciled hit length
@@ -557,7 +564,7 @@ Store 只有 MLA(P_1k)
   → 不会仅凭这次 lookup 自动停在 1k 合成 C(P_1k)
 ```
 
-要补齐这条链，需要 external lookup 保留 per-group hit 或直接返回 `missing_branching_boundary`，随后让 scheduler、partial-tail registration 和 Store save mask 共享同一个边界。
+要补齐这条链，需要 local + external lookup 保留 per-group hit，或直接返回 `missing_branching_boundary`，随后让 scheduler、partial-tail registration 和 Store save mask 共享同一个边界。
 
 ## 本地 HiCache 与 Mooncake 同时命中时怎样算长度
 
@@ -721,6 +728,7 @@ Kimi + Mooncake 专项 e2e     不适用        仍需进一步验证
 KDA raw state page           已支持        数据结构可承载
 细粒度 partial checkpoint   已支持        external 路径仍需完整验证
 partial hit 后 CoW           已支持        取决于 connector / load path 对齐
+缺失分叉 checkpoint 自动补  已支持        connector 路径未传播 boundary
 完整 checkpoint 远端读写    不适用        接口允许，专项 e2e 仍有限
 远端 MLA-only 自动补 KDA     不适用        missing boundary 尚未返回
 ```
@@ -796,10 +804,10 @@ VLLM_PREFIX_CACHE_RETENTION_INTERVAL
 
 > req1 的 4k prefill 如果只留下 `C(P_4k)`，req2 第一次共享 1k 时确实必须重新计算这 1k；`C(P_4k)` 无法回滚，MLA pages 也不能替代 KDA state。
 
-> SGLang 本地可以让 req2 的大 extend 跨过 1k，再从 kernel 返回的中间 state 抽出并插入 `C(P_1k)`；vLLM 本地则把 req2 动态截到 1k，利用 step end 补出并注册 `C(P_1k)`。两边都不要求把所有请求的 prefill budget 固定成 1k。
+> SGLang 本地可以让 req2 的大 extend 跨过 1k，再从 kernel 返回的中间 state 抽出并插入 `C(P_1k)`；vLLM 不挂 connector 的本地路径则把 req2 动态截到 1k，利用 step end 补出并注册 `C(P_1k)`。两边都不要求把所有请求的 prefill budget 固定成 1k。
 
 再加上外部缓存限定：
 
-> SGLang + HiCache 已把 temporal/conv checkpoint 接到 Mooncake 的完整读写数据面，但 HiCache 模式仍暂时跳过 branching-state fill。vLLM 最新 main 已支持本地 cache-group divergence 且 connector miss 时的 fixed-point fallback，也支持 physical block 内的 fine-grained partial checkpoint 与 Copy-on-Write；但 MooncakeStoreCoordinator 的远端 lookup 仍不单独返回 MLA-only 更长命中对应的 missing KDA boundary。两条链都能复用一个已经存在且完整的 `C(P_t)`，但远端只有 MLA 命中、缺少 KDA checkpoint 时，仍不会仅凭这次 lookup 自动补算该状态。
+> SGLang + HiCache 已把 temporal/conv checkpoint 接到 Mooncake 的完整读写数据面，但 HiCache 模式仍暂时跳过 branching-state fill。vLLM 在本文固定快照中已支持 physical block 内的 fine-grained partial checkpoint 与 Copy-on-Write，但 connector + Mamba/KDA 的本地 per-group lookup 会清零 `shared_prefix_boundary` 并采用较长的 FA hit；`MooncakeStoreCoordinator` 的远端 lookup 也不单独返回 MLA-only 更长命中对应的 missing KDA boundary。两条链都能复用一个已经存在且完整的 `C(P_t)`，但只有 MLA 命中、缺少 KDA checkpoint 时，仍不会仅凭这次 connector lookup 自动补算该状态。
 
 优化目标不是机械地每隔 1k 切一次 forward，而是在出现可复用分叉时只补算一次，并把同一个边界持续传递到本地 radix/scheduler、Host staging、Mooncake key/value、lookup 与 retention policy。对 vLLM 而言，还要始终区分 physical state block、prefix match unit 与实际 checkpoint 集合：细粒度可寻址不等于细粒度状态自动生成；checkpoint 一旦发布就应保持不可变，后续扩展通过 CoW 产生新的 working state 或新 checkpoint。
