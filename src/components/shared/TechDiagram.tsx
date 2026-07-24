@@ -1,4 +1,7 @@
+'use client'
+
 import clsx from 'clsx'
+import { motion, useReducedMotion, type Variants } from 'framer-motion'
 import * as React from 'react'
 import { type CSSProperties, type ReactNode } from 'react'
 
@@ -58,6 +61,47 @@ type ExpandableNote = {
   detail?: string
   items?: string[]
   tone?: DiagramTone
+}
+
+const revealEase = [0.22, 1, 0.36, 1] as const
+
+const diagramContainerVariants: Variants = {
+  hidden: {
+    opacity: 0,
+    y: 28,
+    scale: 0.985,
+    filter: 'blur(8px)',
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    filter: 'blur(0px)',
+    transition: {
+      duration: 0.72,
+      ease: revealEase,
+      when: 'beforeChildren',
+      delayChildren: 0.08,
+      staggerChildren: 0.075,
+    },
+  },
+}
+
+const diagramItemVariants: Variants = {
+  hidden: {
+    opacity: 0,
+    y: 18,
+    scale: 0.985,
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: {
+      duration: 0.58,
+      ease: revealEase,
+    },
+  },
 }
 
 const toneClassNames: Record<
@@ -138,8 +182,14 @@ function DiagramShell({
   children: ReactNode
   compact?: boolean
 }) {
+  const prefersReducedMotion = useReducedMotion()
+
   return (
-    <figure
+    <motion.figure
+      variants={prefersReducedMotion ? undefined : diagramContainerVariants}
+      initial={prefersReducedMotion ? false : 'hidden'}
+      whileInView={prefersReducedMotion ? undefined : 'visible'}
+      viewport={{ once: true, amount: 0.16, margin: '0px 0px -8% 0px' }}
       className={clsx(
         'not-prose overflow-hidden rounded-lg border border-border/80 bg-surface/55',
         compact
@@ -148,7 +198,8 @@ function DiagramShell({
       )}
     >
       {(eyebrow || title || caption) && (
-        <figcaption
+        <motion.figcaption
+          variants={prefersReducedMotion ? undefined : diagramItemVariants}
           className={clsx(
             'border-b border-border/70 px-4',
             compact ? 'py-3' : 'py-4 sm:px-5',
@@ -169,10 +220,10 @@ function DiagramShell({
               {caption}
             </p>
           )}
-        </figcaption>
+        </motion.figcaption>
       )}
       <div className={compact ? 'p-3 sm:p-4' : 'p-4 sm:p-5'}>{children}</div>
-    </figure>
+    </motion.figure>
   )
 }
 
@@ -202,10 +253,10 @@ export function LayerDiagram({
           const currentTone = tone(layer.tone)
 
           return (
-            <div key={`${layer.label}-${index}`}>
+            <motion.div key={`${layer.label}-${index}`} variants={diagramItemVariants}>
               <div
                 className={clsx(
-                  'relative overflow-hidden rounded-[8px] border p-4',
+                  'relative overflow-hidden rounded-[8px] border p-4 transition-shadow duration-300 hover:shadow-sm',
                   currentTone.border,
                   currentTone.bg,
                 )}
@@ -246,7 +297,7 @@ export function LayerDiagram({
                   <span className="h-4 w-px bg-border" />
                 </div>
               )}
-            </div>
+            </motion.div>
           )
         })}
       </div>
@@ -269,20 +320,21 @@ export function SequenceDiagram({
 }) {
   return (
     <DiagramShell eyebrow={eyebrow} title={title} caption={caption}>
-      <div className="mb-4 flex flex-wrap gap-2">
+      <motion.div variants={diagramItemVariants} className="mb-4 flex flex-wrap gap-2">
         {actors.map((actor) => (
           <Badge key={actor}>{actor}</Badge>
         ))}
-      </div>
+      </motion.div>
       <ol className="space-y-3">
         {steps.map((step, index) => {
           const currentTone = tone(step.tone ?? 'teal')
 
           return (
-            <li
+            <motion.li
+              variants={diagramItemVariants}
               key={`${step.from}-${step.to}-${step.label}-${index}`}
               className={clsx(
-                'rounded-[8px] border bg-background/55 p-3',
+                'rounded-[8px] border bg-background/55 p-3 transition-shadow duration-300 hover:shadow-sm',
                 currentTone.border,
               )}
             >
@@ -308,9 +360,7 @@ export function SequenceDiagram({
                 </div>
                 <div className="hidden items-center gap-2 sm:flex">
                   <span className="h-px w-8 bg-border" />
-                  <span
-                    className={clsx('h-2 w-2 rounded-full', currentTone.line)}
-                  />
+                  <span className={clsx('h-2 w-2 rounded-full', currentTone.line)} />
                   <span className="h-px w-8 bg-border" />
                 </div>
                 <div>
@@ -324,7 +374,7 @@ export function SequenceDiagram({
                   )}
                 </div>
               </div>
-            </li>
+            </motion.li>
           )
         })}
       </ol>
@@ -360,10 +410,14 @@ export function FlowDiagram({
           const currentTone = tone(step.tone ?? 'teal')
 
           return (
-            <li key={`${step.label}-${index}`} className="relative min-w-0">
+            <motion.li
+              variants={diagramItemVariants}
+              key={`${step.label}-${index}`}
+              className="relative min-w-0"
+            >
               <div
                 className={clsx(
-                  'h-full rounded-[8px] border p-4',
+                  'h-full rounded-[8px] border p-4 transition-shadow duration-300 hover:shadow-sm',
                   currentTone.border,
                   currentTone.bg,
                 )}
@@ -418,7 +472,7 @@ export function FlowDiagram({
                   />
                 </div>
               )}
-            </li>
+            </motion.li>
           )
         })}
       </ol>
@@ -451,10 +505,11 @@ export function SystemBoundaryDiagram({
           const currentTone = tone(group.tone ?? 'teal')
 
           return (
-            <section
+            <motion.section
+              variants={diagramItemVariants}
               key={`${group.label}-${index}`}
               className={clsx(
-                'rounded-[8px] border p-4',
+                'rounded-[8px] border p-4 transition-shadow duration-300 hover:shadow-sm',
                 currentTone.border,
                 currentTone.bg,
               )}
@@ -489,7 +544,7 @@ export function SystemBoundaryDiagram({
                   </div>
                 </div>
               )}
-            </section>
+            </motion.section>
           )
         })}
       </div>
@@ -517,10 +572,11 @@ export function CompareCallout({
           )
 
           return (
-            <section
+            <motion.section
+              variants={diagramItemVariants}
               key={`${column.title}-${index}`}
               className={clsx(
-                'rounded-[8px] border p-4',
+                'rounded-[8px] border p-4 transition-shadow duration-300 hover:shadow-sm',
                 currentTone.border,
                 currentTone.soft,
               )}
@@ -549,7 +605,7 @@ export function CompareCallout({
                   </li>
                 ))}
               </ul>
-            </section>
+            </motion.section>
           )
         })}
       </div>
@@ -575,10 +631,11 @@ export function ExpandableNotes({
           const currentTone = tone(note.tone ?? 'surface')
 
           return (
-            <details
+            <motion.details
+              variants={diagramItemVariants}
               key={`${note.title}-${index}`}
               className={clsx(
-                'group rounded-[8px] border bg-background/55 p-4',
+                'group rounded-[8px] border bg-background/55 p-4 transition-shadow duration-300 open:shadow-sm',
                 currentTone.border,
               )}
             >
@@ -607,7 +664,7 @@ export function ExpandableNotes({
                   ))}
                 </div>
               )}
-            </details>
+            </motion.details>
           )
         })}
       </div>
@@ -634,13 +691,14 @@ export function StateDiagram({
             const currentTone = tone(state.tone)
 
             return (
-              <div
+              <motion.div
+                variants={diagramItemVariants}
                 key={`${state.label}-${index}`}
                 className="flex items-center gap-3"
               >
                 <div
                   className={clsx(
-                    'w-48 rounded-[8px] border p-3',
+                    'w-48 rounded-[8px] border p-3 transition-shadow duration-300 hover:shadow-sm',
                     currentTone.border,
                     currentTone.bg,
                   )}
@@ -672,7 +730,7 @@ export function StateDiagram({
                     </div>
                   </div>
                 )}
-              </div>
+              </motion.div>
             )
           })}
         </div>
@@ -699,16 +757,15 @@ export function MappingDiagram({
   return (
     <DiagramShell eyebrow={eyebrow} title={title} caption={caption}>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,0.65fr)_minmax(0,1fr)] lg:items-start">
-        <div
+        <motion.div
+          variants={diagramItemVariants}
           className={clsx(
-            'rounded-[8px] border p-4',
+            'rounded-[8px] border p-4 transition-shadow duration-300 hover:shadow-sm',
             sourceTone.border,
             sourceTone.bg,
           )}
         >
-          <p
-            className={clsx('font-mono text-xs font-semibold', sourceTone.text)}
-          >
+          <p className={clsx('font-mono text-xs font-semibold', sourceTone.text)}>
             {source.label}
           </p>
           {source.detail && (
@@ -716,16 +773,17 @@ export function MappingDiagram({
               {source.detail}
             </p>
           )}
-        </div>
+        </motion.div>
         <div className="space-y-3">
           {groups.map((group, index) => {
             const currentTone = tone(group.tone ?? 'blue')
 
             return (
-              <div
+              <motion.div
+                variants={diagramItemVariants}
                 key={`${group.label}-${index}`}
                 className={clsx(
-                  'rounded-[8px] border p-4',
+                  'rounded-[8px] border p-4 transition-shadow duration-300 hover:shadow-sm',
                   currentTone.border,
                   currentTone.soft,
                 )}
@@ -748,7 +806,7 @@ export function MappingDiagram({
                     <Badge key={item}>{item}</Badge>
                   ))}
                 </div>
-              </div>
+              </motion.div>
             )
           })}
         </div>
