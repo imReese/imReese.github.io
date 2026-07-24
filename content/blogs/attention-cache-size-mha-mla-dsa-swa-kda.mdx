@@ -1,12 +1,13 @@
 ---
-title: '不同 Attention 架构的 KV Cache 怎么算：MHA、SWA、MLA、DSA、KDA 与 DeepSeek V4'
-description: '从每 token、每层究竟保存什么状态出发，结合 Llama、Mistral、DeepSeek V3/V3.2/V4、GLM-5.2 与 Kimi Linear 的公开参数，计算 BF16、FP8、FP4 下的 KV Cache、Indexer Cache 与 recurrent state。'
+title: '如何从 config.json 估算大模型的 Attention Cache'
+description: '从 config.json 出发，理解 hidden_size、head_dim、KV Heads、sliding_window、kv_lora_rank、Indexer、KDA state 与缓存数据类型，并结合常见模型估算 Attention Cache。'
 author: 'Reese'
 date: '2026-06-22'
 topics:
   - attention
   - kv-cache
   - llm-serving
+  - config-json
   - mla
   - dsa
   - kda
@@ -16,8 +17,6 @@ category: 'engineering-deep-dive'
 series: 'LLM Serving Internals'
 featured: true
 ---
-
-> 本文按站点归档日期发布于 2026-06-22；DeepSeek V4 与 GLM-5.2 的公开模型配置、论文和计算示例更新于 2026-07-24。
 
 大模型推理里经常出现一句话：KV Cache 大小等于“层数 × token 数 × KV Heads × Head Dim × 2”。
 
@@ -67,6 +66,191 @@ DeepSeek V4
     },
   ]}
 />
+
+## 先从 config.json 判断缓存布局
+
+拿到一个陌生模型时，先不要直接套“层数 × token 数 × Head 数 × Head Dim × 2”。更可靠的顺序是：
+
+```text
+config.json
+  → 判断层数和 Attention 类型
+  → 确定每个历史位置保存什么对象
+  → 确定对象维度、产生频率和保留长度
+  → 确认 Cache dtype
+  → 再检查 modeling 代码和推理引擎的实际 layout
+```
+
+### 最常见的 Cache 相关字段
+
+| 字段 | 主要含义 | 对 Cache 的作用 |
+|---|---|---|
+| `architectures` / `model_type` | 选择具体模型实现 | 决定应该阅读哪份 `modeling_*.py` |
+| `num_hidden_layers` | Transformer 层数 | 同构模型通常作为层数乘数 |
+| `layer_types` / `attention_type` | 每层的 Attention 类型 | 混合模型必须按层型分别计算 |
+| `hidden_size` | residual stream 的宽度 | 是 Q/K/V 投影输入，不一定等于 Cache 宽度 |
+| `num_attention_heads` | Query Head 数 | MHA 中相关；GQA/MQA 不能拿它代替 KV Head 数 |
+| `num_key_value_heads` | KV Head 数 | 直接决定传统 MHA/GQA/MQA 的 Cache 宽度 |
+| `head_dim` | 单个 Head 的向量维度 | 与 KV Head 数一起决定每 token 的 K/V 元素数 |
+| `max_position_embeddings` | 模型支持的位置范围 | 不是当前请求已经分配的 Cache 长度 |
+| `sliding_window` | 局部 Attention 的窗口 | 将有效历史限制为 $\min(T,W)$ |
+| `q_lora_rank` | MLA Query 路径的低秩维度 | 通常不进入持久化 Cache |
+| `kv_lora_rank` | MLA 的 KV latent 维度 | 通常直接进入 MLA Cache |
+| `qk_rope_head_dim` | MLA 单独保存的 RoPE Key 维度 | 通常与 `kv_lora_rank` 一起缓存 |
+| `index_head_dim` | 稀疏 Index Key/Query 的维度 | 可能决定 Index Cache 每位置宽度 |
+| `index_topk` | 当前 Query 读取的历史位置数 | 影响稀疏读取，不等于持久化历史长度 |
+| `indexer_types` | Indexer 是独立还是共享 | 决定独立 Index Cache/选择器的数量 |
+| `short_conv_kernel` | KDA 等层的短卷积核大小 | 通常需要保留 `kernel_size - 1` 个卷积状态 |
+| `torch_dtype` / `dtype` | 模型默认计算或权重类型 | 不一定等于 runtime 的 KV Cache dtype |
+| `use_cache` | 是否返回或复用历史状态 | 不是 Cache 容量参数 |
+
+### `hidden_size`、Head 数与 `head_dim`
+
+Token embedding 和每层 residual stream 的状态通常具有形状：
+
+$$
+h_t\in\mathbb R^{d_{\text{model}}},
+$$
+
+其中 $d_{\text{model}}$ 对应 `hidden_size`。
+
+Attention 会把它投影成 Q、K、V。假设配置为：
+
+```json
+{
+  "hidden_size": 4096,
+  "num_attention_heads": 32,
+  "num_key_value_heads": 8,
+  "head_dim": 128
+}
+```
+
+逻辑形状大致是：
+
+```text
+hidden state: [T, 4096]
+Query:        [T, 32, 128]
+Key:          [T,  8, 128]
+Value:        [T,  8, 128]
+```
+
+这是 GQA：32 个 Query Heads 共享 8 组 KV Heads。每层、每 token 的 Cache 元素数是：
+
+$$
+H_{kv}(D_k+D_v)
+=
+8\times(128+128)
+=
+2048.
+$$
+
+BF16 每元素占 2 bytes，因此是：
+
+$$
+2048\times2
+=
+4096\text{ bytes/layer/token}.
+$$
+
+经典 MHA 常满足：
+
+$$
+d_{\text{head}}
+=
+\frac{\text{hidden\_size}}
+{\text{num\_attention\_heads}},
+$$
+
+但这不是现代模型的强制约束。配置若显式提供 `head_dim`、`qk_nope_head_dim`、`qk_rope_head_dim` 或 `v_head_dim`，应优先使用显式值；仍不确定时再查看投影矩阵和 Attention forward 的 Tensor shape。
+
+### MLA 中不要把 `q_lora_rank` 算进 KV Cache
+
+例如：
+
+```json
+{
+  "q_lora_rank": 1536,
+  "kv_lora_rank": 512,
+  "qk_nope_head_dim": 128,
+  "qk_rope_head_dim": 64,
+  "v_head_dim": 128
+}
+```
+
+`q_lora_rank=1536` 是 Query 路径的中间低秩表示，通常不会跨 decode step 持久化。
+
+优化后的 MLA runtime 通常保存：
+
+```text
+512-d KV latent
++ 64-d RoPE key
+```
+
+所以每 token、每层缓存的是：
+
+$$
+512+64=576
+$$
+
+个元素，而不是所有 Attention Heads 展开后的完整 K/V。
+
+### `max_position_embeddings`、`sliding_window` 与 `index_topk`
+
+这三个字段描述的是不同概念：
+
+```text
+max_position_embeddings
+  模型支持的位置范围上限
+
+sliding_window
+  某类 Attention 层实际保留的局部历史长度
+
+index_topk
+  当前稀疏 Attention 从完整历史中读取多少位置
+```
+
+因此：
+
+$$
+\text{max position}
+\neq
+\text{allocated cache length},
+$$
+
+并且：
+
+$$
+\text{top-k sparse read}
+\neq
+\text{top-k persistent history}.
+$$
+
+配置中出现 `sliding_window` 也不代表所有层都是 SWA；仍需检查 `layer_types` 或模型实现中的层型分布。
+
+### config.json 给出的是架构意图，不一定是最终物理布局
+
+同一份 MLA 配置可能被两种 runtime 以不同方式实现：
+
+```text
+优化路径
+  保存 latent cache
+
+通用路径
+  先展开完整 K/V
+  再保存标准 KV Cache
+```
+
+因此完整阅读顺序是：
+
+```text
+config.json
+→ modeling_*.py / Attention forward
+→ cache update 调用
+→ runtime Cache Tensor shape
+→ kv_cache_dtype 与量化 scale
+→ page/block allocator、分片、复制和 offload
+```
+
+后面的 MHA、SWA、MLA、DSA、KDA、GLM-5.2 与 DeepSeek V4 章节，都是这套读取方法的具体案例。
 
 ## 用一个统一公式覆盖所有模型
 
