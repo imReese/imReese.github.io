@@ -7,6 +7,7 @@ import {
   type TableHTMLAttributes,
 } from 'react'
 import clsx from 'clsx'
+import { AlignmentDiagram } from './AlignmentDiagram'
 import { CodeBlock } from './CodeBlock'
 import {
   CompareCallout,
@@ -96,6 +97,7 @@ const MathJaxMarkup = ({
 }
 
 export const mdxComponents: MDXComponents = {
+  AlignmentDiagram,
   CompareCallout,
   ExpandableNotes,
   FlowDiagram,
