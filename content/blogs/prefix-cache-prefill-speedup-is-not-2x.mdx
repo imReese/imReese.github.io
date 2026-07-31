@@ -1,0 +1,188 @@
+---
+title: '50% Prefix Cache 命中不等于 2× Prefill 加速'
+description: '从 Attention 计算复杂度出发，分析 MHA、MLA、SWA、DSA、KDA 等不同 Attention 架构下 Prefix Cache 命中率与真实 Prefill 加速之间的关系。'
+author: 'Reese'
+date: '2026-08-01'
+topics:
+  - kv-cache
+  - prefix-cache
+  - attention
+  - llm-serving
+category: 'engineering-deep-dive'
+series: 'LLM Serving Internals'
+---
+
+很多工程实践中会出现一个直觉：
+
+> 如果一个请求 50% 的 prompt 已经命中 Prefix Cache，那么 Prefill 应该接近 2× 加速。
+
+这个直觉对于线性计算成立，但对于现代 LLM Attention 并不成立。
+
+## MHA: 50% prefix hit 后 Attention 计算只减少 25%
+
+对于标准 causal attention，长度为 N 的 prompt，其 Attention 矩阵是一个三角形：
+
+$$
+\frac{N(N+1)}{2}\approx\frac{N^2}{2}
+$$
+
+假设前 50% token 已经缓存：
+
+```
+[cached prefix][new tokens]
+
+|------N/2-----|----N/2----|
+```
+
+新的 token 仍然需要 attend 整个 prefix，因此剩余计算量为：
+
+$$
+\sum_{i=1}^{N/2}(N/2+i)\approx\frac{3N^2}{8}
+$$
+
+相对于没有 cache：
+
+$$
+\frac{3N^2/8}{N^2/2}=\frac34
+$$
+
+因此：
+
+> 50% Prefix Cache 命中，只代表 Attention FLOPs 剩余约 75%，而不是 50%。
+
+## 为什么不是 2×？
+
+因为 Prefix Cache 省掉的是：
+
+```
+prefix token 作为 Query 的计算
+```
+
+但是没有省掉：
+
+```
+new token Query 对历史 KV 的访问
+```
+
+后半段 token 仍然需要读取整个上下文。
+
+## 不同 Attention 架构下的区别
+
+| Attention | 计算模式 | 50% prefix hit 后 Attention 计算 |
+|---|---|---|
+| MHA/GQA/MQA | full causal attention | ~75% |
+| MLA | latent KV + full attention | ~75% |
+| SWA | sliding window | ~50% |
+| DSA | sparse attention | 取决于是否缓存 selection state |
+| KDA | recurrent state | ~50% |
+
+## MLA: KV 更小，但计算规律没有改变
+
+MLA 通过 latent compression 降低 KV Cache 大小：
+
+```
+MHA:
+  K + V per head
+
+MLA:
+  latent KV + RoPE key
+```
+
+但是 Attention 仍然需要 Query 与历史状态交互，因此 prefix reuse 的计算比例仍接近 causal attention。
+
+## SWA: 更接近线性收益
+
+Sliding Window Attention：
+
+$$
+O(NW)
+$$
+
+其中 W 是固定窗口。
+
+当 prefix 命中后，新 token 只需要继续处理剩余 token：
+
+$$
+remaining\approx1-\alpha
+$$
+
+50% 命中更接近 50% 剩余计算。
+
+## KDA: 缓存对象已经不是 KV
+
+KDA 类模型维护递归状态：
+
+```
+S0 -> S1 -> S2 -> ... -> SN
+```
+
+如果保存 prefix checkpoint：
+
+```
+S(N/2)
+
+继续计算
+
+S(N/2+1)...S(N)
+```
+
+那么 50% prefix reuse 接近线性收益。
+
+## 真正的 Prefill 加速还要考虑整个 Transformer Block
+
+Attention 只是 Transformer 的一部分。
+
+例如：
+
+```
+Attention: 40%
+MLP:       60%
+```
+
+50% prefix hit：
+
+```
+Attention: 75% remaining
+MLP:       50% remaining
+```
+
+总计算比例：
+
+$$
+0.4\times0.75+0.6\times0.5=0.6
+$$
+
+理论加速：
+
+$$
+1/0.6=1.67\times
+$$
+
+而不是 2×。
+
+## 从 KV Cache 到 Attention State Cache
+
+这个现象说明，未来 LLM Cache 系统不能只关注 KV tensor。
+
+不同模型需要缓存不同状态：
+
+|模型|需要复用的状态|
+|-|-|
+|MHA/GQA|KV tensor|
+|MLA|latent KV|
+|DSA|KV + sparse selection metadata|
+|KDA|recurrent state checkpoint|
+
+下一代推理基础设施更像：
+
+```
+Attention State Store
+```
+
+而不是简单的：
+
+```
+KV Store
+```
+
+Prefix Cache 的价值仍然巨大，但理解真实收益，需要从 Attention 计算结构出发，而不是简单用命中比例估算吞吐提升。
