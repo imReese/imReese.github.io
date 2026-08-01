@@ -11,8 +11,9 @@ import { AlignmentDiagram } from './AlignmentDiagram'
 import {
   AttentionSpeedupCurve,
   AttentionStateEvolution,
+  PrefillSpeedupExplorer,
   PrefixCacheTriangle,
-} from './AttentionCacheInteractives'
+} from './attention-cache'
 import { CodeBlock } from './CodeBlock'
 import {
   CompareCallout,
@@ -110,6 +111,7 @@ export const mdxComponents: MDXComponents = {
   FlowDiagram,
   LayerDiagram,
   MappingDiagram,
+  PrefillSpeedupExplorer,
   PrefixCacheTriangle,
   SequenceDiagram,
   StateDiagram,

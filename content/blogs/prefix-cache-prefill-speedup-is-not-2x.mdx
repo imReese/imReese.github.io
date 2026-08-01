@@ -23,6 +23,17 @@ Prefix Cache 命中一半 token，Prefill 就能快两倍——这个直觉只�
 
 Full Causal Attention 不是这样。越靠后的 Query，能看到的 Key 越多：第一个 Query 只看一个位置，最后一个 Query 要看完整前缀。命中前 50% token，跳过的是 Attention 矩阵左上角较小的三角形，而不是一半面积。
 
+## 先统一六个容易混用的术语
+
+- **Prefix hit ratio**：索引逻辑匹配到的连续 prefix token 数与完整输入长度之比，本文记为 $\alpha$。它描述 match，不保证状态已经可用。
+- **Reusable boundary**：所有续算必需状态都完整、版本一致并对齐到的最晚 token 边界。不同 state group 共同可用时，通常取最短的那个边界。
+- **Effective reuse**：runtime 真正恢复成功并能够跳过计算的 token 范围。它不大于 logical prefix match，还会受到 page、checkpoint 与状态完整性的限制。
+- **Load-back**：从本地或远端 cache 找到对象后，把它读回 runtime 可消费的位置并完成必要同步的过程。
+- **Attention-only speedup**：基线 Attention FLOPs 与剩余 Attention FLOPs 的比值；不包含 MLP、投影、通信和 cache 恢复。
+- **Full-prefill speedup**：完整 Prefill 基线成本与复用后端到端成本的比值；真实值应包含排队、load-back、replay 和 runtime 开销。
+
+因此，**cache hit 不等于 runtime successfully restored**，logical prefix match 也不等于 effective reusable prefix。后文的 FLOPs 曲线是理想上界；除非明确写成实测，否则它们都不是 TTFT 或生产吞吐结论。
+
 把完整 prompt 长度记为 $N$，Prefix Cache 命中的长度记为 $P=\alpha N$。只看 Attention 主体时：
 
 $$
@@ -102,18 +113,18 @@ Prefix Cache 的收益取决于 Attention 如何消费历史。下面的交互�
 
 - **MHA / MLA**：完整 Causal Attention，剩余比例是 $1-\alpha^2$；
 - **SWA**：只看最近窗口 $W$，本文可视化固定为 $W=0.25N$；
-- **KDA**：递归扫描与 token 数近似线性，并假设命中位置存在完整、精确对齐的 checkpoint。
+- **KDA recurrence only**：递归扫描与 token 数近似线性，但只能从不晚于命中位置的完整 checkpoint 继续。
 
 <AttentionSpeedupCurve />
 
 图中的数值不是模型之间的绝对速度比较。MHA、MLA、SWA 与 KDA 的 kernel 常数、维度、带宽压力完全不同；曲线只回答：**对同一种 Attention，在自己的完整 Prefill 基线上，Prefix 命中能跳过多少工作。**
 
-| Prefix 命中率 | MHA / MLA | SWA，$W=0.25N$ | KDA，精确 checkpoint |
-| ------------: | --------: | -------------: | -------------------: |
-|           25% |     1.07× |          1.17× |                1.33× |
-|           50% |     1.33× |          1.75× |                2.00× |
-|           75% |     2.29× |          3.50× |                4.00× |
-|           90% |     5.26× |          8.75× |               10.00× |
+| Prefix 命中率 | MHA / MLA | SWA，$W=0.25N$ | KDA recurrence only，$N=32768,C=4096$ |
+| ------------: | --------: | -------------: | ------------------------------------: |
+|           25% |     1.07× |          1.17× |                                 1.33× |
+|           50% |     1.33× |          1.75× |                                 2.00× |
+|           75% |     2.29× |          3.50× |                                 4.00× |
+|           90% |     5.26× |          8.75× |                                 8.00× |
 
 ### MHA、GQA、MQA 与 MLA：Cache 表示变了，因果三角形没有消失
 
@@ -152,23 +163,27 @@ $$
 
 当 Prefix 和完整请求都远大于窗口，后续每个 token 的 Attention 成本接近固定的 $W$，于是曲线逐渐接近线性模型。这里仍不能只看逻辑命中率：SWA 的 trailing state、local window page 与其他 Attention 层必须落在同一个可恢复边界。
 
-### KDA：计算可以线性跳过，状态却必须精确对齐
+### KDA：递归计算可以线性跳过，恢复边界却必须对齐
 
-KDA 一类线性 Attention 不再为每个 Query 回读完整历史，而是递推有限状态。若完整 Prefill 的扫描成本近似为 $O(N)$，并且 $\alpha N$ 处存在完整 checkpoint，那么：
+KDA 一类线性 Attention 不再为每个 Query 回读完整历史，而是递推有限状态。若完整 Prefill 的 recurrence 扫描成本近似为 $O(N)$，逻辑匹配长度为 $P_{\text{match}}=\alpha N$，checkpoint 间隔为 $C$，能够直接恢复的位置要先向下对齐：
 
 $$
-R_{\text{KDA}}(\alpha)
+P_{\text{eff}}
 =
-1-\alpha,
-\qquad
-S_{\text{KDA}}(\alpha)
-=
-\frac{1}{1-\alpha}.
+\left\lfloor\frac{P_{\text{match}}}{C}\right\rfloor C,
 $$
 
-但这里的“存在 checkpoint”是强条件。一个可续算的 KDA checkpoint 往往至少包括 recurrent matrix 与 ShortConv window；只有 token hash 命中、只有 MLA page 命中，或只有 recurrent matrix 存在，都不能证明请求能从该边界直接恢复。
+$$
+R_{\text{KDA-recurrence}}
+=
+\frac{N-P_{\text{eff}}}{N}.
+$$
 
-如果逻辑 Prefix 命中到 $\alpha N$，最近完整 checkpoint 却只在 $\beta N$，其中 $\beta<\alpha$，实际线性扫描剩余量是 $1-\beta$，不是 $1-\alpha$。中间的 token 必须 replay 以重建状态。
+交互图默认取 $N=32768$、$C=4096$。例如 logical hit 为 90% 时，匹配位置约为 29491，但最近 checkpoint 在 28672；recurrence 至少还要处理 4096 token，所以理想上界是 8×，不是把 $1/(1-0.9)$ 直接算出的 10×。调整 checkpoint interval 可以看到这条阶梯曲线如何变化。
+
+这里的“存在 checkpoint”仍是强条件。一个可续算的 checkpoint 必须包含该边界完整的 recurrent state；如果 ShortConv 或其他续算状态存在，也必须一起完整、版本一致且对齐。只有 token hash 命中、只有 MLA page 命中，或只有 recurrent matrix 存在，都不能证明请求能从该边界直接恢复。
+
+曲线只计算 recurrence remaining tokens，并假设对齐 checkpoint 可立即使用。它忽略 checkpoint lookup、load、跨层或跨设备传输、同步，以及恢复状态本身的成本；未对齐的 prefix token 被计入 remaining tokens，但没有额外建模 checkpoint replay 的实现开销。因此它是 **exact aligned checkpoint 条件下的 ideal upper bound**，不是生产环境收益预测。
 
 DSA 没有被画成第四条固定曲线，因为它的收益取决于 Indexer 成本、top-k、local branch、主 MLA 历史读取和具体 kernel。把“每次只选 top-k”直接等价为总 Prefill 复杂度固定，是另一种常见误算。
 
@@ -198,30 +213,46 @@ Restoration
 
 如果你还想继续追 KDA checkpoint 与远端存储如何对齐，可以结合 [Kimi Linear 的 KDA Cache：SGLang、vLLM 与 Mooncake Store 全链路](/blogs/kimi-kda-cache-sglang-vllm-mooncake-store/) 阅读；不同 Attention 的 cache 容量公式则见 [如何从 config.json 估算大模型的 Attention Cache](/blogs/attention-cache-size-mha-mla-dsa-swa-kda/)。
 
-## Attention 加速不是端到端 Prefill 加速
+## Attention 加速不是完整 Prefill 加速
 
 前面的 $1/(1-\alpha^2)$ 只描述 Full Causal Attention 主体。Prefill 还包含 embedding、normalization、QKV projection、output projection、MLP/MoE、collective communication 与 runtime 调度。
 
-假设基线 Prefill 中 Attention 占比为 $p$，其余按 token 近似线性的算子占比为 $1-p$。忽略 cache 开销时，命中比例为 $\alpha$ 的归一化剩余时间可以粗略写成：
+假设基线 Transformer block FLOPs 中 Attention 占比为 $\beta$，其余按 token 近似线性的算子占比为 $1-\beta$。忽略 cache 开销时：
 
 $$
-R_{\text{model}}
-\approx
-p(1-\alpha^2)
+R_{\text{attention}}=1-\alpha^2,
+\qquad
+R_{\text{token-wise}}=1-\alpha,
+$$
+
+$$
+R_{\text{block}}
+=
+\beta(1-\alpha^2)
 +
-(1-p)(1-\alpha).
+(1-\beta)(1-\alpha),
 $$
 
-再把 lookup、Host/Storage load、反序列化、H2D、同步与调度等待归一化为 $h$：
+$$
+S_{\text{block, ideal}}
+=
+\frac{1}{R_{\text{block}}}.
+$$
+
+下面的交互把 Attention-only、token-wise 与完整 block 的理想 FLOPs 加速放在一起。默认 $\alpha=50\%$、$\beta=50\%$；此时 block 剩余 62.5%，理想加速为 1.60×。同样在 50% hit 下，$\beta=30\%,50\%,70\%$ 分别约为 1.74×、1.60×、1.48×：Attention 占比越高，前半段较便宜的因果三角形对整体加速的限制越明显。
+
+<PrefillSpeedupExplorer />
+
+这个 full-block FLOPs 模型可以作为 full-prefill compute 的第一层近似，但它仍不是端到端延迟模型。再把 lookup、Host/Storage load、反序列化、H2D、同步、checkpoint replay 与调度等待归一化为 $h$，才可以粗略写成：
 
 $$
 S_{\text{e2e}}
 \approx
 \frac{1}
-{p(1-\alpha^2)+(1-p)(1-\alpha)+h}.
+{\beta(1-\alpha^2)+(1-\beta)(1-\alpha)+h}.
 $$
 
-例如 $\alpha=0.5$、$p=0.6$ 且暂时令 $h=0$，剩余模型计算约为：
+例如 $\alpha=0.5$、$\beta=0.6$ 且暂时令 $h=0$，剩余模型计算约为：
 
 $$
 0.6\times0.75
@@ -233,7 +264,7 @@ $$
 
 对应约 $1.54\times$，仍不是 $2\times$。远端 Cache 的 $h$ 若大于省下来的计算，命中甚至可能比本地 recompute 更慢。
 
-这个模型只是建立量纲，不应替代 profiling。FlashAttention 的 tile、chunked prefill、batch packing、Tensor Parallel 通信和 MoE 路由都会让真实曲线偏离连续面积模型。
+这个模型只是建立量纲，不应替代 profiling。FlashAttention 的 tile、chunked prefill、batch packing、Tensor Parallel 通信和 MoE 路由都会让真实曲线偏离连续面积模型。Attention FLOPs speedup 不等于 TTFT speedup，ideal upper bound 也不等于生产吞吐。
 
 ## 把命中率变成可解释的性能指标
 

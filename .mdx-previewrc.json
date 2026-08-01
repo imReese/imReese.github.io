@@ -12,6 +12,7 @@
     "FlowDiagram": "./src/components/shared/mdx-preview/FlowDiagram.tsx",
     "LayerDiagram": "./src/components/shared/mdx-preview/LayerDiagram.tsx",
     "MappingDiagram": "./src/components/shared/mdx-preview/MappingDiagram.tsx",
+    "PrefillSpeedupExplorer": "./src/components/shared/mdx-preview/PrefillSpeedupExplorer.tsx",
     "PrefixCacheTriangle": "./src/components/shared/mdx-preview/PrefixCacheTriangle.tsx",
     "SequenceDiagram": "./src/components/shared/mdx-preview/SequenceDiagram.tsx",
     "StateDiagram": "./src/components/shared/mdx-preview/StateDiagram.tsx",

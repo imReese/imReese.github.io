@@ -1,1 +1,1 @@
-export { AttentionSpeedupCurve as default } from '../AttentionCacheInteractives'
+export { AttentionSpeedupCurve as default } from '../attention-cache'
