@@ -78,6 +78,41 @@ test('keeps project limits visible while evidence uses native disclosure', () =>
   assert.match(projectsSource, /compact/)
 })
 
+test('keeps supporting work readable without a cramped metadata column', () => {
+  assert.equal(
+    projectsSource.includes('sm:grid-cols-[12rem_minmax(0,1fr)]'),
+    false,
+  )
+  assert.equal(projectsSource.includes('mt-2 truncate font-mono'), false)
+  assert.equal(projectsSource.includes('item.relation'), false)
+})
+
+test('uses sans typography for localized labels and mono for machine values', () => {
+  assert.match(
+    projectsSource,
+    /text-xs font-semibold tracking-\[0\.04em\] text-primary/,
+  )
+  assert.equal(
+    projectsSource.includes(
+      'font-semibold uppercase tracking-[0.08em] text-primary',
+    ),
+    false,
+  )
+  assert.equal(
+    projectsSource.includes(
+      'shrink-0 font-mono text-xs font-semibold uppercase',
+    ),
+    false,
+  )
+  assert.match(aboutSource, /md:grid-cols-\[9rem_12rem_minmax\(0,1fr\)\]/)
+})
+
+test('keeps homepage project copy direct without problem-template fields', () => {
+  assert.equal(homeSource.includes('work.problem'), false)
+  assert.equal(homeSource.includes('problemLabel'), false)
+  assert.equal(homeSource.includes('linkLabel'), false)
+})
+
 test('limits blog card metadata without changing filter parameters', () => {
   const seriesNavigation = blogsSource.slice(
     blogsSource.indexOf('function SeriesNavigation'),
@@ -97,9 +132,16 @@ test('uses one shared content rail across every blog article', () => {
   assert.match(globalsSource, /--blog-content-width: 72rem/)
 })
 
+test('keeps blog list navigation available on direct article visits', () => {
+  assert.match(blogLayoutSource, /href="\/blogs\/"/)
+  assert.equal(blogLayoutSource.includes('previousPathname &&'), false)
+})
+
 test('keeps About editorial flow without a duplicate technical path', () => {
   assert.equal(aboutSource.includes('TechnicalPath'), false)
   assert.equal(aboutSource.includes('about.technicalPath'), false)
+  assert.equal(aboutSource.includes('about.representativeTitle'), false)
+  assert.equal(aboutSource.includes('about.links.map'), false)
   assert.match(aboutSource, /about\.timelineTitle/)
 })
 

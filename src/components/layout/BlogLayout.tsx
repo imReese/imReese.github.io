@@ -1,9 +1,7 @@
 'use client'
 
-import { useContext } from 'react'
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
-import { AppContext } from '@/app/providers'
 import { Container } from '@/components/layout/Container'
 import { Prose } from '@/components/shared/Prose'
 import { useLanguage } from '@/components/shared/LanguageProvider'
@@ -32,8 +30,6 @@ export function BlogLayout({
   blog: BlogType
   children: React.ReactNode
 }) {
-  let router = useRouter()
-  let { previousPathname } = useContext(AppContext)
   const { locale } = useLanguage()
   const { blogPage } = useLocalizedContent()
   const chips = getBlogMetaChips(
@@ -50,16 +46,13 @@ export function BlogLayout({
         <article className="min-w-0" lang={blog.language}>
           <header className="flex flex-col">
             <div className="flex items-center justify-between gap-4 border-b border-border/70 pb-6">
-              {previousPathname && (
-                <button
-                  type="button"
-                  onClick={() => router.back()}
-                  aria-label={blogPage.article.backToBlogs}
-                  className="group flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/70 text-muted-foreground transition hover:border-primary/40 hover:text-primary"
-                >
-                  <ArrowLeftIcon className="h-4 w-4 stroke-current" />
-                </button>
-              )}
+              <Link
+                href="/blogs/"
+                aria-label={blogPage.article.backToBlogs}
+                className="group flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/70 text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+              >
+                <ArrowLeftIcon className="h-4 w-4 stroke-current" />
+              </Link>
               <time
                 dateTime={blog.date}
                 className="ml-auto flex shrink-0 items-center font-mono text-xs text-muted-foreground"

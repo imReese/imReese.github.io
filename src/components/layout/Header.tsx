@@ -167,6 +167,7 @@ function AvatarContainer({
   showName?: boolean
 }) {
   const { site } = useLocalizedContent()
+  const { t } = useLanguage()
 
   return (
     <div className="pointer-events-auto flex flex-row items-center gap-2">
@@ -178,7 +179,7 @@ function AvatarContainer({
         {...props}
       />
       {showName && (
-        <Link href="/" aria-label="Home">
+        <Link href="/" aria-label={t('common.home')}>
           <div className="text-base font-semibold capitalize">{site.name}</div>
         </Link>
       )}
@@ -193,16 +194,18 @@ function Avatar({
 }: Omit<React.ComponentPropsWithoutRef<typeof Link>, 'href'> & {
   large?: boolean
 }) {
+  const { t } = useLanguage()
+
   return (
     <Link
       href="/"
-      aria-label="Home"
+      aria-label={t('common.home')}
       className={clsx(className, 'pointer-events-auto')}
       {...props}
     >
       <Image
         src={avatarImage}
-        alt="Profile avatar"
+        alt={t('common.profileAvatar')}
         width={large ? 64 : 36}
         height={large ? 64 : 36}
         sizes={large ? '4rem' : '2.25rem'}

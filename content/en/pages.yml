@@ -1,38 +1,17 @@
 about:
-  headline: 'I build and study the runtime boundaries behind LLM serving.'
-  timelineTitle: Career timeline
-  timelineIntro: A short path through storage reliability, workload and CPU analysis, and LLM inference systems.
-  capabilitiesTitle: Engineering through-line
-  capabilitiesIntro: The work is organized around system boundaries and validation loops, not a flat keyword inventory.
-  representativeTitle: Representative work
-  representativeIntro: A few projects and articles that reflect the systems work behind this site.
-  projectLabel: Project
-  articleLabel: Article
-  links:
-    - kind: project
-      title: SGLang Rust Runtime
-      description: Active Rust runtime prototype with explicit current scope and tests.
-      href: https://github.com/imReese/sglang-rs
-    - kind: project
-      title: NexusKV
-      description: LLM KV cache platform foundation with documented implemented and deferred layers.
-      href: https://github.com/imReese/NexusKV
-    - kind: article
-      title: SGLang to Mooncake Store KV path
-      description: A source-level walk through page keys, host memory, Store objects, and the shared TE boundary.
-      href: /blogs/sglang-to-mooncake-store-kv-cache-path/
-    - kind: article
-      title: Mooncake / HiCache internals
-      description: The resource model that connects cache lifecycle, Store metadata, and transfer responsibilities.
-      href: /blogs/mooncake-kv-cache-system-resource/
+  headline: 'My work has moved from distributed storage and CPU performance to LLM serving systems.'
+  timelineTitle: Experience
+  timelineIntro: My work has progressed from distributed storage and CPU performance analysis to LLM serving systems.
+  capabilitiesTitle: Areas of focus
+  capabilitiesIntro: The areas I work on most often.
 
 home:
   hero:
     viewProjects: View projects
     readNotes: Read notes
   systemsPanel:
-    title: "Reese's workspace"
-    subtitle: Inference systems and backend performance
+    title: Experience
+    subtitle: LLM serving and systems performance
     current: Current
     previous: Earlier experience
   notes:
@@ -41,19 +20,17 @@ home:
     allNotes: All articles
     empty: No articles yet.
   selectedWork:
-    title: Selected Engineering Work
-    intro: Three pieces of recent systems work, with links for readers who want to go deeper.
-    problemLabel: Problem
-    linkLabel: Explore
+    title: Recent projects
+    intro: Three projects with current status, implementation notes, and links.
 
 projectsPage:
   githubActivityTitle: GitHub activity
-  githubActivityIntro: A rolling snapshot of my contribution rhythm across backend systems, runtime experiments, and open-source notes.
+  githubActivityIntro: Automatically updated GitHub activity across inference systems, source analysis, and personal projects.
   githubProfileLink: View GitHub profile
 
 blogPage:
   headline: Blog
-  intro: Source notes on SGLang runtime, KV Cache management, Mooncake Store / Transfer Engine, and related performance work. Articles are currently written in Chinese.
+  intro: Source notes on SGLang, KV cache management, Mooncake Store, Transfer Engine, and related performance work. Articles are currently written in Chinese.
   readBlog: Read article
   categories:
     engineering-deep-dive: Source Analysis
@@ -63,8 +40,9 @@ blogPage:
     reading-notes: Reading Notes
     fallback: Engineering Notes
   series:
-    Mooncake / HiCache Internals: Mooncake / HiCache Internals
+    Mooncake / HiCache Internals: Mooncake and HiCache internals
     SGLang Runtime Notes: SGLang Runtime
+    LLM Serving Internals: LLM Serving Internals
     Storage Systems Notes: Storage Systems
     Distributed Systems Notes: Distributed Systems
     Practical Runbooks: Runbooks
@@ -80,23 +58,23 @@ blogPage:
     notesTitle: Notes and runbooks
     notesIntro: 'Commands, environment setup, and reading notes.'
     archiveTitle: More articles
-    archiveIntro: The rest of the archive, without repeating the recommended set above.
+    archiveIntro: The remaining articles, ordered by publication date.
     resultsTitle: Filtered articles
   seriesNav:
     title: Browse by series
-    intro: Start with a system thread; operational runbooks stay available with lower visual weight.
+    intro: Follow a systems thread, or use the runbooks for commands and day-to-day operations.
     items:
       - value: sglang-runtime
         label: SGLang Runtime
-        description: Scheduler, cache, request lifecycle, and runtime boundaries.
+        description: Scheduling, request handling, caching, and inference flow.
         weight: primary
       - value: mooncake-hicache
-        label: Mooncake / HiCache Internals
-        description: Store, Transfer Engine, and hierarchical cache paths.
+        label: Mooncake and HiCache internals
+        description: Read and write paths through Store, Transfer Engine, and tiered caching.
         weight: primary
       - value: kv-cache-systems
-        label: KV Cache Systems
-        description: Memory, reuse, residency, and cross-node state.
+        label: KV cache systems
+        description: Cache reuse, memory residency, and cross-node state.
         weight: primary
       - value: performance-engineering
         label: Performance Engineering
@@ -112,7 +90,7 @@ blogPage:
         weight: reference
   readingMap:
     title: Archive
-    intro: Browse by year or topic; series are available in the main index.
+    intro: Browse more articles by year or topic.
     latestLabel: Latest article
     archiveLabel: Archive
     topicsLabel: Topics

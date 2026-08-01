@@ -39,7 +39,7 @@ test('footer WeChat contact opens the repository QR asset instead of a placehold
   assert.equal(socialLinksSource.includes('reese-personal-website'), false)
 })
 
-test('tracked forks are labeled and paired with their upstream repositories', () => {
+test('tracked forks stay paired with their upstream projects without repeated relation labels', () => {
   for (const locale of locales) {
     const projects = parse(
       readFileSync(`content/${locale}/projects.yml`, 'utf8'),
@@ -47,12 +47,116 @@ test('tracked forks are labeled and paired with their upstream repositories', ()
     const forkSection = projects.workSections[0]
 
     for (const item of forkSection.items) {
-      assert.match(item.relation, /Tracked fork/)
-      assert.match(item.relation, /Source study/)
+      assert.equal(item.relation, undefined)
       assert.ok(item.upstream?.href)
       assert.notEqual(item.upstream.href, item.href)
       assert.doesNotThrow(() => new URL(item.href))
       assert.doesNotThrow(() => new URL(item.upstream.href))
+    }
+  }
+})
+
+test('Chinese UI copy avoids reviewed translationese', () => {
+  const projects = parse(readFileSync('content/zh/projects.yml', 'utf8')) as {
+    headline: string
+  }
+  const sources = [
+    readFileSync('content/zh/site.yml', 'utf8'),
+    readFileSync('content/zh/pages.yml', 'utf8'),
+    readFileSync('content/zh/profile.yml', 'utf8'),
+    readFileSync('content/zh/projects.yml', 'utf8'),
+    readFileSync('src/components/shared/LanguageProvider.tsx', 'utf8'),
+  ].join('\n')
+
+  for (const phrase of [
+    'contribution 快照',
+    'Runtime 实验',
+    '推理运行时开发',
+    'platform foundation',
+    'Tracked fork 与源码研究',
+    '证据与实现链接',
+    '解决的问题',
+    '验证闭环',
+    '真实数据面逐步建设',
+    '数据物化',
+  ]) {
+    assert.equal(
+      sources.includes(phrase),
+      false,
+      `remove translationese: ${phrase}`,
+    )
+  }
+
+  assert.equal(projects.headline, '项目与源码研究')
+})
+
+test('English UI copy avoids literal and RFC-style phrasing', () => {
+  const sources = [
+    readFileSync('content/en/site.yml', 'utf8'),
+    readFileSync('content/en/pages.yml', 'utf8'),
+    readFileSync('content/en/profile.yml', 'utf8'),
+    readFileSync('content/en/projects.yml', 'utf8'),
+  ].join('\n')
+
+  for (const phrase of [
+    'Engineering through-line',
+    'flat keyword inventory',
+    'Systems work',
+    'platform foundation',
+    'production deployment story',
+    'source studies',
+    'problemLabel',
+    'problem:',
+  ]) {
+    assert.equal(
+      sources.includes(phrase),
+      false,
+      `remove literal or RFC-style English: ${phrase}`,
+    )
+  }
+})
+
+test('blog metadata uses readable Chinese for ordinary engineering terms', () => {
+  const frontmatter = readdirSync('content/blogs')
+    .filter((file) => file.endsWith('.mdx'))
+    .map((file) => matter(readFileSync(`content/blogs/${file}`, 'utf8')).data)
+
+  const copy = frontmatter
+    .flatMap(({ title, description }) => [title, description])
+    .join('\n')
+
+  for (const phrase of [
+    'CPU profiling 笔记',
+    '存储 benchmark',
+    'transport 层',
+    'Python binding',
+    'local hot cache token',
+    'page key、zero-copy 和 shared TE',
+    'Host 和 Storage',
+  ]) {
+    assert.equal(
+      copy.includes(phrase),
+      false,
+      `localize blog metadata: ${phrase}`,
+    )
+  }
+})
+
+test('every published blog series has localized display copy', () => {
+  const series = new Set(
+    readdirSync('content/blogs')
+      .filter((file) => file.endsWith('.mdx'))
+      .map(
+        (file) =>
+          matter(readFileSync(`content/blogs/${file}`, 'utf8')).data.series,
+      )
+      .filter(Boolean),
+  )
+
+  for (const locale of locales) {
+    const pages = parse(readFileSync(`content/${locale}/pages.yml`, 'utf8'))
+    for (const value of series) {
+      assert.ok(pages.blogPage.series[value], `${locale} series copy: ${value}`)
     }
   }
 })
@@ -174,11 +278,12 @@ test('localized profile prose keeps scalar text shapes', () => {
     )
     assert.ok(
       profile.selectedWork.every(
-        (work: { description: unknown; problem: unknown }) =>
-          typeof work.description === 'string' &&
-          typeof work.problem === 'string',
+        (work: { description: unknown; problem?: unknown }) =>
+          typeof work.description === 'string' && work.problem === undefined,
       ),
     )
+    assert.equal(profile.impactStats, undefined)
+    assert.equal(profile.stackGroups, undefined)
   }
 })
 

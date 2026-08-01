@@ -8,7 +8,7 @@ function getHeadlineLines(headline: string) {
   const leadPatterns = ["Hi, I'm Reese.", 'Hi，我是 Reese']
   const lead = leadPatterns.find((pattern) => headline.startsWith(pattern))
 
-  const zhLead = headline.match(/^Hi[，,]\s*我是[^，,。.!?]+[，,]?/)
+  const zhLead = headline.match(/^(?:Hi|你好)[，,]\s*我是[^，,。.!?]+[，,。]?/)
 
   if (!lead && !zhLead) {
     return [headline]

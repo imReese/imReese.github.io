@@ -345,7 +345,7 @@ function BlogReadingMap({
 
         {latestBlog ? (
           <div className="mt-7 border-t border-border/70 pt-5">
-            <div className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+            <div className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">
               {copy.latestLabel}
             </div>
             <Link
@@ -365,7 +365,7 @@ function BlogReadingMap({
 
         <div className="mt-7 grid gap-7 border-t border-border/70 pt-5">
           <div>
-            <div className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+            <div className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">
               {copy.archiveLabel}
             </div>
             <div className="mt-3 grid gap-2">
@@ -403,7 +403,7 @@ function BlogReadingMap({
           </div>
 
           <div>
-            <div className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+            <div className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">
               {copy.topicsLabel}
             </div>
             <div className="mt-3 grid gap-2">

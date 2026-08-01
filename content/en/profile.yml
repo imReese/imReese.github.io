@@ -1,27 +1,27 @@
 focusAreas:
-  - Backend Systems
-  - Inference Runtime
-  - KV Cache Systems
-  - Mooncake TransferEngine
-  - SGLang Runtime
-  - Heterogeneous Backends
+  - Inference scheduling
+  - KV cache
+  - Data movement
+  - Mooncake Transfer Engine
+  - SGLang
+  - Accelerator backends
 
 aboutParagraphs:
-  - 'I like the point where model-serving behavior becomes a systems problem: request state, scheduling, cache residency, transfer readiness, and backend capability all have to agree.'
-  - My route into this work runs through distributed-storage availability and cluster management, then cloud workload and CPU analysis, and now LLM inference runtime performance.
-  - 'This site is the working record behind that path: small original projects with explicit status, tracked upstream source studies, and articles that preserve the implementation trail.'
+  - I currently work on performance for LLM inference engines, with a focus on scheduling, KV cache management, cross-node data movement, and accelerator backends.
+  - Earlier in my career, I worked on high availability and cluster management for distributed storage, then on cloud workload analysis and CPU architecture.
+  - This site collects my engineering projects, source-code notes, and lessons from debugging and validation work.
 
 currentFocus:
   eyebrow: Current focus
-  title: LLM inference engines and systems performance
+  title: LLM serving systems
   summary: >
-    Current work clusters around three boundaries: runtime execution, KV state
-    lifecycle, and data movement across heterogeneous serving backends.
+    I currently focus on scheduling, KV cache lifecycle, data movement, and
+    accelerator backend performance.
   bullets:
-    - Measure throughput, latency, cache hit rate, memory use, and runtime bottlenecks in inference workloads.
-    - Trace prefix cache and KV Cache lifecycle across prefill/decode paths.
-    - Validate Mooncake TransferEngine planning, descriptors, readiness checks, and backend integration.
-    - 'Apply SGLang runtime patterns to request lifecycle, scheduling, cache management, and transfer boundaries.'
+    - Find throughput, latency, and memory bottlenecks in request scheduling and execution.
+    - Trace KV cache state through prefill, decode, cache loading, and data transfer.
+    - Test how Mooncake Transfer Engine integrates with inference backends.
+    - Work on SGLang request handling, scheduling, and cache behavior.
   links:
     - label: Projects
       href: /projects/
@@ -31,116 +31,84 @@ currentFocus:
 selectedWork:
   - eyebrow: Runtime prototype
     title: SGLang Rust Runtime
-    description: Implemented and tested explicit Rust boundaries for request lifecycle, scheduling, prefix reuse, protocol handling, and staged PD transfer integration.
-    problem: Make hidden runtime state and fallback behavior inspectable while the production execution path is still under construction.
+    description: A Rust prototype for request lifecycle, scheduling, prefix caching, protocol handling, and PD transfer. It is built for architecture and integration experiments, not as a production replacement for SGLang.
     link:
-      label: Current scope and tests
+      label: View project scope
       href: https://github.com/imReese/sglang-rs#current-scope
   - eyebrow: KV cache platform
     title: NexusKV
-    description: Split control policy, state/index planning, execution, and SGLang/vLLM lifecycle adapters across Go, Rust, and Python.
-    problem: Keep reuse planning and transfer policy out of connector-specific branching while the real data plane is developed incrementally.
+    description: Separates KV cache reuse planning, state indexing, data movement, and engine integration into independent components. The baseline implementation and tests are in place; remote transport is still in development.
     link:
-      label: Architecture and execution boundary
+      label: Read the design notes
       href: https://github.com/imReese/NexusKV/blob/main/docs/design/execution-boundary.md
   - eyebrow: Source analysis
-    title: Mooncake / HiCache internals
-    description: Traced page keys, host KV memory, Store objects, replica state, and shared Transfer Engine boundaries through concrete read/write paths.
-    problem: Separate cache hit, materialization, metadata visibility, and data transfer claims that are easy to blur together.
+    title: Mooncake and HiCache internals
+    description: Follows real read and write paths across SGLang, HiCache, and Mooncake Store to explain cache lookup, host-memory loading, metadata updates, and cross-node transfer.
     link:
-      label: SGLang to Mooncake KV path
+      label: Read the source analysis
       href: /blogs/sglang-to-mooncake-store-kv-cache-path/
 
 researchAreas:
-  - title: Inference Engine
-    label: runtime path
-    description: Profile and tune execution paths across scheduling, operators, kernels, and backend dispatch.
+  - title: Inference engines
+    label: Scheduling and execution
+    description: Profile request scheduling, operators, kernels, and backend execution.
     points:
-      - throughput / latency
-      - operator and kernel paths
-      - prefill / decode behavior
+      - Throughput and latency
+      - Operator and kernel paths
+      - Prefill and decode behavior
     tags:
       - LLM Serving
       - Runtime
       - Scheduling
-  - title: Cache & KV Cache
-    label: memory behavior
-    description: Analyze prefix cache and KV Cache reuse, residency, memory pressure, and lifecycle.
+  - title: KV cache
+    label: Cache management
+    description: Study prefix reuse, KV page lifecycle, memory residency, and loading across storage tiers.
     points:
-      - prefix cache behavior
+      - Prefix cache behavior
       - KV page lifecycle
-      - cache hit and residency
+      - Cache hits and residency
     tags:
       - Cache
-      - KV Cache
+      - KV cache
       - Memory
-  - title: Mooncake TE
-    label: transfer engine
-    description: Validate Mooncake TransferEngine planning, descriptors, readiness checks, and runtime boundaries.
+  - title: Mooncake Transfer Engine
+    label: Data movement
+    description: Work on transfer planning, memory registration, descriptors, and readiness checks for KV data.
     points:
       - KV transfer planning
-      - descriptor and checksum paths
-      - KV-ready predicates
+      - Descriptors and checksums
+      - Readiness checks
     tags:
       - Mooncake
-      - TransferEngine
+      - Transfer Engine
       - PD
-  - title: Heterogeneous Backends
-    label: accelerators
-    description: Optimize accelerator backend paths while keeping device-specific logic behind backend interfaces.
+  - title: Accelerator backends
+    label: Backend performance
+    description: Adapt and optimize inference paths for different accelerators while keeping device-specific code isolated.
     points:
-      - accelerator backend paths
-      - device-specific runtime paths
-      - backend abstraction
+      - Accelerator execution paths
+      - Device-specific code
+      - Backend interfaces
     tags:
       - Accelerators
       - Runtime
       - Backend
 
-impactStats:
-  - value: cache + KV
-    label: memory path
-    detail: Trace prefix cache, KV-cache lifecycle, residency, and serving memory behavior.
-  - value: Mooncake TE
-    label: transfer path
-    detail: Validate KV transfer planning, descriptor boundaries, and readiness checks.
-  - value: heterogeneous
-    label: backends
-    detail: Optimize inference paths across accelerator backend abstractions.
-  - value: 128 -> 256
-    label: cluster scale
-    detail: Expanded distributed storage cluster initialization capacity.
-  - value: +40%
-    label: init efficiency
-    detail: Improved cluster startup path through async queues and module decoupling.
-  - value: 90%+
-    label: branch coverage
-    detail: Built DTFuzz interface tests to block high-risk storage defects.
-  - value: +30%
-    label: TLB hit rate
-    detail: Validated a dynamic TLB scheduling approach with ChampSim.
-  - value: +6%
-    label: IPC
-    detail: Measured instruction-level architecture gains in CPU simulation.
-  - value: +8%
-    label: throughput
-    detail: Helped tune SMT strategy on Kunpeng CPU workloads.
-
 experience:
   - company: Baidu
-    team: AI Computing Department
-    title: Software Engineer, Inference Engine
+    team: AI Computing
+    title: Software Engineer, LLM Inference
     logo: cpu
     start: '2025.06.30'
     end: Present
     highlights:
       - Optimize LLM inference engine performance.
-      - Trace cache, KV Cache, and Mooncake TransferEngine paths across prefill/decode workloads.
-      - Optimize runtime and backend paths across heterogeneous accelerators.
-      - Investigate bottlenecks across kernels, operators, scheduling, memory behavior, transfer boundaries, and execution paths.
+      - Analyze KV cache state and Mooncake Transfer Engine data flow across prefill and decode workloads.
+      - Adapt and optimize inference paths for heterogeneous accelerators.
+      - Investigate bottlenecks in kernels, operators, scheduling, memory, and data transfer.
   - company: Huawei Cloud
     team: Shuhai Lab
-    title: Computer Architecture Research Engineer
+    title: Research Engineer, Computer Architecture
     logo: cpu
     start: '2023.07'
     end: '2024.07'
@@ -150,7 +118,7 @@ experience:
       - Worked across hardware and operating-system teams to validate software-hardware optimization on Kunpeng platforms.
   - company: Huawei Data Storage
     team: Infrastructure Development Department
-    title: Software Development Engineer
+    title: Software Engineer, Distributed Storage
     logo: database
     start: '2022.05'
     end: '2023.07'
@@ -168,37 +136,3 @@ education:
     details:
       - GPA 4.2 / 5.0.
       - Computer organization, data structures, operating systems, networks, computer architecture, linear algebra, probability and statistics, and algorithm design.
-
-stackGroups:
-  - title: Languages
-    items:
-      - Rust
-      - C/C++
-      - Go
-      - Python
-      - Shell
-      - TypeScript
-  - title: Serving
-    items:
-      - SGLang
-      - KV Cache
-      - Mooncake TE
-      - gRPC
-      - Scheduling
-      - Backend Dispatch
-  - title: Systems
-    items:
-      - Linux
-      - Paxos
-      - epoll
-      - perf
-      - Intel Pin
-      - gdb
-  - title: Infrastructure
-    items:
-      - Docker
-      - Kubernetes
-      - Redis
-      - MySQL
-      - Prometheus
-      - Grafana

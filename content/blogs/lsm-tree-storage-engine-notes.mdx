@@ -1,6 +1,6 @@
 ---
-title: 'LSM Tree 笔记：一个 key 从写入到 compaction 的生命周期'
-description: '沿着一个 key 的写入和 compaction 生命周期，梳理 WAL、memtable、SSTable、tombstone 与 write stall 如何共同管理后台债务。'
+title: 'LSM Tree 笔记：一个键从写入到压缩的生命周期'
+description: '沿着一个键的写入与压缩过程，梳理 WAL、MemTable、SSTable、墓碑标记和写入停顿如何共同影响后台开销。'
 author: 'Reese'
 date: '2023-05-14'
 topics:

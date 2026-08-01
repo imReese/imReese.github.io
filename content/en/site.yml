@@ -1,17 +1,18 @@
 site:
   name: Reese
-  headline: "Hi, I'm Reese. I work on LLM inference engines and systems performance."
+  headline: "Hi, I'm Reese. I build and optimize LLM serving systems."
   introduction: >
-    At Baidu AI Computing, I work on runtime scheduling, KV Cache, Mooncake
-    TransferEngine, and heterogeneous accelerator backends. Before that, I worked
-    on cloud workload characterization and distributed storage systems at Huawei.
+    I'm currently on Baidu's AI Computing team, working on inference scheduling,
+    KV cache management, data transfer, and accelerator backends. Previously, I
+    worked on cloud workload analysis, CPU architecture, and distributed storage
+    at Huawei.
   location: Beijing, China
   email: reese_duan@outlook.com
   githubUsername: imReese
 
 activity:
-  headline: My Activity
-  intro: Snippets of My Coding & Life
+  headline: Recent activity
+  intro: Notes from coding and everyday life
   tweetIds:
     - '1839130617658880251'
     - '1866794992322351439'
@@ -43,6 +44,6 @@ navigation:
       href: /blogs/
 
 socialLinks:
-  - name: Github
+  - name: GitHub
     icon: github
     href: https://github.com/imReese

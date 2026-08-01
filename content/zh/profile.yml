@@ -1,27 +1,27 @@
 focusAreas:
-  - 后端系统
-  - 推理 Runtime
+  - 推理调度
   - KV Cache
-  - Mooncake TransferEngine
+  - 数据传输
+  - Mooncake Transfer Engine
   - SGLang
-  - 异构后端
+  - 异构加速
 
 aboutParagraphs:
-  - 我喜欢模型行为真正落到系统问题上的位置：请求状态、调度、Cache 驻留、传输就绪和 Backend capability 必须互相对得上。
-  - 我的技术路径从分布式存储高可用与集群管理出发，经过云 workload 和 CPU 分析，现在聚焦大模型推理 Runtime 性能。
-  - 这个网站记录的是这条路径背后的工作过程：明确状态的个人项目、标注清楚的 upstream 源码研究，以及能保留实现脉络的文章。
+  - 我现在主要负责大模型推理引擎的性能优化，关注请求调度、KV Cache 管理、跨节点数据传输和异构加速后端。
+  - 此前，我在华为做过分布式存储的高可用与集群管理，也做过云工作负载分析和 CPU 体系结构优化。
+  - 这个网站用来整理我参与的工程项目、阅读源码时形成的笔记，以及实际调试和验证过程中积累的方法。
 
 currentFocus:
   eyebrow: 当前重点
-  title: 大模型推理引擎与系统性能
+  title: 大模型推理系统
   summary: >
-    当前工作集中在三类边界：Runtime 执行、KV 状态生命周期，以及异构推理
-    Backend 之间的数据搬运。
+    我的工作主要集中在推理调度、KV Cache 管理、跨节点数据传输和
+    异构后端性能优化。
   bullets:
-    - 分析推理负载的吞吐、延迟、Cache 命中率、内存使用和 runtime 瓶颈。
-    - 跟踪 Prefix Cache 和 KV Cache 在 Prefill/Decode 路径上的生命周期。
-    - 验证 Mooncake TransferEngine 的 KV 传输规划、描述符、就绪检测和后端接入。
-    - '将 SGLang runtime 的请求生命周期、调度、Cache 管理和传输边界用于服务系统设计。'
+    - 分析请求调度和执行链路中的吞吐、延迟与内存瓶颈。
+    - 追踪 KV Cache 在预填充、解码、回载和传输过程中的状态变化。
+    - 验证 Mooncake Transfer Engine 与推理后端的集成流程。
+    - 参与 SGLang 请求处理、调度和缓存相关功能的开发与分析。
   links:
     - label: 项目
       href: /projects/
@@ -29,115 +29,83 @@ currentFocus:
       href: /blogs/
 
 selectedWork:
-  - eyebrow: Runtime prototype
+  - eyebrow: 推理系统原型
     title: SGLang Rust Runtime
-    description: 用 Rust 显式实现并测试请求生命周期、调度、Prefix 复用、协议处理与分阶段 PD 传输集成边界。
-    problem: 在生产执行路径仍在建设时，让隐藏状态、能力缺口和 fallback 行为可检查。
+    description: 用 Rust 实现并验证请求生命周期、调度、前缀缓存、协议处理和 PD 传输流程。目前用于架构与集成实验，不是生产级 SGLang 的替代品。
     link:
-      label: 当前范围与测试
+      label: 查看项目范围
       href: https://github.com/imReese/sglang-rs#current-scope
-  - eyebrow: KV cache platform
+  - eyebrow: KV Cache 平台
     title: NexusKV
-    description: 用 Go、Rust、Python 拆开控制策略、状态索引规划、执行层和 SGLang/vLLM lifecycle adapter。
-    problem: 在真实 data plane 逐步开发时，避免让 reuse planning 和 transfer policy 滑进 connector 分支。
+    description: 将 KV Cache 的复用规划、状态索引、数据搬运和推理引擎适配拆分为独立模块。目前已完成基础框架与测试，远程传输仍在开发中。
     link:
-      label: 架构与执行边界
+      label: 查看设计文档
       href: https://github.com/imReese/NexusKV/blob/main/docs/design/execution-boundary.md
-  - eyebrow: Source analysis
-    title: Mooncake / HiCache 源码
-    description: 沿着具体读写路径追踪 page key、Host KV memory、Store object、replica state 与 shared Transfer Engine 边界。
-    problem: 区分容易混在一起的 Cache 命中、materialization、metadata 可见性与数据传输语义。
+  - eyebrow: 源码分析
+    title: Mooncake 与 HiCache 源码
+    description: 沿 SGLang、HiCache 和 Mooncake Store 的真实读写路径，梳理缓存查找、主机内存回载、元数据同步和跨节点传输的职责分工。
     link:
-      label: SGLang 到 Mooncake KV 路径
+      label: 阅读源码分析
       href: /blogs/sglang-to-mooncake-store-kv-cache-path/
 
 researchAreas:
   - title: 推理引擎
-    label: 请求路径
-    description: 分析调度、算子、kernel 和 backend dispatch 组成的推理执行路径。
+    label: 调度与执行
+    description: 分析请求调度、算子、内核和后端调用中的性能瓶颈。
     points:
-      - 吞吐 / 延迟
-      - 算子与 kernel 路径
-      - prefill / decode 行为
+      - 吞吐与延迟
+      - 算子与内核路径
+      - 预填充与解码行为
     tags:
       - LLM Serving
       - Runtime
       - Scheduling
-  - title: Cache 与 KV Cache
-    label: 内存行为
-    description: 分析 Prefix Cache 和 KV Cache 的生命周期、复用效率、驻留状态和内存压力。
+  - title: KV Cache
+    label: 缓存管理
+    description: 关注前缀复用、KV 页生命周期、内存驻留和跨层回载。
     points:
-      - prefix cache 行为
-      - KV page 生命周期
-      - cache hit 与 residency
+      - 前缀缓存行为
+      - KV 页生命周期
+      - 缓存命中与驻留状态
     tags:
       - Cache
       - KV Cache
       - Memory
-  - title: Mooncake TE
-    label: 传输链路
-    description: 验证 Mooncake TransferEngine 的 KV 传输规划、描述符、就绪检测和 runtime 边界。
+  - title: Mooncake Transfer Engine
+    label: 数据传输
+    description: 分析 KV 数据的传输规划、内存注册、描述符和就绪状态。
     points:
       - KV 传输规划
-      - descriptor 与 checksum 路径
-      - KV-ready 判断
+      - 描述符与校验和路径
+      - KV 就绪判断
     tags:
       - Mooncake
       - TransferEngine
       - PD
-  - title: 异构后端
-    label: 异构加速
-    description: 优化不同加速器的 backend 路径，并将设备相关逻辑限制在后端接口内。
+  - title: 异构加速
+    label: 后端优化
+    description: 适配并优化不同加速器上的推理路径，同时尽量隔离设备相关逻辑。
     points:
       - 加速器后端路径
-      - 设备相关 runtime
+      - 设备相关执行逻辑
       - 后端抽象
     tags:
       - Accelerators
       - Runtime
       - Backend
 
-impactStats:
-  - value: cache + KV
-    label: 内存路径
-    detail: 跟踪 Prefix Cache、KV Cache 的生命周期、驻留特征和服务内存行为。
-  - value: Mooncake TE
-    label: 传输路径
-    detail: 验证 KV 传输规划、描述符边界和就绪检测机制。
-  - value: heterogeneous
-    label: 后端路径
-    detail: 在异构加速器上优化推理执行链路，保持后端抽象干净。
-  - value: '128 -> 256'
-    label: 集群规模
-    detail: 扩展分布式存储集群初始化能力。
-  - value: '+40%'
-    label: 初始化效率
-    detail: 通过异步队列和模块解耦优化集群启动路径。
-  - value: '90%+'
-    label: 分支覆盖率
-    detail: 构建 DTFuzz 接口测试，提前挡住高风险存储缺陷。
-  - value: '+30%'
-    label: TLB 命中率
-    detail: 在 ChampSim 里验证动态 TLB 调度思路。
-  - value: '+6%'
-    label: IPC
-    detail: 在 CPU 仿真中度量指令级架构收益。
-  - value: '+8%'
-    label: 吞吐
-    detail: 参与 Kunpeng CPU 工作负载的 SMT 策略调优。
-
 experience:
   - company: 百度
     team: AI 计算团队
-    title: 软件工程师，推理引擎
+    title: 推理引擎软件工程师
     logo: cpu, gpu, inference engine
     start: '2025.06.30'
     end: 至今
     highlights:
       - 负责大模型推理引擎性能优化。
-      - 跟踪 Prefill/Decode 负载下 Cache、KV Cache 和 Mooncake TransferEngine 的数据流转路径。
-      - 在不同加速器上适配并优化 runtime 和 backend 执行路径。
-      - 分析 kernel、算子、调度、内存和传输路径中的瓶颈。
+      - 分析预填充与解码流程中的 KV Cache 状态和 Mooncake Transfer Engine 数据传输。
+      - 适配并优化不同加速器上的推理执行路径。
+      - 定位内核、算子、调度、内存和数据传输中的性能瓶颈。
   - company: 华为云
     team: 竖亥实验室
     title: 计算机体系结构研究工程师
@@ -145,8 +113,8 @@ experience:
     start: '2023.07'
     end: '2024.07'
     highlights:
-      - 面向云 workload 建设性能分析工具，刻画指令流和微架构行为。
-      - 结合 workload 数据与仿真评估 CPU 体系结构优化方案。
+      - 面向云工作负载建设性能分析工具，刻画指令流和微架构行为。
+      - 结合工作负载数据与仿真评估 CPU 体系结构优化方案。
       - 与芯片和操作系统团队协作，在鲲鹏平台验证软硬件协同优化。
   - company: 华为数据存储
     team: 基础设施开发部
@@ -168,34 +136,3 @@ education:
     details:
       - GPA 4.2 / 5.0。
       - 修读计算机组成原理、数据结构、操作系统、计算机网络、计算机体系结构、线性代数、概率统计和算法设计等课程。
-
-stackGroups:
-  - title: 语言
-    items:
-      - C/C++
-      - Go
-      - Python
-      - Shell
-  - title: 推理服务
-    items:
-      - SGLang
-      - KV Cache
-      - Mooncake TE / Store
-      - Scheduling
-      - Backend Dispatch
-  - title: 系统调试
-    items:
-      - Linux
-      - Paxos
-      - epoll
-      - perf
-      - Intel Pin
-      - gdb
-  - title: 基础设施
-    items:
-      - Docker
-      - Kubernetes
-      - Redis
-      - MySQL
-      - Prometheus
-      - Grafana

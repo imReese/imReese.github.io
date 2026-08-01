@@ -60,8 +60,6 @@ export type HomePageContent = {
   selectedWork: {
     title: string
     intro: string
-    problemLabel: string
-    linkLabel: string
   }
 }
 
@@ -133,7 +131,6 @@ export type ProfileContent = {
     eyebrow: string
     title: string
     description: string
-    problem: string
     link: {
       label: string
       href: string
@@ -145,11 +142,6 @@ export type ProfileContent = {
     description: string
     points: string[]
     tags: string[]
-  }>
-  impactStats: Array<{
-    value: string
-    label: string
-    detail: string
   }>
   experience: Array<{
     company: string
@@ -167,10 +159,6 @@ export type ProfileContent = {
     end: string
     logo: string
     details: string[]
-  }>
-  stackGroups: Array<{
-    title: string
-    items: string[]
   }>
 }
 
@@ -238,9 +226,7 @@ export type ProjectsContent = {
       name: string
       description: string
       href: string
-      label: string
       tags: string[]
-      relation?: string
       upstream?: {
         href: string
         label: string
@@ -273,16 +259,6 @@ export type PagesContent = {
     timelineIntro: string
     capabilitiesTitle: string
     capabilitiesIntro: string
-    representativeTitle: string
-    representativeIntro: string
-    projectLabel: string
-    articleLabel: string
-    links: Array<{
-      kind: 'project' | 'article'
-      title: string
-      description: string
-      href: string
-    }>
   }
   home: HomePageContent
   projectsPage: ProjectsPageContent

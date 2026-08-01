@@ -20,6 +20,17 @@ export function OpenSourcePulse() {
         <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground">
           {currentFocus.summary}
         </p>
+        <ul className="mt-6 max-w-xl space-y-3">
+          {currentFocus.bullets.slice(0, 3).map((bullet) => (
+            <li
+              key={bullet}
+              className="flex gap-3 text-sm leading-7 text-muted-foreground"
+            >
+              <span className="mt-3 h-1 w-1 shrink-0 rounded-full bg-primary" />
+              <span>{bullet}</span>
+            </li>
+          ))}
+        </ul>
         <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2">
           {currentFocus.links.map((link) => {
             const isExternal = link.href.startsWith('http')
@@ -67,12 +78,6 @@ export function OpenSourcePulse() {
                 <p className="text-sm leading-7 text-muted-foreground">
                   {work.description}
                 </p>
-                <p className="mt-2 text-xs leading-6 text-muted-foreground">
-                  <span className="font-semibold text-foreground">
-                    {home.selectedWork.problemLabel}:
-                  </span>{' '}
-                  {work.problem}
-                </p>
                 <a
                   href={work.link.href}
                   target={
@@ -85,7 +90,7 @@ export function OpenSourcePulse() {
                   }
                   className="mt-2 inline-flex min-h-10 items-center gap-1.5 text-xs text-muted-foreground transition-colors duration-150 hover:text-primary"
                 >
-                  {home.selectedWork.linkLabel} · {work.link.label}
+                  {work.link.label}
                   <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
                 </a>
               </div>

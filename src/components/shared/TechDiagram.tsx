@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { motion, useReducedMotion, type Variants } from 'framer-motion'
 import * as React from 'react'
 import { type CSSProperties, type ReactNode } from 'react'
+import { useLanguage } from '@/components/shared/LanguageProvider'
 
 type DiagramTone =
   | 'teal'
@@ -206,7 +207,7 @@ function DiagramShell({
           )}
         >
           {eyebrow && (
-            <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+            <p className="mb-2 text-xs font-semibold tracking-[0.06em] text-primary">
               {eyebrow}
             </p>
           )}
@@ -253,7 +254,10 @@ export function LayerDiagram({
           const currentTone = tone(layer.tone)
 
           return (
-            <motion.div key={`${layer.label}-${index}`} variants={diagramItemVariants}>
+            <motion.div
+              key={`${layer.label}-${index}`}
+              variants={diagramItemVariants}
+            >
               <div
                 className={clsx(
                   'relative overflow-hidden rounded-[8px] border p-4 transition-shadow duration-300 hover:shadow-sm',
@@ -320,7 +324,10 @@ export function SequenceDiagram({
 }) {
   return (
     <DiagramShell eyebrow={eyebrow} title={title} caption={caption}>
-      <motion.div variants={diagramItemVariants} className="mb-4 flex flex-wrap gap-2">
+      <motion.div
+        variants={diagramItemVariants}
+        className="mb-4 flex flex-wrap gap-2"
+      >
         {actors.map((actor) => (
           <Badge key={actor}>{actor}</Badge>
         ))}
@@ -360,7 +367,9 @@ export function SequenceDiagram({
                 </div>
                 <div className="hidden items-center gap-2 sm:flex">
                   <span className="h-px w-8 bg-border" />
-                  <span className={clsx('h-2 w-2 rounded-full', currentTone.line)} />
+                  <span
+                    className={clsx('h-2 w-2 rounded-full', currentTone.line)}
+                  />
                   <span className="h-px w-8 bg-border" />
                 </div>
                 <div>
@@ -493,6 +502,8 @@ export function SystemBoundaryDiagram({
   groups: BoundaryGroup[]
   compact?: boolean
 }) {
+  const { t } = useLanguage()
+
   return (
     <DiagramShell
       eyebrow={eyebrow}
@@ -534,8 +545,8 @@ export function SystemBoundaryDiagram({
               </div>
               {group.signals && group.signals.length > 0 && (
                 <div className="mt-4 border-t border-border/60 pt-3">
-                  <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    observable
+                  <p className="mb-2 text-xs font-semibold tracking-[0.06em] text-muted-foreground">
+                    {t('common.observable')}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {group.signals.map((signal) => (
@@ -765,7 +776,9 @@ export function MappingDiagram({
             sourceTone.bg,
           )}
         >
-          <p className={clsx('font-mono text-xs font-semibold', sourceTone.text)}>
+          <p
+            className={clsx('font-mono text-xs font-semibold', sourceTone.text)}
+          >
             {source.label}
           </p>
           {source.detail && (

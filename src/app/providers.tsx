@@ -1,20 +1,9 @@
 'use client'
 
-import { createContext, useEffect, useRef } from 'react'
-import { usePathname } from 'next/navigation'
+import { useEffect } from 'react'
 import { ThemeProvider, useTheme } from 'next-themes'
 import { LanguageProvider } from '@/components/shared/LanguageProvider'
 import { ThemeFavicon } from '@/components/shared/ThemeFavicon'
-
-function usePrevious<T>(value: T) {
-  let ref = useRef<T>()
-
-  useEffect(() => {
-    ref.current = value
-  }, [value])
-
-  return ref.current
-}
 
 function ThemeWatcher() {
   let { resolvedTheme, setTheme } = useTheme()
@@ -40,21 +29,14 @@ function ThemeWatcher() {
   return null
 }
 
-export const AppContext = createContext<{ previousPathname?: string }>({})
-
 export function Providers({ children }: { children: React.ReactNode }) {
-  let pathname = usePathname()
-  let previousPathname = usePrevious(pathname)
-
   return (
-    <AppContext.Provider value={{ previousPathname }}>
-      <ThemeProvider attribute="class" disableTransitionOnChange>
-        <LanguageProvider>
-          <ThemeWatcher />
-          <ThemeFavicon />
-          {children}
-        </LanguageProvider>
-      </ThemeProvider>
-    </AppContext.Provider>
+    <ThemeProvider attribute="class" disableTransitionOnChange>
+      <LanguageProvider>
+        <ThemeWatcher />
+        <ThemeFavicon />
+        {children}
+      </LanguageProvider>
+    </ThemeProvider>
   )
 }

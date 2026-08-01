@@ -1,9 +1,9 @@
 'use client'
 
 import Image from 'next/image'
-import { ArrowUpRight } from 'lucide-react'
 
 import { Container } from '@/components/layout/Container'
+import { useLanguage } from '@/components/shared/LanguageProvider'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 import portraitImage from '@/images/portrait.jpg'
 
@@ -22,12 +22,13 @@ function SectionHeading({ title, intro }: { title: string; intro: string }) {
 
 export function AboutContent() {
   const { about, profile } = useLocalizedContent()
+  const { t } = useLanguage()
 
   return (
     <Container className="mt-16 sm:mt-24">
       <div className="grid grid-cols-1 gap-y-14 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)] lg:gap-x-20">
         <div className="lg:order-first">
-          <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+          <h1 className="max-w-3xl break-words text-[2.35rem] font-semibold leading-tight tracking-tight text-foreground sm:text-[3.75rem]">
             {about.headline}
           </h1>
           <div className="mt-7 max-w-3xl space-y-6 text-base leading-8 text-muted-foreground">
@@ -41,7 +42,7 @@ export function AboutContent() {
           <div className="max-w-xs px-2.5 lg:max-w-none">
             <Image
               src={portraitImage}
-              alt="Portrait photo"
+              alt={t('common.portrait')}
               width={320}
               height={320}
               sizes="(min-width: 1024px) 20rem, 20rem"
@@ -61,9 +62,9 @@ export function AboutContent() {
           {profile.experience.map((experience) => (
             <li
               key={`${experience.company}-${experience.start}`}
-              className="grid gap-3 py-6 sm:grid-cols-[8.5rem_14rem_minmax(0,1fr)] sm:gap-6"
+              className="grid gap-3 py-6 md:grid-cols-[9rem_12rem_minmax(0,1fr)] md:gap-6"
             >
-              <span className="font-mono text-xs leading-6 text-muted-foreground">
+              <span className="whitespace-nowrap font-mono text-xs leading-6 text-muted-foreground">
                 {experience.start} — {experience.end}
               </span>
               <div>
@@ -102,7 +103,7 @@ export function AboutContent() {
                 <h3 className="text-base font-semibold text-foreground">
                   {area.title}
                 </h3>
-                <span className="font-mono text-xs text-primary">
+                <span className="text-xs font-medium text-primary">
                   {area.label}
                 </span>
               </div>
@@ -114,48 +115,6 @@ export function AboutContent() {
               </p>
             </article>
           ))}
-        </div>
-      </section>
-
-      <section className="mt-20">
-        <SectionHeading
-          title={about.representativeTitle}
-          intro={about.representativeIntro}
-        />
-        <div className="grid gap-x-10 sm:grid-cols-2">
-          {about.links.map((link) => {
-            const isExternal = link.href.startsWith('http')
-            const kindLabel =
-              link.kind === 'project' ? about.projectLabel : about.articleLabel
-
-            return (
-              <a
-                key={link.href}
-                href={link.href}
-                target={isExternal ? '_blank' : undefined}
-                rel={isExternal ? 'noopener noreferrer' : undefined}
-                className="group border-b border-border/70 py-6"
-              >
-                <span className="font-mono text-xs font-semibold uppercase tracking-[0.1em] text-primary">
-                  {kindLabel}
-                </span>
-                <span className="mt-2 flex items-start justify-between gap-4">
-                  <span>
-                    <span className="block text-base font-semibold text-foreground transition group-hover:text-primary">
-                      {link.title}
-                    </span>
-                    <span className="mt-2 block text-sm leading-6 text-muted-foreground">
-                      {link.description}
-                    </span>
-                  </span>
-                  <ArrowUpRight
-                    className="mt-1 h-4 w-4 shrink-0 text-muted-foreground transition group-hover:text-primary"
-                    aria-hidden="true"
-                  />
-                </span>
-              </a>
-            )
-          })}
         </div>
       </section>
     </Container>

@@ -26,14 +26,20 @@ type WorkItem = {
   }
   capabilities?: string[]
   evidenceLinks?: Array<{ label: string; href: string }>
-  relation?: string
   upstream?: { href: string; label: string }
 }
 
 type WorkSection = {
   title: string
   intro: string
-  items: WorkItem[]
+  items: Array<{
+    name: string
+    description: string
+    href: string
+    tags: string[]
+    upstream?: { href: string; label: string }
+    evidenceLinks?: Array<{ label: string; href: string }>
+  }>
 }
 
 function LinkArrow() {
@@ -163,7 +169,7 @@ function OverviewIndex({
       <div className="grid gap-6 md:grid-cols-3 md:gap-10">
         {items.map((item) => (
           <div key={item.label} className="min-w-0">
-            <p className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+            <p className="text-xs font-semibold tracking-[0.04em] text-primary">
               {item.label}
             </p>
             <p className="mt-3 text-lg font-semibold tracking-tight text-foreground">
@@ -207,7 +213,7 @@ function FeaturedSystems({
                 <div className="flex min-w-0 items-start justify-between gap-4">
                   <div className="min-w-0">
                     {item.status ? (
-                      <span className="mb-3 inline-flex rounded-sm border border-border/80 px-2 py-0.5 font-mono text-xs font-semibold uppercase tracking-[0.06em] text-primary">
+                      <span className="mb-3 inline-flex rounded-sm border border-border/80 px-2 py-0.5 text-xs font-semibold text-primary">
                         {item.status.label}
                       </span>
                     ) : null}
@@ -244,7 +250,7 @@ function FeaturedSystems({
                   </p>
                   {item.status ? (
                     <div className="mt-5 border-l-2 border-primary/60 pl-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">
+                      <p className="text-xs font-semibold tracking-[0.04em] text-primary">
                         {t('projects.scope')}
                       </p>
                       <p className="mt-2 text-sm leading-6 text-muted-foreground">
@@ -254,7 +260,7 @@ function FeaturedSystems({
                   ) : null}
                   {item.capabilities && item.capabilities.length > 0 ? (
                     <div className="mt-6">
-                      <p className="text-xs font-semibold uppercase tracking-[0.08em] text-primary">
+                      <p className="text-xs font-semibold tracking-[0.04em] text-primary">
                         {t('projects.capabilities')}
                       </p>
                       <ul className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
@@ -309,41 +315,29 @@ function WorkSectionList({ section }: { section: WorkSection }) {
           const isExternal = isExternalHref(item.href)
 
           return (
-            <li key={item.name} className="py-5 sm:px-3">
-              <article className="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
-                <div className="min-w-0">
-                  {item.relation ? (
-                    <span className="mb-2 block font-mono text-xs font-semibold uppercase tracking-[0.06em] text-primary">
-                      {item.relation}
-                    </span>
-                  ) : null}
-                  <h3 className="text-base font-semibold leading-6 text-foreground">
-                    <a
-                      href={withUtmSource(item.href, utm_source)}
-                      target={isExternal ? '_blank' : undefined}
-                      rel={isExternal ? 'noopener noreferrer' : undefined}
-                      className="group inline-flex items-start gap-1.5 transition hover:text-primary"
-                    >
-                      {item.name}
-                      <LinkArrow />
-                    </a>
-                  </h3>
-                  <p className="mt-2 truncate font-mono text-xs text-muted-foreground">
-                    {item.label}
-                  </p>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    {item.description}
-                  </p>
-                  <TagLine tags={item.tags} />
-                  <RelatedLinks
-                    links={[
-                      ...(item.upstream ? [item.upstream] : []),
-                      ...(item.evidenceLinks ?? []),
-                    ]}
-                  />
-                </div>
+            <li key={item.name} className="py-6 sm:px-3">
+              <article className="min-w-0">
+                <h3 className="text-base font-semibold leading-6 text-foreground">
+                  <a
+                    href={withUtmSource(item.href, utm_source)}
+                    target={isExternal ? '_blank' : undefined}
+                    rel={isExternal ? 'noopener noreferrer' : undefined}
+                    className="group inline-flex items-start gap-1.5 transition hover:text-primary"
+                  >
+                    {item.name}
+                    <LinkArrow />
+                  </a>
+                </h3>
+                <p className="mt-3 max-w-4xl text-sm leading-6 text-muted-foreground">
+                  {item.description}
+                </p>
+                <TagLine tags={item.tags} />
+                <RelatedLinks
+                  links={[
+                    ...(item.upstream ? [item.upstream] : []),
+                    ...(item.evidenceLinks ?? []),
+                  ]}
+                />
               </article>
             </li>
           )

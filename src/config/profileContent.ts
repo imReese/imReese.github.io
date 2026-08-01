@@ -19,12 +19,6 @@ export type CurrentFocus = {
   links: Array<{ label: string; href: string }>
 }
 
-export type ImpactStat = {
-  value: string
-  label: string
-  detail: string
-}
-
 export type ResearchArea = {
   title: string
   label: string
@@ -60,11 +54,6 @@ export type ProjectHighlight = {
   tags: string[]
 }
 
-export type StackGroup = {
-  title: string
-  items: string[]
-}
-
 export const profileSummary: ProfileSummary = {
   ...siteContent.site,
   focusAreas: profileContent.focusAreas,
@@ -73,8 +62,8 @@ export const profileSummary: ProfileSummary = {
 
 export const currentFocus: CurrentFocus = profileContent.currentFocus
 export const researchAreas: ResearchArea[] = profileContent.researchAreas
-export const impactStats: ImpactStat[] = profileContent.impactStats
-export const experienceHighlights: ExperienceHighlight[] = profileContent.experience
-export const educationHighlights: EducationHighlight[] = profileContent.education
+export const experienceHighlights: ExperienceHighlight[] =
+  profileContent.experience
+export const educationHighlights: EducationHighlight[] =
+  profileContent.education
 export const projectHighlights: ProjectHighlight[] = projectsContent.items
-export const stackGroups: StackGroup[] = profileContent.stackGroups
