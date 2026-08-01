@@ -47,8 +47,8 @@ export function AttentionSpeedupCurve() {
   const curveSeries: CurveSeries[] = [
     {
       label: 'MHA / MLA',
-      shortLabel: 'Full causal',
-      detail: 'quadratic causal triangle',
+      shortLabel: '完整因果 Attention',
+      detail: '二次增长的因果三角形',
       className: 'stroke-[#1e66f5] dark:stroke-[#89b4fa]',
       dotClassName: 'fill-[#1e66f5] dark:fill-[#89b4fa]',
       dashArray: undefined,
@@ -57,16 +57,16 @@ export function AttentionSpeedupCurve() {
     {
       label: 'SWA',
       shortLabel: 'W = 25% · N',
-      detail: 'quadratic, then window-bounded',
+      detail: '先二次增长，随后受窗口约束',
       className: 'stroke-[#8839ef] dark:stroke-[#cba6f7]',
       dotClassName: 'fill-[#8839ef] dark:fill-[#cba6f7]',
       dashArray: '8 5',
       remaining: (sampleAlpha) => swaRemaining(sampleAlpha, SWA_WINDOW_RATIO),
     },
     {
-      label: 'KDA recurrence only',
-      shortLabel: 'ideal upper bound',
-      detail: 'exact aligned checkpoint; no load / transfer',
+      label: 'KDA 递推部分',
+      shortLabel: '理想上界',
+      detail: 'checkpoint 精确对齐；不含加载与传输',
       className: 'stroke-[#40a02b] dark:stroke-[#a6e3a1]',
       dotClassName: 'fill-[#40a02b] dark:fill-[#a6e3a1]',
       dashArray: '3 4',
@@ -118,9 +118,9 @@ export function AttentionSpeedupCurve() {
 
   return (
     <InteractiveShell
-      eyebrow="attention speedup explorer"
-      title="相同 Prefix 命中率，不同 Attention 的可跳过工作量并不相同"
-      caption="曲线只比较理想化 Attention 主体：MHA/MLA 为 Full Causal，SWA 取 W = 0.25N；KDA 只画 recurrence，并把续算边界向下对齐到 checkpoint。"
+      eyebrow="Attention 加速比探索器"
+      title="相同前缀命中率，不同 Attention 的可跳过工作量并不相同"
+      caption="曲线只比较理想化的 Attention 主体：MHA/MLA 使用完整因果依赖，SWA 取 W = 0.25N；KDA 只计算递推部分，并把续算边界向下对齐到 checkpoint。"
     >
       <motion.div
         variants={itemVariants}
@@ -133,14 +133,14 @@ export function AttentionSpeedupCurve() {
           aria-labelledby={`${hitSliderId}-curve-title ${hitSliderId}-curve-desc`}
         >
           <title id={`${hitSliderId}-curve-title`}>
-            Ideal prefix cache attention speedup curves
+            Prefix Cache 的理想 Attention 加速比曲线
           </title>
           <desc id={`${hitSliderId}-curve-desc`}>
-            Speedup from zero to ninety percent logical prefix hit ratio for
-            full causal MHA or MLA, sliding window attention, and KDA recurrence
-            with checkpoints every {checkpointInterval} tokens in a{' '}
-            {TOTAL_TOKENS}-token prompt. The KDA line is a stepped ideal upper
-            bound and excludes checkpoint load, transfer, and replay cost.
+            展示逻辑前缀命中率从 0% 到 90% 时，完整因果 MHA/MLA、滑动窗口
+            Attention 和 KDA 递推部分的理想加速比。KDA 示例的输入长度为{' '}
+            {TOTAL_TOKENS} 个 token，每 {checkpointInterval} 个 token 保存一次
+            checkpoint；阶梯曲线是理想上界，不包含 checkpoint
+            加载、传输和重放成本。
           </desc>
 
           {[1, 2, 4, 6, 8, 10].map((tick) => (
@@ -200,7 +200,7 @@ export function AttentionSpeedupCurve() {
             textAnchor="middle"
             className="fill-muted-foreground text-[12px]"
           >
-            Prefix hit ratio · α
+            前缀命中率 · α
           </text>
           <text
             x="11"
@@ -209,7 +209,7 @@ export function AttentionSpeedupCurve() {
             transform={`rotate(-90 11 ${(plot.top + plot.bottom) / 2})`}
             className="hidden fill-muted-foreground text-[12px] sm:block"
           >
-            Ideal attention speedup
+            理想 Attention 加速比
           </text>
 
           {curveSeries.map((series) => (
@@ -263,28 +263,28 @@ export function AttentionSpeedupCurve() {
         <motion.div variants={itemVariants}>
           <Slider
             id={hitSliderId}
-            label="Compare at hit ratio · α"
+            label="对比命中率 · α"
             value={hitPercent}
             max={90}
             valueLabel={`${hitPercent}%`}
             minLabel="0%"
             maxLabel="90%"
-            description="The logical match; KDA may resume from an earlier checkpoint."
+            description="这里显示逻辑匹配比例；KDA 可能只能从更早的 checkpoint 恢复。"
             onChange={setHitPercent}
           />
         </motion.div>
         <motion.div variants={itemVariants}>
           <Slider
             id={checkpointSliderId}
-            label="KDA checkpoint interval · C"
+            label="KDA checkpoint 间隔 · C"
             value={checkpointInterval}
             min={1024}
             max={8192}
             step={1024}
-            valueLabel={`${checkpointInterval.toLocaleString()} tokens`}
+            valueLabel={`${checkpointInterval.toLocaleString()} 个 token`}
             minLabel="1,024"
             maxLabel="8,192"
-            description={`Fixed example length N = ${TOTAL_TOKENS.toLocaleString()} tokens.`}
+            description={`固定示例长度 N = ${TOTAL_TOKENS.toLocaleString()} 个 token。`}
             onChange={setCheckpointInterval}
           />
         </motion.div>
@@ -339,21 +339,21 @@ export function AttentionSpeedupCurve() {
         className="mt-4 grid gap-2 rounded-[8px] border border-border/70 bg-secondary/20 p-3 text-xs sm:grid-cols-3"
       >
         <div>
-          <dt className="text-muted-foreground">Logical matched prefix</dt>
+          <dt className="text-muted-foreground">逻辑匹配前缀</dt>
           <dd className="mt-1 font-mono font-semibold text-foreground">
-            {prefixTokens.toLocaleString()} tokens
+            {prefixTokens.toLocaleString()} 个 token
           </dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">Effective KDA resume</dt>
+          <dt className="text-muted-foreground">KDA 实际恢复位置</dt>
           <dd className="mt-1 font-mono font-semibold text-foreground">
-            {effectiveResume.toLocaleString()} tokens
+            {effectiveResume.toLocaleString()} 个 token
           </dd>
         </div>
         <div>
-          <dt className="text-muted-foreground">Unaligned prefix replay</dt>
+          <dt className="text-muted-foreground">未对齐前缀重放量</dt>
           <dd className="mt-1 font-mono font-semibold text-foreground">
-            {replayTokens.toLocaleString()} tokens
+            {replayTokens.toLocaleString()} 个 token
           </dd>
         </div>
       </motion.dl>
@@ -363,11 +363,10 @@ export function AttentionSpeedupCurve() {
         className="mt-4 rounded-[8px] border border-[#df8e1d]/35 bg-[#df8e1d]/[0.07] px-4 py-3 text-sm leading-6 text-muted-foreground dark:border-[#f9e2af]/30 dark:bg-[#f9e2af]/[0.06]"
       >
         <strong className="font-semibold text-foreground">
-          KDA recurrence-only ideal upper bound：
+          KDA 递推部分的理想上界：
         </strong>
-        必须在对齐边界拥有完整 recurrent state 和 ShortConv
-        等续算状态。曲线虽把未对齐 token 算入 remaining tokens，但仍忽略
-        checkpoint 查询、load-back、传输和恢复开销。
+        必须在对齐边界拥有完整递推状态和 ShortConv 等续算状态。曲线虽把未对齐
+        token 算入剩余 token，但仍忽略 checkpoint 查询、回载、传输和恢复开销。
       </motion.p>
     </InteractiveShell>
   )

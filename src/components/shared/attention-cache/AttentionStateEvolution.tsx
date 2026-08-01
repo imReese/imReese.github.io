@@ -9,71 +9,71 @@ import { type EvolutionStage } from './types'
 const evolutionStages: EvolutionStage[] = [
   {
     label: 'KV Cache',
-    eyebrow: 'dense history',
-    representation: 'Kₜ + Vₜ per layer',
+    eyebrow: '逐 token 历史',
+    representation: '每层 Kₜ + Vₜ',
     growth: 'O(T · Hkv · d)',
-    restore: 'all KV pages in [0, t)',
+    restore: '恢复 [0, t) 的全部 KV 页',
     summary:
       'MHA/GQA/MQA 将每个历史 token 的 Key 与 Value 直接保存下来；下一条 Query 读取这段完整历史。',
     details: [
-      '物理对象通常按 layer、page、K/V 与 parallel rank 拆分',
-      'Prefix 命中的是连续 token 边界，不是任意 page 集合',
+      '物理对象通常按层、页、K/V 与并行 rank 拆分',
+      '前缀命中的是连续 token 边界，不是任意页集合',
     ],
     tone: 'blue',
   },
   {
     label: 'MLA latent',
-    eyebrow: 'compressed history',
-    representation: 'cₜᴷⱽ + RoPE key',
+    eyebrow: '压缩历史',
+    representation: 'cₜᴷⱽ + RoPE Key',
     growth: 'O(T · (dc + dr))',
-    restore: 'latent and RoPE share boundary t',
+    restore: 'latent 与 RoPE 共享边界 t',
     summary:
-      'MLA 不再持久化展开后的所有 KV Heads，而是保存每 token 的压缩 latent 与解耦 RoPE 信息。',
+      'MLA 不再持久化展开后的全部 KV Head，而是保存每 token 的压缩 latent 与解耦 RoPE 信息。',
     details: [
-      '压缩改变 cache 宽度，但 Full Causal Attention 的依赖三角形仍然存在',
+      '压缩改变缓存宽度，但完整因果 Attention 的依赖三角形仍然存在',
       'q_lora_rank 属于 Query 路径，通常不是持久化历史',
     ],
     tone: 'teal',
   },
   {
-    label: 'DSA state',
-    eyebrow: 'selected history',
-    representation: 'MLA history + index keys',
-    growth: 'usually O(T)',
-    restore: 'main cache ∩ index state',
+    label: 'DSA 状态',
+    eyebrow: '筛选历史',
+    representation: 'MLA 历史 + 索引 Key',
+    growth: '通常为 O(T)',
+    restore: '主缓存 ∩ 索引状态',
     summary:
       'DSA 在主 Attention 历史旁增加稀疏选择状态。Top-k 限制一次读取多少位置，不等于只存 top-k 个位置。',
     details: [
-      'Indexer keys、主 MLA latent 与选择元数据可能属于不同 pool',
-      '可恢复命中长度取所有必需 pool 的共同连续前缀',
+      '索引 Key、主 MLA latent 与选择元数据可能属于不同缓存池',
+      '可恢复命中长度取所有必需缓存池的共同连续前缀',
     ],
     tone: 'mauve',
   },
   {
     label: 'KDA checkpoint',
-    eyebrow: 'recurrent boundary',
+    eyebrow: '递推边界',
     representation: 'S(t) + ShortConv Γ(t)',
-    growth: 'live O(1); store O(checkpoints)',
-    restore: 'complete checkpoint exactly at t',
+    growth: '在线 O(1)；存储 O(checkpoint 数)',
+    restore: '边界 t 处的完整 checkpoint',
     summary:
-      'KDA 把长历史压进递归矩阵；Prefix reuse 需要在目标 token 边界保存完整 recurrent 与 convolution state。',
+      'KDA 把长历史压进递推矩阵；前缀复用需要在目标 token 边界保存完整递推状态与卷积状态。',
     details: [
-      '只有矩阵 S(t) 不一定足够，ShortConv window 也可能是续算必需状态',
-      '最近 checkpoint 早于命中边界时，中间 token 仍需 replay',
+      '只有矩阵 S(t) 不一定足够，ShortConv 窗口也可能是续算必需状态',
+      '最近 checkpoint 早于命中边界时，中间 token 仍需重放',
     ],
     tone: 'amber',
   },
   {
     label: 'Attention State Store',
-    eyebrow: 'serving abstraction',
-    representation: 'typed state bundle + identity',
-    growth: 'sum of required state groups',
-    restore: 'minimum complete aligned boundary',
+    eyebrow: '服务抽象',
+    representation: '带类型的状态包 + 身份',
+    growth: '所有必需状态组之和',
+    restore: '最短的完整对齐边界',
     summary:
-      '统一存储层不应假设对象永远是 K/V；它管理 pages、latent、index state、checkpoint 及其边界身份。',
+      '统一存储层不应假设对象永远是 K/V；它管理页、latent、索引状态、checkpoint 及其边界身份。',
     details: [
-      '身份至少包含 model、layer/group、layout、dtype、parallel rank 与 prefix hash',
-      'Store 返回“存在”不等于 runtime 已成功 load-back 并可安全续算',
+      '身份至少包含模型、层/组、布局、数据类型、并行 rank 与前缀哈希',
+      '存储层返回“存在”不等于运行时已成功回载并可安全续算',
     ],
     tone: 'green',
   },
@@ -116,16 +116,16 @@ export function AttentionStateEvolution() {
 
   return (
     <InteractiveShell
-      eyebrow="state evolution"
-      title="Attention Cache 正在从 KV tensor 演化为可恢复的状态集合"
-      caption="选择任一阶段，比较它保存什么、如何增长，以及 Prefix reuse 真正需要恢复到哪个边界。"
+      eyebrow="状态演进"
+      title="Attention 缓存正在从 KV 张量演化为可恢复的状态集合"
+      caption="选择任一阶段，比较它保存什么、如何增长，以及前缀复用真正需要恢复到哪个边界。"
     >
       <motion.div variants={itemVariants} className="md:hidden">
         <label
           htmlFor={selectorId}
           className="mb-2 block text-sm font-semibold text-foreground"
         >
-          Attention state stage
+          Attention 状态阶段
         </label>
         <select
           id={selectorId}
@@ -141,7 +141,7 @@ export function AttentionStateEvolution() {
           ))}
         </select>
         <p className="mt-2 text-xs leading-5 text-muted-foreground">
-          Use the native picker to move through all five state representations.
+          使用系统原生选择器，在五种状态表示之间切换。
         </p>
       </motion.div>
 
@@ -212,7 +212,7 @@ export function AttentionStateEvolution() {
             <div className="flex flex-col gap-2 border-b border-border/60 pb-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Stage {activeIndex + 1} · {activeStage.eyebrow}
+                  阶段 {activeIndex + 1} · {activeStage.eyebrow}
                 </p>
                 <h3 className="mt-1 text-lg font-semibold text-foreground">
                   {activeStage.label}
@@ -235,7 +235,7 @@ export function AttentionStateEvolution() {
             <dl className="mt-4 grid gap-3 sm:grid-cols-3">
               <div className="min-w-0 rounded-[8px] border border-border/65 bg-secondary/25 p-3">
                 <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  Representation
+                  状态表示
                 </dt>
                 <dd className="mt-2 break-words font-mono text-sm font-semibold text-foreground">
                   {activeStage.representation}
@@ -243,7 +243,7 @@ export function AttentionStateEvolution() {
               </div>
               <div className="min-w-0 rounded-[8px] border border-border/65 bg-secondary/25 p-3">
                 <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  Storage growth
+                  存储增长
                 </dt>
                 <dd className="mt-2 break-words font-mono text-sm font-semibold text-foreground">
                   {activeStage.growth}
@@ -251,7 +251,7 @@ export function AttentionStateEvolution() {
               </div>
               <div className="min-w-0 rounded-[8px] border border-border/65 bg-secondary/25 p-3">
                 <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  Resume invariant
+                  恢复条件
                 </dt>
                 <dd className="mt-2 break-words font-mono text-sm font-semibold text-foreground">
                   {activeStage.restore}

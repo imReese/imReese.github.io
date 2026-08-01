@@ -23,9 +23,9 @@ export function PrefixCacheTriangle() {
 
   return (
     <InteractiveShell
-      eyebrow="causal geometry lab"
-      title="拖动 Prefix 命中率，观察真正被跳过的 Attention 三角形"
-      caption="绿色网格带标记的是已缓存 Query 行，蓝色网格带标记的是仍需计算的 suffix。这里归一化的是 Full Causal Attention FLOPs。"
+      eyebrow="因果几何实验"
+      title="拖动前缀命中率，观察真正被跳过的 Attention 三角形"
+      caption="带斜纹的绿色网格是已缓存 Query 行，带点纹的蓝色网格是仍需计算的后缀。这里归一化的是完整因果 Attention FLOPs。"
     >
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(17rem,0.95fr)] lg:items-center">
         <motion.div
@@ -39,14 +39,13 @@ export function PrefixCacheTriangle() {
             aria-labelledby={`${sliderId}-matrix-title ${sliderId}-matrix-desc`}
           >
             <title id={`${sliderId}-matrix-title`}>
-              Prefix cache causal attention matrix
+              Prefix Cache 的因果 Attention 矩阵
             </title>
             <desc id={`${sliderId}-matrix-desc`}>
-              {hitPercent}% of query rows are served by prefix cache. The
-              skipped attention triangle occupies{' '}
-              {(alpha * alpha * 100).toFixed(1)}% of the original causal
-              attention matrix. Patterned green cells are skipped and dotted
-              blue cells remain.
+              前缀缓存复用了 {hitPercent}% 的 Query 行。被跳过的 Attention
+              三角形占原始因果 Attention 矩阵的{' '}
+              {(alpha * alpha * 100).toFixed(1)}
+              %。带斜纹的绿色单元格表示已跳过，带点纹的蓝色单元格表示仍需计算。
             </desc>
 
             <defs>
@@ -78,7 +77,7 @@ export function PrefixCacheTriangle() {
               textAnchor="middle"
               className="fill-muted-foreground font-mono text-[11px]"
             >
-              Key position →
+              Key 位置 →
             </text>
             <text
               x="14"
@@ -87,7 +86,7 @@ export function PrefixCacheTriangle() {
               transform={`rotate(-90 14 ${plotStart + plotSize / 2})`}
               className="fill-muted-foreground font-mono text-[11px]"
             >
-              Query position →
+              Query 位置 →
             </text>
 
             {Array.from({ length: gridSize }, (_, query) =>
@@ -185,11 +184,11 @@ export function PrefixCacheTriangle() {
           <div className="mt-1 flex flex-col justify-center gap-2 text-xs text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-x-5">
             <span className="inline-flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-sm border border-[#40a02b] bg-[#40a02b]/70 bg-[repeating-linear-gradient(135deg,transparent,transparent_2px,currentColor_2px,currentColor_3px)] text-background dark:border-[#a6e3a1] dark:bg-[#a6e3a1]/70" />
-              striped · skipped prefix rows
+              斜纹 · 已跳过的前缀行
             </span>
             <span className="inline-flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-sm border border-[#1e66f5] bg-[#1e66f5]/70 dark:border-[#89b4fa] dark:bg-[#89b4fa]/70" />
-              dotted · remaining suffix rows
+              点纹 · 仍需计算的后缀行
             </span>
           </div>
         </motion.div>
@@ -198,13 +197,13 @@ export function PrefixCacheTriangle() {
           <motion.div variants={itemVariants}>
             <Slider
               id={sliderId}
-              label="Prefix hit ratio · α"
+              label="前缀命中率 · α"
               value={hitPercent}
               max={90}
               valueLabel={`${hitPercent}%`}
               minLabel="0%"
               maxLabel="90%"
-              description="Logical prefix length divided by the full prompt length."
+              description="逻辑前缀长度占完整输入长度的比例。"
               onChange={setHitPercent}
             />
           </motion.div>
@@ -214,16 +213,16 @@ export function PrefixCacheTriangle() {
             aria-atomic="true"
           >
             <MetricCard
-              label="Remaining FLOPs"
+              label="剩余 FLOPs"
               value={`${(remaining * 100).toFixed(1)}%`}
               formula={`1 − ${alpha.toFixed(2)}²`}
               tone="blue"
             />
             <MetricCard
-              label="Ideal speedup"
+              label="理想加速比"
               value={`${speedup.toFixed(2)}×`}
               formula="1 / (1 − α²)"
-              note="Attention-only upper bound"
+              note="仅限 Attention 主体的理想上界"
               tone="green"
             />
           </div>

@@ -20,31 +20,31 @@ featured: true
 
 Prefix Cache 命中一半 token，Prefill 就能快两倍——这个直觉只对**每个 token 成本相同**的线性计算成立。
 
-Full Causal Attention 不是这样。越靠后的 Query，能看到的 Key 越多：第一个 Query 只看一个位置，最后一个 Query 要看完整前缀。命中前 50% token，跳过的是 Attention 矩阵左上角较小的三角形，而不是一半面积。
+完整因果 Attention（Full Causal Attention）不是这样。越靠后的 Query，能看到的 Key 越多：第一个 Query 只看一个位置，最后一个 Query 要看完整前缀。命中前 50% token，跳过的是 Attention 矩阵左上角较小的三角形，而不是一半面积。
 
-本文只回答一个问题：**从逻辑 Prefix 命中率出发，怎样逐层推导 Attention 剩余计算、完整 Prefill 的理想上界，以及最终需要实测的真实收益？**
+本文只回答一个问题：**从逻辑前缀命中率出发，怎样逐层推导 Attention 剩余计算、完整 Prefill 的理想上界，以及最终需要实测的真实收益？**
 
 ## 先统一六个容易混用的术语
 
-- **Prefix hit ratio**：索引逻辑匹配到的连续 prefix token 数与完整输入长度之比，本文记为 $\alpha$。它描述 match，不保证状态已经可用。
-- **Reusable boundary**：所有续算必需状态都完整、版本一致并对齐到的最晚 token 边界。不同 state group 共同可用时，通常取最短的那个边界。
-- **Effective reuse**：runtime 真正恢复成功并能够跳过计算的 token 范围。它不大于 logical prefix match，还会受到 page、checkpoint 与状态完整性的限制。
-- **Load-back**：从本地或远端 cache 找到对象后，把它读回 runtime 可消费的位置并完成必要同步的过程。
-- **Attention-only speedup**：基线 Attention FLOPs 与剩余 Attention FLOPs 的比值；不包含 MLP、投影、通信和 cache 恢复。
-- **Full-prefill speedup**：完整 Prefill 基线成本与复用后端到端成本的比值；真实值应包含排队、load-back、replay 和 runtime 开销。
+- **前缀命中率（Prefix hit ratio）**：索引逻辑匹配到的连续前缀 token 数与完整输入长度之比，本文记为 $\alpha$。它描述匹配结果，不保证状态已经可用。
+- **可复用边界（Reusable boundary）**：所有续算必需状态都完整、版本一致并对齐到的最晚 token 边界。不同状态组共同可用时，通常取最短的那个边界。
+- **有效复用（Effective reuse）**：运行时真正恢复成功并能够跳过计算的 token 范围。它不大于逻辑前缀匹配，还会受到页、检查点（checkpoint）与状态完整性的限制。
+- **回载（Load-back）**：从本地或远端缓存找到对象后，把它读回运行时可消费的位置并完成必要同步的过程。
+- **Attention 局部加速比（Attention-only speedup）**：基线 Attention FLOPs 与剩余 Attention FLOPs 的比值；不包含 MLP、投影、通信和缓存恢复。
+- **完整 Prefill 加速比（Full-prefill speedup）**：完整 Prefill 基线成本与复用后端到端成本的比值；真实值应包含排队、回载、重放和运行时开销。
 
-因此，**cache hit 不等于 runtime successfully restored**，logical prefix match 也不等于 effective reusable prefix。后文的 FLOPs 曲线是理想上界；除非明确写成实测，否则它们都不是 TTFT 或生产吞吐结论。
+因此，**缓存命中不等于运行时已成功恢复**，逻辑前缀匹配也不等于实际可复用前缀。后文的 FLOPs 曲线是理想上界；除非明确写成实测，否则它们都不是 TTFT 或生产吞吐结论。
 
-把完整 prompt 长度记为 $N$，Prefix Cache 命中的长度记为 $P=\alpha N$。只看 Attention 主体时：
+把完整输入长度记为 $N$，Prefix Cache 命中的长度记为 $P=\alpha N$。只看 Attention 主体时：
 
 $$
-\text{remaining FLOPs}
+\text{剩余 FLOPs}
 =
 1-\alpha^2,
 $$
 
 $$
-\text{ideal speedup}
+\text{理想加速比}
 =
 \frac{1}{1-\alpha^2}.
 $$
@@ -59,7 +59,7 @@ $$
 1.33\times.
 $$
 
-下面这张图可以直接拖动命中率。它展示的不是 cache 容量，也不是端到端 TTFT，而是 **Full Causal Attention 的计算几何**。
+下面这张图可以直接拖动命中率。它展示的不是缓存容量，也不是端到端 TTFT，而是**完整因果 Attention 的计算几何**。
 
 <PrefixCacheTriangle />
 
@@ -75,14 +75,14 @@ F_{\text{full}}
 \frac{N^2}{2}.
 $$
 
-命中长度为 $P$ 的 Prefix 后，前 $P$ 个 token 的各层输出与 KV/latent state 已经存在，旧 Query 行不必重算。但新增的 Query 仍然要读取旧 Prefix 的 Key/Value：
+命中长度为 $P$ 的前缀后，前 $P$ 个 token 的各层输出与 KV 或 latent 状态已经存在，旧 Query 行不必重算。但新增的 Query 仍然要读取旧前缀的 Key/Value：
 
 ```text
-cached prefix queries [0, P)
+已缓存的前缀 Query [0, P)
   不再执行
 
-new suffix queries [P, N)
-  仍需 attend to keys [0, current_position]
+新增的后缀 Query [P, N)
+  仍需读取 Key [0, 当前位置]
 ```
 
 因此跳过的工作量是左上角边长为 $P$ 的旧三角形：
@@ -112,26 +112,26 @@ $$
 
 Prefix Cache 的收益取决于 Attention 如何消费历史。下面的交互曲线统一把完整请求的 Attention 工作量归一化为 1，并比较三种理想模型：
 
-- **MHA / MLA**：完整 Causal Attention，剩余比例是 $1-\alpha^2$；
+- **MHA / MLA**：完整因果 Attention，剩余比例是 $1-\alpha^2$；
 - **SWA**：只看最近窗口 $W$，本文可视化固定为 $W=0.25N$；
-- **KDA recurrence only**：递归扫描与 token 数近似线性，但只能从不晚于命中位置的完整 checkpoint 继续。
+- **KDA 递推部分**：递推扫描与 token 数近似线性，但只能从不晚于命中位置的完整 checkpoint 继续。
 
 <AttentionSpeedupCurve />
 
-图中的数值不是模型之间的绝对速度比较。MHA、MLA、SWA 与 KDA 的 kernel 常数、维度、带宽压力完全不同；曲线只回答：**对同一种 Attention，在自己的完整 Prefill 基线上，Prefix 命中能跳过多少工作。**
+图中的数值不是模型之间的绝对速度比较。MHA、MLA、SWA 与 KDA 的内核常数、维度、带宽压力完全不同；曲线只回答：**对同一种 Attention，在自己的完整 Prefill 基线上，前缀命中能跳过多少工作。**
 
-| Prefix 命中率 | MHA / MLA | SWA，$W=0.25N$ | KDA recurrence only，$N=32768,C=4096$ |
-| ------------: | --------: | -------------: | ------------------------------------: |
-|           25% |     1.07× |          1.17× |                                 1.33× |
-|           50% |     1.33× |          1.75× |                                 2.00× |
-|           75% |     2.29× |          3.50× |                                 4.00× |
-|           90% |     5.26× |          8.75× |                                 8.00× |
+| 前缀命中率 | MHA / MLA | SWA，$W=0.25N$ | KDA 递推部分，$N=32768,C=4096$ |
+| ---------: | --------: | -------------: | -----------------------------: |
+|        25% |     1.07× |          1.17× |                          1.33× |
+|        50% |     1.33× |          1.75× |                          2.00× |
+|        75% |     2.29× |          3.50× |                          4.00× |
+|        90% |     5.26× |          8.75× |                          8.00× |
 
-### MHA、GQA、MQA 与 MLA：Cache 表示变了，因果三角形没有消失
+### MHA、GQA、MQA 与 MLA：缓存表示变了，因果三角形没有消失
 
-MHA、GQA 与 MQA 都保存逐 token 的 K/V，但共享粒度不同：MHA 为每个 Query Head 保存独立 K/V，GQA 让一组 Query Heads 共享 KV Head，MQA 则让所有 Query Heads 共享一组 K/V。这些变化会缩小 Cache 宽度，却不会改变 `new query → all previous states` 的 Full Causal 依赖。
+MHA、GQA 与 MQA 都保存逐 token 的 K/V，但共享粒度不同：MHA 为每个 Query Head 保存独立 K/V，GQA 让一组 Query Heads 共享 KV Head，MQA 则让所有 Query Heads 共享一组 K/V。这些变化会缩小缓存宽度，却不会改变 `新 Query → 全部历史状态` 的完整因果依赖。
 
-MLA 进一步把历史压成 KV latent 与解耦 RoPE key，显著改变每 token 的 Cache 宽度和读写方式。但只要主 Attention 仍对完整历史做 Causal Attention，它的 Query-Key 依赖仍是下三角：
+MLA 进一步把历史压成 KV latent 与解耦 RoPE Key，显著改变每 token 的缓存宽度和读写方式。但只要主 Attention 仍对完整历史做因果 Attention，它的 Query-Key 依赖仍是下三角：
 
 $$
 R_{\text{MHA/MLA}}(\alpha)
@@ -139,11 +139,11 @@ R_{\text{MHA/MLA}}(\alpha)
 1-\alpha^2.
 $$
 
-MLA 可以让 cache 更小、内存流量更低，也可能改变 kernel 的常数；这些收益不能把 Prefix 命中率公式直接改成 $1-\alpha$。
+MLA 可以让缓存更小、内存流量更低，也可能改变内核常数；这些收益不能把前缀命中率公式直接改成 $1-\alpha$。
 
 ### SWA：上下文超过窗口后，边际成本趋向线性
 
-Sliding Window Attention 的第 $t$ 个 Query 最多读取 $W$ 个 Key。累计工作量可近似写成：
+滑动窗口 Attention（Sliding Window Attention）的第 $t$ 个 Query 最多读取 $W$ 个 Key。累计工作量可近似写成：
 
 $$
 A_W(x)
@@ -162,11 +162,11 @@ R_{\text{SWA}}(\alpha)
 \frac{A_W(N)-A_W(\alpha N)}{A_W(N)}.
 $$
 
-当 Prefix 和完整请求都远大于窗口，后续每个 token 的 Attention 成本接近固定的 $W$，于是曲线逐渐接近线性模型。这里仍不能只看逻辑命中率：SWA 的 trailing state、local window page 与其他 Attention 层必须落在同一个可恢复边界。
+当前缀和完整请求都远大于窗口，后续每个 token 的 Attention 成本接近固定的 $W$，于是曲线逐渐接近线性模型。这里仍不能只看逻辑命中率：SWA 的尾部状态、局部窗口页与其他 Attention 层必须落在同一个可恢复边界。
 
-### KDA：递归计算可以线性跳过，恢复边界却必须对齐
+### KDA：递推计算可以线性跳过，恢复边界却必须对齐
 
-KDA 一类线性 Attention 不再为每个 Query 回读完整历史，而是递推有限状态。若完整 Prefill 的 recurrence 扫描成本近似为 $O(N)$，逻辑匹配长度为 $P_{\text{match}}=\alpha N$，checkpoint 间隔为 $C$，能够直接恢复的位置要先向下对齐：
+KDA 一类线性 Attention 不再为每个 Query 回读完整历史，而是递推有限状态。若完整 Prefill 的递推扫描成本近似为 $O(N)$，逻辑匹配长度为 $P_{\text{match}}=\alpha N$，checkpoint 间隔为 $C$，能够直接恢复的位置要先向下对齐：
 
 $$
 P_{\text{eff}}
@@ -180,38 +180,38 @@ R_{\text{KDA-recurrence}}
 \frac{N-P_{\text{eff}}}{N}.
 $$
 
-交互图默认取 $N=32768$、$C=4096$。例如 logical hit 为 90% 时，匹配位置约为 29491，但最近 checkpoint 在 28672；recurrence 至少还要处理 4096 token，所以理想上界是 8×，不是把 $1/(1-0.9)$ 直接算出的 10×。调整 checkpoint interval 可以看到这条阶梯曲线如何变化。
+交互图默认取 $N=32768$、$C=4096$。例如逻辑命中率为 90% 时，匹配位置约为 29491，但最近 checkpoint 在 28672；递推部分至少还要处理 4096 个 token，所以理想上界是 8×，不是把 $1/(1-0.9)$ 直接算出的 10×。调整 checkpoint 间隔可以看到这条阶梯曲线如何变化。
 
-这里的“存在 checkpoint”仍是强条件。一个可续算的 checkpoint 必须包含该边界完整的 recurrent state；如果 ShortConv 或其他续算状态存在，也必须一起完整、版本一致且对齐。只有 token hash 命中、只有 MLA page 命中，或只有 recurrent matrix 存在，都不能证明请求能从该边界直接恢复。
+这里的“存在 checkpoint”仍是强条件。一个可续算的 checkpoint 必须包含该边界完整的递推状态（recurrent state）；如果 ShortConv 或其他续算状态存在，也必须一起完整、版本一致且对齐。只有 token 哈希命中、只有 MLA 页命中，或只有递推矩阵存在，都不能证明请求能从该边界直接恢复。
 
-曲线只计算 recurrence remaining tokens，并假设对齐 checkpoint 可立即使用。它忽略 checkpoint lookup、load、跨层或跨设备传输、同步，以及恢复状态本身的成本；未对齐的 prefix token 被计入 remaining tokens，但没有额外建模 checkpoint replay 的实现开销。因此它是 **exact aligned checkpoint 条件下的 ideal upper bound**，不是生产环境收益预测。
+曲线只计算递推部分的剩余 token，并假设对齐的 checkpoint 可立即使用。它忽略 checkpoint 查询、加载、跨层或跨设备传输、同步，以及恢复状态本身的成本；未对齐的前缀 token 已计入剩余 token，但没有额外建模 checkpoint 重放的实现开销。因此它是**精确对齐 checkpoint 条件下的理想上界**，不是生产环境收益预测。
 
-## Real-world Attention Patterns
+## 现实中的 Attention 模式
 
-上面的公式描述 dependency pattern，而不是某个模型版本。下面的家族名称只是帮助把抽象模式映射到常见实现；具体模型仍应以自己的配置和代码为准。
+上面的公式描述依赖模式，而不是某个模型版本。下面的家族名称只是帮助把抽象模式映射到常见实现；具体模型仍应以自己的配置和代码为准。
 
-| Pattern | Representative examples     | Cache implication              |
-| ------- | --------------------------- | ------------------------------ |
-| GQA     | Llama / Qwen / GLM families | KV cache；causal geometry 不变 |
-| MLA     | DeepSeek family             | latent KV state                |
-| SWA     | Mistral family              | windowed history reuse         |
-| KDA     | Kimi family                 | recurrent checkpoint state     |
+| 模式 | 代表性示例              | 缓存含义               |
+| ---- | ----------------------- | ---------------------- |
+| GQA  | Llama / Qwen / GLM 系列 | KV 缓存；因果几何不变  |
+| MLA  | DeepSeek 系列           | 压缩 KV 状态（latent） |
+| SWA  | Mistral 系列            | 滑动窗口历史复用       |
+| KDA  | Kimi 系列               | 递推 checkpoint 状态   |
 
-这张表不改变推导：先识别历史依赖是 full causal、windowed 还是 recurrent，再选择对应的 remaining-computation 模型。
+这张表不改变推导：先识别历史依赖是完整因果、滑动窗口还是递推，再选择对应的剩余计算量模型。
 
-## 为什么 logical hit 还要经过 reusable boundary
+## 为什么逻辑命中还要经过可复用边界
 
-Prefix Cache 能跳过计算的前提，不只是索引找到了相同 token。Runtime 必须恢复该 Attention pattern 续算所需的完整状态：它可能是 KV pages、MLA latent、window trailing state，或 recurrent checkpoint。下面的演进图用于比较这些恢复边界，而不是给模型做分类。
+Prefix Cache 能跳过计算的前提，不只是索引找到了相同 token。运行时必须恢复该 Attention 模式续算所需的完整状态：它可能是 KV 页、MLA latent、窗口尾部状态，或递推 checkpoint。下面的演进图用于比较这些恢复边界，而不是给模型做分类。
 
 <AttentionStateEvolution />
 
-这里的系统结论只有一个：object/page `match` 只说明某个键存在；effective reuse 要求所有必需状态在同一 token 边界完整命中，并成功 load-back 到执行引擎。对 hybrid model，最终可跳过的长度通常是各状态组共同连续前缀的最小值。
+这里的系统结论只有一个：对象或页的 `match`（匹配）只说明某个键存在；有效复用要求所有必需状态在同一 token 边界完整命中，并成功回载到执行引擎。对混合模型，最终可跳过的长度通常是各状态组共同连续前缀的最小值。
 
 ## Attention 加速不是完整 Prefill 加速
 
-前面的 $1/(1-\alpha^2)$ 只描述 Full Causal Attention 主体。Prefill 还包含 embedding、normalization、QKV projection、output projection、MLP/MoE、collective communication 与 runtime 调度。
+前面的 $1/(1-\alpha^2)$ 只描述完整因果 Attention 主体。Prefill 还包含词嵌入、归一化、QKV 投影、输出投影、MLP/MoE、集合通信与运行时调度。
 
-假设基线 Transformer block FLOPs 中 Attention 占比为 $\beta$，其余按 token 近似线性的算子占比为 $1-\beta$。忽略 cache 开销时：
+假设基线 Transformer 模块 FLOPs 中 Attention 占比为 $\beta$，其余按 token 近似线性的算子占比为 $1-\beta$。忽略缓存开销时：
 
 $$
 R_{\text{attention}}=1-\alpha^2,
@@ -233,11 +233,11 @@ S_{\text{block, ideal}}
 \frac{1}{R_{\text{block}}}.
 $$
 
-下面的交互把 Attention-only、token-wise 与完整 block 的理想 FLOPs 加速放在一起。默认 $\alpha=50\%$、$\beta=50\%$；此时 block 剩余 62.5%，理想加速为 1.60×。同样在 50% hit 下，$\beta=30\%,50\%,70\%$ 分别约为 1.74×、1.60×、1.48×：Attention 占比越高，前半段较便宜的因果三角形对整体加速的限制越明显。
+下面的交互把 Attention 主体、逐 token 算子与完整模块的理想 FLOPs 加速放在一起。默认 $\alpha=50\%$、$\beta=50\%$；此时模块剩余 62.5%，理想加速为 1.60×。同样在 50% 命中率下，$\beta=30\%,50\%,70\%$ 分别约为 1.74×、1.60×、1.48×：Attention 占比越高，前半段较便宜的因果三角形对整体加速的限制越明显。
 
 <PrefillSpeedupExplorer />
 
-这个 full-block FLOPs 模型可以作为 full-prefill compute 的第一层近似，但它仍不是端到端延迟模型。再把 lookup、Host/Storage load、反序列化、H2D、同步、checkpoint replay 与调度等待归一化为 $h$，才可以粗略写成：
+这个完整模块 FLOPs 模型可以作为完整 Prefill 计算的第一层近似，但它仍不是端到端延迟模型。再把缓存查询、主机或存储加载、反序列化、H2D、同步、checkpoint 重放与调度等待归一化为 $h$，才可以粗略写成：
 
 $$
 S_{\text{e2e}}
@@ -256,98 +256,95 @@ $$
 0.65,
 $$
 
-对应约 $1.54\times$，仍不是 $2\times$。远端 Cache 的 $h$ 若大于省下来的计算，命中甚至可能比本地 recompute 更慢。
+对应约 $1.54\times$，仍不是 $2\times$。远端缓存的 $h$ 若大于省下来的计算，命中甚至可能比本地重算更慢。
 
-这个模型只是建立量纲，不应替代 profiling。FlashAttention 的 tile、chunked prefill、batch packing、Tensor Parallel 通信和 MoE 路由都会让真实曲线偏离连续面积模型。Attention FLOPs speedup 不等于 TTFT speedup，ideal upper bound 也不等于生产吞吐。
+这个模型只是建立量纲，不应替代性能剖析。FlashAttention 的分块、分块 Prefill（chunked prefill）、批次打包、Tensor Parallel 通信和 MoE 路由都会让真实曲线偏离连续面积模型。Attention FLOPs 加速比不等于 TTFT 加速比，理想上界也不等于生产吞吐。
 
 ## 把命中率变成可解释的性能指标
 
 只上报一个 `prefix_hit_rate`，很难解释 TTFT。至少应把下面几层分开：
 
-| 指标                             | 回答的问题                                             |
-| -------------------------------- | ------------------------------------------------------ |
-| logical matched tokens           | Radix/hash 最长匹配到了多少 token？                    |
-| restorable matched tokens        | 所有必需 Attention state 共同完整到了哪个边界？        |
-| replay tokens                    | 因 page/checkpoint 粒度不对齐，需要补算多少 token？    |
-| state lookup / load-back latency | 命中状态从 metadata 到 device 可用花了多久？           |
-| suffix prefill latency           | 恢复后真正计算新 token 花了多久？                      |
-| TTFT                             | 排队、调度、传输、Prefill 与首 token Decode 合计多久？ |
+| 指标                | 回答的问题                                          |
+| ------------------- | --------------------------------------------------- |
+| 逻辑匹配 token 数   | Radix/hash 最长匹配到了多少 token？                 |
+| 可恢复匹配 token 数 | 所有必需 Attention 状态共同完整到了哪个边界？       |
+| 重放 token 数       | 因页或 checkpoint 粒度不对齐，需要补算多少 token？  |
+| 状态查询与回载延迟  | 命中状态从元数据到设备可用花了多久？                |
+| 后缀 Prefill 延迟   | 恢复后真正计算新 token 花了多久？                   |
+| TTFT                | 排队、调度、传输、Prefill 与首 token 解码合计多久？ |
 
-对 Full Causal MHA/MLA，还可以同时上报一个由命中率推导出的 Attention 工作量指标：
+对完整因果 MHA/MLA，还可以同时上报一个由命中率推导出的 Attention 工作量指标：
 
 $$
-\text{attention work avoided}
+\text{避免的 Attention 工作量}
 =
 \alpha^2,
 $$
 
-而不是用 $\alpha$ 代替。这样 50% token hit 会明确显示为 25% Attention work avoided，监控、容量规划和性能回归分析就不会混用两个不同的量。
+而不是用 $\alpha$ 代替。这样 50% token 命中会明确显示为避免了 25% 的 Attention 工作量，监控、容量规划和性能回归分析就不会混用两个不同的量。
 
-## 从 Prefix hit ratio 到真实吞吐
+## 从前缀命中率到真实吞吐
 
-全文的推导可以压缩成下面一条因果链。每一步都需要额外信息，因此不能从最上面的 hit ratio 直接跳到最下面的 production throughput。
+全文的推导可以压缩成下面一条因果链。每一步都需要额外信息，因此不能从最上面的命中率直接跳到最下面的生产吞吐。
 
 <FlowDiagram
-  eyebrow="summary model"
-  title="Prefix hit ratio 是输入，不是性能结论"
+  eyebrow="总结模型"
+  title="前缀命中率是输入，不是性能结论"
   caption="先由 Attention 依赖决定剩余计算，再从 FLOPs 上界走向包含恢复开销的实测收益。"
   compact
   steps={[
     {
-      label: 'Prefix hit ratio',
-      meta: 'α = Pmatch / N',
-      detail: '索引找到的 logical prefix',
+      label: '前缀命中率',
+      meta: 'α = P_match / N',
+      detail: '索引匹配到的逻辑前缀',
       tone: 'teal',
     },
     {
-      label: 'Attention dependency pattern',
-      meta: 'causal / windowed / recurrent',
+      label: 'Attention 依赖模式',
+      meta: '完整因果 / 滑动窗口 / 递推',
       detail: '决定历史如何参与新 Query',
       tone: 'blue',
     },
     {
-      label: 'Remaining computation',
-      meta: 'R(α, boundary)',
+      label: '剩余计算量',
+      meta: 'R(α, 可复用边界)',
       detail: '结合计算几何与可恢复边界',
       tone: 'mauve',
     },
     {
-      label: 'Ideal speedup',
-      meta: 'Sideal = 1 / R',
+      label: '理想加速比',
+      meta: 'S_ideal = 1 / R',
       detail: '归一化 FLOPs 的理想上界',
       tone: 'amber',
     },
     {
-      label: 'Real throughput',
-      meta: 'measure',
-      detail: '再计入 load-back、replay、调度与 kernel 效率',
+      label: '真实吞吐',
+      meta: '实测',
+      detail: '再计入回载、重放、调度与内核效率',
       tone: 'green',
     },
   ]}
 />
 
 <CompareCallout
-  eyebrow="common misconceptions"
+  eyebrow="常见误区"
   title="四个等号都不成立"
   caption="左边是可观测输入或局部上界，右边才是需要继续推导或实测的量。"
   columns={[
     {
-      title: 'Hit is not saved work',
+      title: '命中不等于节省的计算',
       tone: 'blue',
-      items: [
-        'Prefix hit ratio ≠ compute saved',
-        'Logical prefix match ≠ effective reusable state',
-      ],
+      items: ['前缀命中率 ≠ 节省的计算量', '逻辑前缀匹配 ≠ 实际可复用状态'],
     },
     {
-      title: 'Upper bound is not production latency',
+      title: '局部上界不等于生产延迟',
       tone: 'amber',
       items: [
-        'Attention speedup ≠ Prefill speedup',
-        'Ideal FLOPs model ≠ production TTFT',
+        'Attention 加速比 ≠ Prefill 加速比',
+        '理想 FLOPs 模型 ≠ 生产环境 TTFT',
       ],
     },
   ]}
 />
 
-所以“Prefix Cache 命中 50%”不是一个性能结论，而是一条输入事实。对 Full Causal Attention，它先意味着只跳过 25% Attention FLOPs；对完整 Prefill，还要继续加权 token-wise 计算；对生产系统，则必须再验证状态恢复和数据搬运是否真的比重算便宜。只有走完这条链，才能回答 Prefill 到底会快多少。
+所以“Prefix Cache 命中 50%”不是一个性能结论，而是一条输入事实。对完整因果 Attention，它先意味着只跳过 25% Attention FLOPs；对完整 Prefill，还要继续加权逐 token 计算；对生产系统，则必须再验证状态恢复和数据搬运是否真的比重算便宜。只有走完这条链，才能回答 Prefill 到底会快多少。
