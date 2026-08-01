@@ -41,7 +41,7 @@ export function Footer() {
                 ))}
                 <a
                   href={RSS_PATH}
-                  className="font-normal text-muted-foreground transition hover:text-primary"
+                  className="transition hover:text-primary"
                 >
                   RSS
                 </a>
