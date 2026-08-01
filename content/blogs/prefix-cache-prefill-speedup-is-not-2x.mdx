@@ -1,300 +1,278 @@
 ---
-title: '50% Prefix Cache 命中不等于 2× Prefill 加速'
-description: '从 causal attention 几何、Transformer block FLOPs 和 Attention State Cache 视角，理解 Prefix Cache 的真实收益。'
+title: 'Prefix Cache 命中 50%，Prefill 为什么没有快 2 倍？'
+description: '从 Causal Attention 的三角计算量出发，推导 Prefix Cache 的剩余 FLOPs 与理想加速比，并比较 MHA/MLA、SWA、KDA 以及 Attention State Store 的恢复边界。'
 author: 'Reese'
 date: '2026-08-01'
 topics:
-  - kv-cache
-  - prefix-cache
-  - attention
   - llm-serving
+  - prefix-cache
+  - kv-cache
+  - prefill
+  - attention
   - mla
   - dsa
+  - swa
   - kda
+  - attention-state
 category: 'engineering-deep-dive'
 series: 'LLM Serving Internals'
 featured: true
 ---
 
-<style>{`
-.cache-visual { padding: 16px; border-radius: 18px; border: 1px solid color-mix(in oklab, currentColor 12%, transparent); margin: 24px 0; }
-.cache-row { height: 18px; margin: 8px 0; border-radius: 999px; overflow: hidden; background: color-mix(in oklab, currentColor 5%, transparent); }
-.cache-row span { display:inline-block;height:100%;animation:pulse 2.5s infinite alternate; }
-@keyframes pulse { from { opacity:.55 } to { opacity:1 } }
-`}</style>
+Prefix Cache 命中一半 token，Prefill 就能快两倍——这个直觉只对**每个 token 成本相同**的线性计算成立。
 
-很多人第一次理解 Prefix Cache 时，会产生一个自然直觉：
+Full Causal Attention 不是这样。越靠后的 Query，能看到的 Key 越多：第一个 Query 只看一个位置，最后一个 Query 要看完整前缀。命中前 50% token，跳过的是 Attention 矩阵左上角较小的三角形，而不是一半面积。
 
-> 如果 50% prompt 已经命中缓存，那么 Prefill 应该接近 2× 加速。
-
-这个直觉对于线性计算成立，但对于现代 LLM Attention 并不成立。
-
-真正的问题不是：
-
-> 命中了多少 token？
-
-而是：
-
-> 命中的 token 消除了哪些计算？剩余 token 还需要访问哪些状态？
-
-<div className="cache-visual">
-<strong>Prefix Cache 的核心误区：</strong>
-<div className="cache-row"><span style={{width:'50%',background:'currentColor'}} /></div>
-<div>命中的 50% prefix 并不等于省掉 50% attention。</div>
-</div>
-
-## MHA: 为什么 50% hit 只减少 25% Attention FLOPs
-
-长度为 N 的 causal attention，其计算区域是三角形：
+把完整 prompt 长度记为 $N$，Prefix Cache 命中的长度记为 $P=\alpha N$。只看 Attention 主体时：
 
 $$
-\frac{N(N+1)}{2}\approx\frac{N^2}{2}
+\text{remaining FLOPs}
+=
+1-\alpha^2,
 $$
 
-如果前半段 prefix 已经缓存：
-
-```
-[cached prefix][new tokens]
-|-------------|------------|
-```
-
-新的 token 仍然需要 attend 整个历史 KV。
-
-剩余计算：
-
 $$
-\sum_{i=1}^{N/2}(N/2+i)
-\approx\frac{3N^2}{8}
+\text{ideal speedup}
+=
+\frac{1}{1-\alpha^2}.
 $$
 
-相对于原始：
+当 $\alpha=0.5$，仍有 $75\%$ 的 Attention FLOPs 需要执行，理想加速只有：
 
 $$
-\frac{3N^2/8}{N^2/2}=0.75
+\frac{1}{1-0.5^2}
+=
+\frac{1}{0.75}
+\approx
+1.33\times.
 $$
 
-因此：
+下面这张图可以直接拖动命中率。它展示的不是 cache 容量，也不是端到端 TTFT，而是 **Full Causal Attention 的计算几何**。
 
-> 50% Prefix Cache 命中，只意味着 Attention 计算剩余约 75%，不是 50%。
+<PrefixCacheTriangle />
 
-更一般地：
+## Prefix Cache 跳过的是旧 Query，不是旧 Key
+
+没有 Prefix Cache 时，长度为 $N$ 的 Prefill 会形成一个下三角 Attention 矩阵。忽略对角线和常数项，其面积是：
 
 $$
-R_{attn}(\alpha)=1-\alpha^2
+F_{\text{full}}
+\propto
+\int_0^N x\,dx
+=
+\frac{N^2}{2}.
 $$
 
-其中 α 是 prefix hit ratio。
+命中长度为 $P$ 的 Prefix 后，前 $P$ 个 token 的各层输出与 KV/latent state 已经存在，旧 Query 行不必重算。但新增的 Query 仍然要读取旧 Prefix 的 Key/Value：
 
-|Hit|Attention 剩余|Attention speedup|
-|-|-:|-:|
-|50%|75%|1.33×|
-|75%|43.75%|2.29×|
-|90%|19%|5.26×|
+```text
+cached prefix queries [0, P)
+  不再执行
 
-## 为什么不是 2×？
-
-Prefix Cache 省掉的是：
-
-```
-prefix token 作为 Query 的计算
+new suffix queries [P, N)
+  仍需 attend to keys [0, current_position]
 ```
 
-但没有省掉：
-
-```
-new token Query 对 prefix KV 的访问
-```
-
-所以后半段 token 仍然需要读取整个历史。
-
-## Attention 结构决定收益
-
-### MHA / GQA / MQA
-
-虽然 KV 大小不同：
-
-- MHA: 每个 head 独立 KV
-- GQA: 多个 Q head 共享 KV head
-- MQA: 所有 Q head 共享 KV
-
-但是 attention pattern 都是：
-
-```
-new query -> all previous states
-```
-
-所以都接近：
+因此跳过的工作量是左上角边长为 $P$ 的旧三角形：
 
 $$
-1-\alpha^2
+F_{\text{skip}}
+\propto
+\frac{P^2}{2}.
 $$
 
-### MLA
-
-MLA 最大变化是缓存对象：
-
-```
-MHA:
-K + V
-
-MLA:
-latent KV + RoPE key
-```
-
-它极大减少 cache footprint，但 attention 仍然需要访问历史状态。
-
-所以：
-
-> MLA 解决的是 cache size，不改变 prefix reuse 的二次复杂度本质。
-
-### SWA
-
-Sliding Window Attention：
+剩余工作量为：
 
 $$
-O(NW)
+\begin{aligned}
+F_{\text{remain}}
+&=F_{\text{full}}-F_{\text{skip}}\\
+&\propto\frac{N^2-P^2}{2}\\
+&=\frac{N^2(1-\alpha^2)}{2}.
+\end{aligned}
 $$
 
-历史被限制在窗口 W 内。
+除以完整 Prefill 的 $N^2/2$，就得到 $1-\alpha^2$。
 
-因此 prefix reuse 更接近线性：
+这个推导揭示了一个容易忽略的事实：**Prefix 最前面的 token 最便宜，最后面的 token 最贵。** 命中 50% token 跳过的恰好是较便宜的 25% Attention 面积；剩下 50% Query 行包含了较长的历史依赖。
+
+## 同一个命中率，在 MHA、MLA、SWA、KDA 上不是同一条曲线
+
+Prefix Cache 的收益取决于 Attention 如何消费历史。下面的交互曲线统一把完整请求的 Attention 工作量归一化为 1，并比较三种理想模型：
+
+- **MHA / MLA**：完整 Causal Attention，剩余比例是 $1-\alpha^2$；
+- **SWA**：只看最近窗口 $W$，本文可视化固定为 $W=0.25N$；
+- **KDA**：递归扫描与 token 数近似线性，并假设命中位置存在完整、精确对齐的 checkpoint。
+
+<AttentionSpeedupCurve />
+
+图中的数值不是模型之间的绝对速度比较。MHA、MLA、SWA 与 KDA 的 kernel 常数、维度、带宽压力完全不同；曲线只回答：**对同一种 Attention，在自己的完整 Prefill 基线上，Prefix 命中能跳过多少工作。**
+
+| Prefix 命中率 | MHA / MLA | SWA，$W=0.25N$ | KDA，精确 checkpoint |
+| ------------: | --------: | -------------: | -------------------: |
+|           25% |     1.07× |          1.17× |                1.33× |
+|           50% |     1.33× |          1.75× |                2.00× |
+|           75% |     2.29× |          3.50× |                4.00× |
+|           90% |     5.26× |          8.75× |               10.00× |
+
+### MHA、GQA、MQA 与 MLA：Cache 表示变了，因果三角形没有消失
+
+MHA、GQA 与 MQA 都保存逐 token 的 K/V，但共享粒度不同：MHA 为每个 Query Head 保存独立 K/V，GQA 让一组 Query Heads 共享 KV Head，MQA 则让所有 Query Heads 共享一组 K/V。这些变化会缩小 Cache 宽度，却不会改变 `new query → all previous states` 的 Full Causal 依赖。
+
+MLA 进一步把历史压成 KV latent 与解耦 RoPE key，显著改变每 token 的 Cache 宽度和读写方式。但只要主 Attention 仍对完整历史做 Causal Attention，它的 Query-Key 依赖仍是下三角：
 
 $$
-R_{swa}(\alpha)\approx1-\alpha
+R_{\text{MHA/MLA}}(\alpha)
+=
+1-\alpha^2.
 $$
 
-50% hit 更接近 2× attention-only 加速。
+MLA 可以让 cache 更小、内存流量更低，也可能改变 kernel 的常数；这些收益不能把 Prefix 命中率公式直接改成 $1-\alpha$。
 
-### KDA
+### SWA：上下文超过窗口后，边际成本趋向线性
 
-KDA 不保存逐 token KV，而维护递归状态：
-
-```
-S0 -> S1 -> S2 -> ... -> SN
-```
-
-如果保存 checkpoint：
-
-```
-S(N/2)
-       |
-       continue
-```
-
-那么收益更接近：
+Sliding Window Attention 的第 $t$ 个 Query 最多读取 $W$ 个 Key。累计工作量可近似写成：
 
 $$
-R_{kda}(\alpha)\approx1-\alpha
+A_W(x)
+=
+\begin{cases}
+\frac{x^2}{2}, & x\le W,\\
+Wx-\frac{W^2}{2}, & x>W.
+\end{cases}
 $$
 
-但是 checkpoint interval 会影响 replay 成本。
+命中比例为 $\alpha$ 时，剩余比例是：
 
-### DSA
+$$
+R_{\text{SWA}}(\alpha)
+=
+\frac{A_W(N)-A_W(\alpha N)}{A_W(N)}.
+$$
 
-DSA 的问题更复杂，因为需要复用的不只是 KV：
+当 Prefix 和完整请求都远大于窗口，后续每个 token 的 Attention 成本接近固定的 $W$，于是曲线逐渐接近线性模型。这里仍不能只看逻辑命中率：SWA 的 trailing state、local window page 与其他 Attention 层必须落在同一个可恢复边界。
 
+### KDA：计算可以线性跳过，状态却必须精确对齐
+
+KDA 一类线性 Attention 不再为每个 Query 回读完整历史，而是递推有限状态。若完整 Prefill 的扫描成本近似为 $O(N)$，并且 $\alpha N$ 处存在完整 checkpoint，那么：
+
+$$
+R_{\text{KDA}}(\alpha)
+=
+1-\alpha,
+\qquad
+S_{\text{KDA}}(\alpha)
+=
+\frac{1}{1-\alpha}.
+$$
+
+但这里的“存在 checkpoint”是强条件。一个可续算的 KDA checkpoint 往往至少包括 recurrent matrix 与 ShortConv window；只有 token hash 命中、只有 MLA page 命中，或只有 recurrent matrix 存在，都不能证明请求能从该边界直接恢复。
+
+如果逻辑 Prefix 命中到 $\alpha N$，最近完整 checkpoint 却只在 $\beta N$，其中 $\beta<\alpha$，实际线性扫描剩余量是 $1-\beta$，不是 $1-\alpha$。中间的 token 必须 replay 以重建状态。
+
+DSA 没有被画成第四条固定曲线，因为它的收益取决于 Indexer 成本、top-k、local branch、主 MLA 历史读取和具体 kernel。把“每次只选 top-k”直接等价为总 Prefill 复杂度固定，是另一种常见误算。
+
+## 从 KV Cache 到 Attention State Store
+
+现代 serving 系统面对的已经不只是两个形状固定的 K/V tensor。Cache 对象正在从“逐 token 历史”演化为“恢复 Attention 所需的完整状态集合”。下面五个阶段不是严格的替代关系；一个 hybrid model 可以同时拥有 MLA pages、DSA index state、SWA trailing pages 与 KDA checkpoint。
+
+<AttentionStateEvolution />
+
+`Attention State Store` 在这里是一种系统抽象，不是一种新的 Attention 算法。它至少要回答四个问题：
+
+```text
+Identity
+  这份状态属于哪个 model / layer group / layout / dtype / rank？
+
+Boundary
+  它对应 token prefix 的哪个精确位置？
+
+Completeness
+  主 cache、index state、conv state、checkpoint 是否全部存在？
+
+Restoration
+  bytes 是否已经 load-back 到 runtime 可消费的位置？
 ```
-KV
+
+因此，object/page `match` 只说明某个键存在；真正的 Prefix reuse 需要所有必需状态在同一边界完整命中，并成功恢复到执行引擎。对 hybrid model，最终可用命中长度通常是各状态组共同连续前缀的最小值。
+
+如果你还想继续追 KDA checkpoint 与远端存储如何对齐，可以结合 [Kimi Linear 的 KDA Cache：SGLang、vLLM 与 Mooncake Store 全链路](/blogs/kimi-kda-cache-sglang-vllm-mooncake-store/) 阅读；不同 Attention 的 cache 容量公式则见 [如何从 config.json 估算大模型的 Attention Cache](/blogs/attention-cache-size-mha-mla-dsa-swa-kda/)。
+
+## Attention 加速不是端到端 Prefill 加速
+
+前面的 $1/(1-\alpha^2)$ 只描述 Full Causal Attention 主体。Prefill 还包含 embedding、normalization、QKV projection、output projection、MLP/MoE、collective communication 与 runtime 调度。
+
+假设基线 Prefill 中 Attention 占比为 $p$，其余按 token 近似线性的算子占比为 $1-p$。忽略 cache 开销时，命中比例为 $\alpha$ 的归一化剩余时间可以粗略写成：
+
+$$
+R_{\text{model}}
+\approx
+p(1-\alpha^2)
 +
-selection/index metadata
-```
-
-如果只缓存 KV：
-
-- indexer 仍需重新计算
-- sparse routing 仍可能产生开销
-
-所以 DSA 说明了：
-
-> KV hit 不一定等于 Attention State hit。
-
-## 从 Attention 到整个 Transformer Block
-
-真实 Prefill 不只有 Attention。
-
-假设：
-
-```
-Attention FLOPs = 40%
-MLP FLOPs      = 60%
-```
-
-50% prefix hit：
-
-```
-Attention remaining = 75%
-MLP remaining       = 50%
-```
-
-整体：
-
-$$
-0.4\times0.75+0.6\times0.5=0.6
+(1-p)(1-\alpha).
 $$
 
-理论加速：
+再把 lookup、Host/Storage load、反序列化、H2D、同步与调度等待归一化为 $h$：
 
 $$
-1/0.6=1.67\times
+S_{\text{e2e}}
+\approx
+\frac{1}
+{p(1-\alpha^2)+(1-p)(1-\alpha)+h}.
 $$
 
-所以工程上更合理的预期是：
+例如 $\alpha=0.5$、$p=0.6$ 且暂时令 $h=0$，剩余模型计算约为：
 
-> 50% prefix hit 通常带来约 1.5~1.7× prefill 提升，而不是 2×。
+$$
+0.6\times0.75
++
+0.4\times0.5
+=
+0.65,
+$$
 
-## 从 KV Cache 到 Attention State Cache
+对应约 $1.54\times$，仍不是 $2\times$。远端 Cache 的 $h$ 若大于省下来的计算，命中甚至可能比本地 recompute 更慢。
 
-现代模型越来越说明一个事实：
+这个模型只是建立量纲，不应替代 profiling。FlashAttention 的 tile、chunked prefill、batch packing、Tensor Parallel 通信和 MoE 路由都会让真实曲线偏离连续面积模型。
 
-缓存对象正在变化。
+## 把命中率变成可解释的性能指标
 
-|模型|需要复用的状态|
-|-|-|
-|MHA/GQA|KV tensor|
-|MLA|latent KV|
-|SWA|window KV|
-|DSA|KV + selection state|
-|KDA|recurrent checkpoint|
+只上报一个 `prefix_hit_rate`，很难解释 TTFT。至少应把下面几层分开：
 
-未来 cache abstraction 更像：
+| 指标                             | 回答的问题                                             |
+| -------------------------------- | ------------------------------------------------------ |
+| logical matched tokens           | Radix/hash 最长匹配到了多少 token？                    |
+| restorable matched tokens        | 所有必需 Attention state 共同完整到了哪个边界？        |
+| replay tokens                    | 因 page/checkpoint 粒度不对齐，需要补算多少 token？    |
+| state lookup / load-back latency | 命中状态从 metadata 到 device 可用花了多久？           |
+| suffix prefill latency           | 恢复后真正计算新 token 花了多久？                      |
+| TTFT                             | 排队、调度、传输、Prefill 与首 token Decode 合计多久？ |
 
-```
-Attention State Store
-```
+对 Full Causal MHA/MLA，还可以同时上报一个由命中率推导出的 Attention 工作量指标：
 
-而不是简单：
+$$
+\text{attention work avoided}
+=
+\alpha^2,
+$$
 
-```
-KV Store
-```
+而不是用 $\alpha$ 代替。这样 50% token hit 会明确显示为 25% Attention work avoided，监控、容量规划和性能回归分析就不会混用两个不同的量。
 
-## 真实系统还会受到什么影响？
+## 真正的边界：命中必须能恢复，恢复必须比重算划算
 
-理论 FLOPs 只是第一层。
+Prefix Cache 的性能判断可以压缩成三步：
 
-实际 serving 还受：
+```text
+1. Match
+   token prefix 在索引中是否连续存在？
 
-- KV/page lookup
-- radix tree matching
-- memory bandwidth
-- GPU/CPU/NVLink/RDMA transfer
-- batching 调度
-- cache eviction
+2. Restore
+   该边界所需的所有 Attention state 是否完整、对齐并已 load-back？
 
-影响。
-
-因此 Prefix Cache 的正确理解应该是：
-
-> 它减少重复状态计算，但收益由 Attention 结构、缓存对象、系统实现共同决定。
-
-这也是为什么下一代 LLM serving 基础设施的核心问题，不再只是：
-
-```
-如何保存 KV
+3. Profit
+   跳过的计算是否大于 lookup、传输、同步和 replay 成本？
 ```
 
-而是：
+对 Full Causal Attention，命中率先通过三角几何变成 $\alpha^2$ 的可跳过工作；对 SWA，要看窗口进入线性区的位置；对 KDA，要看 checkpoint 粒度与完整状态；对 DSA/hybrid attention，则要取多个 state group 的共同恢复边界。
 
-```
-如何描述、匹配、复用 Attention State
-```
+所以“Prefix Cache 命中 50%”不是一个性能结论。它只是一条输入事实。只有把 Attention 复杂度、状态表示、恢复边界与数据搬运成本放进同一个模型里，才能回答 Prefill 到底会快多少。

@@ -5,11 +5,14 @@
     "enabled": "disabled"
   },
   "components": {
+    "AttentionSpeedupCurve": "./src/components/shared/mdx-preview/AttentionSpeedupCurve.tsx",
+    "AttentionStateEvolution": "./src/components/shared/mdx-preview/AttentionStateEvolution.tsx",
     "CompareCallout": "./src/components/shared/mdx-preview/CompareCallout.tsx",
     "ExpandableNotes": "./src/components/shared/mdx-preview/ExpandableNotes.tsx",
     "FlowDiagram": "./src/components/shared/mdx-preview/FlowDiagram.tsx",
     "LayerDiagram": "./src/components/shared/mdx-preview/LayerDiagram.tsx",
     "MappingDiagram": "./src/components/shared/mdx-preview/MappingDiagram.tsx",
+    "PrefixCacheTriangle": "./src/components/shared/mdx-preview/PrefixCacheTriangle.tsx",
     "SequenceDiagram": "./src/components/shared/mdx-preview/SequenceDiagram.tsx",
     "StateDiagram": "./src/components/shared/mdx-preview/StateDiagram.tsx",
     "SystemBoundaryDiagram": "./src/components/shared/mdx-preview/SystemBoundaryDiagram.tsx"

@@ -8,6 +8,11 @@ import {
 } from 'react'
 import clsx from 'clsx'
 import { AlignmentDiagram } from './AlignmentDiagram'
+import {
+  AttentionSpeedupCurve,
+  AttentionStateEvolution,
+  PrefixCacheTriangle,
+} from './AttentionCacheInteractives'
 import { CodeBlock } from './CodeBlock'
 import {
   CompareCallout,
@@ -98,11 +103,14 @@ const MathJaxMarkup = ({
 
 export const mdxComponents: MDXComponents = {
   AlignmentDiagram,
+  AttentionSpeedupCurve,
+  AttentionStateEvolution,
   CompareCallout,
   ExpandableNotes,
   FlowDiagram,
   LayerDiagram,
   MappingDiagram,
+  PrefixCacheTriangle,
   SequenceDiagram,
   StateDiagram,
   SystemBoundaryDiagram,
