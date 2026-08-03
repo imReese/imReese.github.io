@@ -34,7 +34,12 @@ mooncake-transfer-engine/src/multi_transport.cpp
       label: '公开 API',
       detail: '调用者看到的统一入口',
       tone: 'teal',
-      items: ['openSegment', 'registerLocalMemory', 'allocateBatchID', 'submitTransfer'],
+      items: [
+        'openSegment',
+        'registerLocalMemory',
+        'allocateBatchID',
+        'submitTransfer',
+      ],
     },
     {
       label: '寻址模型',
@@ -211,7 +216,7 @@ CANCELED
 
 ```text
 TransferStatus:
-  数据是否搬运完成
+  数据是否传输完成
 
 ReplicaStatus:
   对象副本是否可读
@@ -258,8 +263,8 @@ Transfer Engine 独立出来以后，Store 只需要表达：
 
 ## 和 Store 语义保持距离
 
-Transfer Engine 的关键边界是：它只知道传输任务，不知道对象生命周期。`TransferStatus.COMPLETED` 表示字节搬运完成；`ReplicaStatus.COMPLETE` 表示 Store 认为这个对象副本可以读取。写入路径中，前者成功后还需要 PutEnd；读取路径中，后者存在后还需要 READ 成功。
+Transfer Engine 的关键边界是：它只知道传输任务，不知道对象生命周期。`TransferStatus.COMPLETED` 表示字节传输完成；`ReplicaStatus.COMPLETE` 表示 Store 认为这个对象副本可以读取。写入路径中，前者成功后还需要 PutEnd；读取路径中，后者存在后还需要 READ 成功。
 
 这层独立性是 Mooncake 能扩展多种传输方式的原因。Store 不需要知道 RDMA 内存区域、NVLink IPC 或 TCP 连接怎样管理；Transfer Engine 也不需要知道对象键、租约，以及 K/V 对象是否同属于一个逻辑页。两边只通过 Segment、偏移、长度和本地缓冲区地址交接。
 
-读源码时如果觉得概念打架，可以先问一句：眼前的状态是在描述“数据有没有搬完”，还是在描述“对象副本是否对读取方可见”。这两个问题分属不同层次。
+读源码时如果觉得概念混在了一起，可以先问一句：眼前的状态是在描述“数据是否已经传输完成”，还是在描述“对象副本是否对读取方可见”。这两个问题分属不同层次。

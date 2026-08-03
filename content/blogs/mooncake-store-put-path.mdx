@@ -73,9 +73,9 @@ mooncake-store/src/transfer_task.cpp
     {
       label: '汇总为缓存语义',
       meta: 'HiCache 后端',
-      detail: '上层还要把多个对象级结果聚合为逻辑页是否完整。',
+      detail: '上层还要汇总多个对象的写入结果，判断整个缓存页是否完整。',
       tone: 'amber',
-      items: ['K / V 对象', '辅助内存池', '页级结果'],
+      items: ['K / V 对象', '辅助内存池', '每页汇总结果'],
     },
   ]}
 />
@@ -159,7 +159,7 @@ Store 的大块数据不经过 Master。PutStart 之后，Client 需要自己把
 
 `PROCESSING` 为系统提供了一个中间状态：元数据中已经有一批候选副本，但它们还不能对读取方可见。
 
-## TransferSubmitter 做数据面翻译
+## TransferSubmitter 根据元数据生成传输任务
 
 PutStart 返回副本描述后，Client 会把每组切片和副本转换成具体的传输任务。
 
@@ -251,7 +251,7 @@ INITIALIZED
 
 ## BatchPut 的价值
 
-HiCache 接入 Mooncake 时会产生大量缓存页对象。每个逻辑页可能展开成多个 Store 对象。如果逐个写入对象，RPC 和调度开销会很高。
+HiCache 接入 Mooncake 时会产生大量缓存页对象。每个缓存页可能对应多个 Store 对象。如果逐个写入对象，RPC 和调度开销会很高。
 
 BatchPut 可以把多个对象的写入合并成一批：
 
@@ -275,7 +275,7 @@ page_key_rank_k
 page_key_rank_v
 ```
 
-SGLang 的 Mooncake 后端会探测当前安装的 Mooncake 包是否支持 `ReplicateConfig.group_ids`。如果支持，后端可以给同一个逻辑页展开出的多个对象设置相同的分组编号：
+SGLang 的 Mooncake 后端会探测当前安装的 Mooncake 包是否支持 `ReplicateConfig.group_ids`。如果支持，后端可以给同一个缓存页映射出的多个对象设置相同的分组编号：
 
 ```text
 sglang-hicache:<logical_page_key>
@@ -283,7 +283,7 @@ sglang-hicache:<logical_page_key>
 
 这样 Store 看到多个对象键时，仍然可以知道它们属于同一个逻辑缓存单元。后续元数据路由、租约续期和淘汰等行为才有机会按组优化。
 
-但这不是本文参考的 Mooncake 稳定标签 `v0.3.11.post1` 中的基础字段：该版本的 `ReplicateConfig` 没有 `group_ids`。因此，在这个版本边界下，HiCache 写入仍应理解为对象级批量写入和页级结果处理；分组语义只能作为适配新版本包的可选优化，而不是写入路径正确性的前提。
+但这不是本文参考的 Mooncake 稳定标签 `v0.3.11.post1` 中的基础字段：该版本的 `ReplicateConfig` 没有 `group_ids`。因此，在这个版本边界下，HiCache 仍然按对象批量写入，再按缓存页汇总结果；分组信息只能作为适配新版本包的可选优化，而不是保证写入正确性的前提。
 
 ## 写路径的性能边界
 
@@ -306,7 +306,7 @@ Put 路径的成本来自三部分：
 
 HiCache 写入 Mooncake 时，真正要完成的不是“调用一次 put”，而是让一个逻辑页的所有对象都变得可读。对于 MHA，K 对象和 V 对象必须一起成功；对于混合内存池，辅助状态也要进入同一逻辑边界。
 
-所以写入路径要分两层理解：Store 负责把每个对象的副本从 `PROCESSING` 推进到 `COMPLETE`；HiCache 后端负责把多个对象级结果聚合为页级结果。只要其中一个对象写入失败，这个逻辑页就不能被后续请求视为完整的远端命中。
+所以写入路径要分两层理解：Store 负责把每个对象的副本从 `PROCESSING` 推进到 `COMPLETE`；HiCache 后端负责汇总同一缓存页中各对象的写入结果。只要其中一个对象写入失败，这个缓存页就不能被后续请求视为完整的远端命中。
 
 ## 这条路径能证明什么
 
@@ -345,7 +345,7 @@ HiCache 写入 Mooncake 时，真正要完成的不是“调用一次 put”，�
 PutStart 预留元数据
   -> TransferSubmitter 写入数据
   -> PutEnd 发布可读副本
-  -> HiCache 把对象级结果汇总为逻辑页结果
+  -> HiCache 汇总各对象的写入结果，判断缓存页是否完整
 ```
 
 这也是 BatchPut 的意义：它不是为了让接口更好看，而是为了让大量缓存页对象的控制面开销和状态提交更接近 HiCache 的真实使用粒度。如果安装的 Mooncake 包支持分组编号，它还可以帮助后续租约和淘汰等逻辑按组理解这些对象；但对上层推理引擎来说，最基本的正确性仍然是：只要一个逻辑页中的必要对象没有全部从 `PROCESSING` 进入 `COMPLETE`，这段前缀就不应该被视为完整的远端命中。

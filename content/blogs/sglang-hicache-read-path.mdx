@@ -58,7 +58,8 @@ python/sglang/srt/mem_cache/storage/mooncake_store/mooncake_store.py
     {
       label: '探测存储层',
       meta: 'batch_exists',
-      detail: '按页键查询连续可用边界，混合缓存还要合并辅助内存池。',
+      detail:
+        '根据 page key 查询连续命中长度；混合缓存还要合并辅助内存池的结果。',
       tone: 'blue',
       items: ['页对齐', 'v1 / v2', '可用前缀'],
     },
@@ -232,7 +233,7 @@ MooncakeStore.batch_get_v1(keys, host_indices)
 MooncakeStore.batch_get_v2(transfers)
 ```
 
-v1 会把每个逻辑页键展开成 Mooncake 对象键，再从主机内存池取得目标缓冲区指针：
+v1 会根据每个 `page key` 生成 Mooncake 对象键，再从主机内存池取得目标缓冲区指针：
 
 ```text
 key_strs, buffer_ptrs, buffer_sizes =
@@ -246,7 +247,7 @@ batch_get_into(key_strs, buffer_ptrs, buffer_sizes)
 batch_get_into_multi_buffers(key_strs, buffer_ptrs, buffer_sizes)
 ```
 
-返回结果是对象级的。Mooncake 后端再把对象级结果聚合为页级布尔值：
+Mooncake Store 返回每个对象的读取结果，Mooncake 后端再据此判断每个缓存页是否读取成功：
 
 ```text
 MHA 页：
@@ -256,7 +257,7 @@ MLA 页：
   K 对象成功
 ```
 
-这解释了为什么一个页键背后可能有多个 Mooncake 对象。HiCache 只关心整页是否可用；Mooncake Store 看到的则是更细粒度的对象。
+这解释了为什么一个 `page key` 可能对应多个 Mooncake 对象。HiCache 只关心整个缓存页是否可用；Mooncake Store 看到的则是更细粒度的对象。
 
 ## 读路径完整链路
 
@@ -290,7 +291,7 @@ MLA 页：
       from: 'HiCache',
       to: '存储后端',
       label: 'batch_exists / batch_get',
-      detail: '按页键查询连续命中边界，并把对象结果聚合为页级结果',
+      detail: '根据 page key 查询连续命中长度，并按缓存页汇总对象读取结果',
       tone: 'blue',
     },
     {

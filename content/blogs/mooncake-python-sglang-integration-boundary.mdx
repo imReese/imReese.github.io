@@ -33,7 +33,7 @@ Mooncake 的 README 和文档会频繁提到 SGLang、vLLM、LMCache、预填充
     },
     {
       label: 'Python 集成层',
-      detail: '把框架对象翻译成 Mooncake 调用',
+      detail: '把框架对象转换为 Mooncake 调用',
       tone: 'blue',
       items: ['pybind11', '张量 API', '对象 API', 'MooncakeStore 后端'],
     },
@@ -80,7 +80,7 @@ Mooncake 支持张量读写，这很容易让人以为底层就是“张量存�
 
 这也是零元素张量等细节会出现在 Python 绑定中的原因。空张量没有载荷，但元数据仍要表达形状和数据类型，读取时再恢复成 `torch.empty(shape, dtype)`。这个问题不属于 Transfer Engine；它属于 Python 张量包装层怎样把上层对象语义映射到 Store 对象。
 
-这个例子能说明 Mooncake 集成层的定位：它不是只做语言绑定，还要把框架里的对象模型翻译成 Store/Transfer Engine 能理解的接口。
+这个例子能说明 Mooncake 集成层的定位：它不只负责语言绑定，还要把框架中的对象模型转换为 Store/Transfer Engine 可以处理的接口参数。
 
 ## SGLang 有两条 Mooncake 路径
 
@@ -109,13 +109,23 @@ Mooncake 提供的是这类决策可以依赖的数据面能力。
       label: 'SGLang PD',
       detail: '工作进程之间的 KV 传输',
       tone: 'mauve',
-      items: ['预填充工作进程', '解码工作进程', '共享 Transfer Engine', 'KV 传输'],
+      items: [
+        '预填充工作进程',
+        '解码工作进程',
+        '共享 Transfer Engine',
+        'KV 传输',
+      ],
     },
     {
       label: 'SGLang HiCache L3',
       detail: '前缀页写入远端缓存',
       tone: 'teal',
-      items: ['HiCacheStorage', '主机 KV 池', 'batch_get_into', 'batch_put_from'],
+      items: [
+        'HiCacheStorage',
+        '主机 KV 池',
+        'batch_get_into',
+        'batch_put_from',
+      ],
     },
     {
       label: 'vLLM / LMCache',
@@ -162,7 +172,7 @@ Mooncake 把能力提供出来以后，上层框架还要回答一个更难的�
 
 Mooncake 接在上层框架的位置，不是一个单点 API，而是一组边界。
 
-Python 绑定把 C++ Store 和 Transfer Engine 暴露给 Python；张量和对象包装层把上层对象翻译成 Store 可处理的组成部分与切片；SGLang 更关注预填充和解码分离场景下的 KV 传输；LMCache/vLLM 更容易从缓存后端和对象存储的角度接入。
+Python 绑定把 C++ Store 和 Transfer Engine 暴露给 Python；张量和对象包装层把上层对象转换为 Store 可处理的组成部分与切片；SGLang 更关注预填充和解码分离场景下的 KV 传输；LMCache/vLLM 更容易从缓存后端和对象存储的角度接入。
 
 真正要避免的是把这些边界混成一句“Mooncake 支持某某框架”。支持只是入口。技术上更重要的是：上层框架在什么时机调用 Mooncake，调用的是 Store 语义还是 Transfer Engine 数据面，以及这次 KV Cache 复用在成本模型上是否真的划算。
 

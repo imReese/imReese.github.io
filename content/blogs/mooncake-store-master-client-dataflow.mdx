@@ -51,7 +51,7 @@ mooncake-store/src/master_service.cpp
     },
     {
       label: 'Client 数据传输层',
-      detail: '把元数据翻译成传输任务',
+      detail: '根据元数据生成传输任务',
       tone: 'mauve',
       items: ['TransferSubmitter', '本地内存复制', 'Transfer Engine', '热缓存'],
     },
@@ -155,7 +155,7 @@ TransferEngine
 LocalHotCache
 ```
 
-Client 先向 Master 请求元数据，再把元数据翻译成数据面动作。例如，同一个端点内可以直接复制内存，远端内存副本通过 Transfer Engine 传输，文件或卸载存储则走对应路径。
+Client 先向 Master 请求元数据，再根据元数据选择数据面的具体操作。例如，同一个端点内可以直接复制内存，远端内存副本通过 Transfer Engine 传输，文件或卸载存储则走对应路径。
 
 这就是 Mooncake Store 的基本分层：
 
@@ -187,7 +187,7 @@ with_soft_pin
 with_hard_pin
 ```
 
-对于 SGLang/Mooncake 集成，还要额外注意版本边界：SGLang 的 Mooncake 后端会探测已安装的 Mooncake Python 包是否支持 `ReplicateConfig.group_ids`。如果支持，它可以把同一个逻辑 KV 页展开出的 K 对象、V 对象和辅助内存池对象绑定到同一分组；如果不支持，就回退到普通的对象级 `batch_put_from` 路径。
+对于 SGLang/Mooncake 集成，还要额外注意版本边界：SGLang 的 Mooncake 后端会探测已安装的 Mooncake Python 包是否支持 `ReplicateConfig.group_ids`。如果支持，它可以把同一个 KV Cache 页对应的 K 对象、V 对象和辅助内存池对象绑定到同一分组；如果不支持，就回退到普通的 `batch_put_from` 对象写入路径。
 
 在本文参考的 Mooncake 稳定标签 `v0.3.11.post1` 中，`ReplicateConfig` 还没有 `group_ids` 字段。因此，不能把分组语义当作该版本 Store 的基础能力；它更像是 SGLang 适配层为不同 Mooncake 包版本预留的兼容路径。
 
@@ -196,7 +196,7 @@ with_hard_pin
 SGLang HiCache 接入 Mooncake Store 时，不会把“一个请求”整体作为对象，而是把前缀 KV 按页拆开：
 
 ```text
-HiCache 逻辑页键
+HiCache page key
   -> Mooncake 对象键
   -> Store 对象元数据
   -> 副本
@@ -204,11 +204,11 @@ HiCache 逻辑页键
 ```
 
 <MappingDiagram
-  title="从 HiCache 逻辑页展开为 Store 对象"
-  caption="Mooncake Store 不知道请求和基数树。它只看到展开后的对象键，并为每个对象维护副本状态。"
+  title="从 HiCache 缓存页映射为 Store 对象"
+  caption="Mooncake Store 不知道请求和基数树。它只看到映射后的对象键，并为每个对象维护副本状态。"
   source={{
     label: 'HiCache 逻辑页',
-    detail: 'SGLang 推理引擎中的页级缓存单元',
+    detail: 'SGLang 推理引擎中按页管理的缓存单元',
     tone: 'teal',
   }}
   groups={[
@@ -227,13 +227,13 @@ HiCache 逻辑页键
   ]}
 />
 
-MHA 通常会把一个逻辑页展开为 K/V 两个对象，MLA 通常只需要一个对象，混合内存池还会继续展开辅助状态对象。
+一个 MHA 缓存页通常对应 K/V 两个对象，MLA 通常只需要一个对象；混合内存池还会增加辅助状态对象。
 
 所以 Store 看到的是一批对象，并不知道它们属于哪个请求，也不了解 SGLang 的基数树结构。这个边界必须守住。
 
 ## 把对象模型串起来
 
-阅读 Mooncake Store 源码时，可以把它理解成一条翻译链：上层给出对象键和本地切片，Master 把键翻译成一组副本事实，Client 再把副本翻译成 Segment 上的偏移和长度，最后由本地内存复制、Transfer Engine 或其它后端真正搬运数据。
+阅读 Mooncake Store 源码时，可以沿着一条逐层转换的链路理解：上层给出对象键和本地切片，Master 返回相应的副本信息，Client 再从副本信息中取得 Segment、偏移量和长度，最后由本地内存复制、Transfer Engine 或其他后端完成数据传输。
 
 这条链里最容易混淆的是 `Slice` 和副本。`Slice` 描述调用方本次读写使用的本地缓冲区；副本则描述 Store 内部已经分配或提交的一份对象数据。它们会在 Put 或 Get 时配对，但不是同一个概念。
 

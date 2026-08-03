@@ -81,6 +81,8 @@ test('Chinese UI copy avoids reviewed translationese', () => {
     '数据物化',
     '我近期在做的项目和源码整理',
     '现网问题治理',
+    '页键',
+    '主机 KV 指针',
   ]) {
     assert.equal(
       sources.includes(phrase),
@@ -138,6 +140,7 @@ test('blog metadata uses readable Chinese for ordinary engineering terms', () =>
     'local hot cache token',
     'page key、zero-copy 和 shared TE',
     'Host 和 Storage',
+    '页键',
   ]) {
     assert.equal(
       copy.includes(phrase),
@@ -150,7 +153,9 @@ test('blog metadata uses readable Chinese for ordinary engineering terms', () =>
 test('blog prose avoids the reviewed mechanical translations', () => {
   const prose = readdirSync('content/blogs')
     .filter((file) => file.endsWith('.mdx'))
-    .map((file) => matter(readFileSync(`content/blogs/${file}`, 'utf8')).content)
+    .map(
+      (file) => matter(readFileSync(`content/blogs/${file}`, 'utf8')).content,
+    )
     .map((content) => content.replace(/^```[\s\S]*?^```/gm, ''))
     .join('\n')
 
@@ -163,6 +168,12 @@ test('blog prose avoids the reviewed mechanical translations', () => {
     'Runtime 实验',
     '推理运行时开发',
     '主从组件',
+    '页键',
+    '主机 KV 指针',
+    '主机指针',
+    '页级结果',
+    '降级到主机内存',
+    '语义交接点',
   ]) {
     assert.equal(
       prose.includes(phrase),

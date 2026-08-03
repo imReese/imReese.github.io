@@ -29,7 +29,14 @@ Client::Get / Client::BatchGet
 <SequenceDiagram
   title="Mooncake Store Get：Master 返回可读位置，Client 自己搬数据"
   caption="Get 的数据不经过 Master。Master 给出 COMPLETE 副本和租约；真正的数据由本地热缓存、内存复制或 Transfer Engine 写入调用方切片。"
-  actors={['调用方 / HiCache', 'Store Client', 'Master', '本地热缓存', 'Transfer Engine', '调用方切片']}
+  actors={[
+    '调用方 / HiCache',
+    'Store Client',
+    'Master',
+    '本地热缓存',
+    'Transfer Engine',
+    '调用方切片',
+  ]}
   steps={[
     {
       from: '调用方 / HiCache',
@@ -204,9 +211,9 @@ Get 失败可以发生在几层：
 - Transfer Engine READ 失败
 - 批次中某个 K/V 对象读取失败
 
-对于 SGLang HiCache，这些失败最终应该聚合为页级结果。如果某个缓存页的 K 对象成功而 V 对象失败，这个逻辑页就不能算命中。
+对于 SGLang HiCache，这些对象读取结果最终要按缓存页汇总。如果某个缓存页的 K 对象成功而 V 对象失败，这一页就不能算命中。
 
-因此，后端需要把对象级状态聚合为页级命中边界。
+因此，后端需要按缓存页汇总对象状态，再计算连续命中的页数。
 
 ## 从 HiCache 视角看读取
 
@@ -214,4 +221,4 @@ HiCache 读取 Mooncake 时，目标不是把对象放进 Python，而是把远�
 
 因此，一次远端命中至少跨过三道边界：Master 元数据必须返回可读副本，数据面必须把对象读回主机缓冲区，HiCache 必须把主机缓存页提交回 GPU KV 池。前两步成功只能说明 Mooncake Store 工作正常，不能自动说明注意力计算已经能够复用这段 KV。
 
-对象级和页级结果也要分清。Mooncake 只能告诉你某个对象读取成功；SGLang 还要把 K/V 对象、拆分注意力头对象和辅助内存池对象合并成一个逻辑页的结果。只要这组对象中有一个失败，这一页就应该按未命中处理。
+对象读取结果和缓存页命中结果也要分清。Mooncake 只能告诉你某个对象读取成功；SGLang 还要汇总 K/V 对象、按注意力头拆分的对象和辅助内存池对象，判断整个缓存页是否读取成功。只要这组对象中有一个失败，这一页就应该按未命中处理。

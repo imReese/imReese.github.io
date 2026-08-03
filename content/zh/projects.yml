@@ -178,7 +178,7 @@ workSections:
     intro: 这些文章沿具体代码路径梳理推理、缓存和数据传输流程。
     items:
       - name: SGLang 到 Mooncake Store 的 KV 路径
-        description: 从页键和主机 KV 指针出发，追踪 Store 对象如何通过共享的 Transfer Engine 完成一次写入和读回。
+        description: 从 page key 和主机端 KV 缓冲区出发，追踪 Store 对象如何通过共享的 Transfer Engine 完成一次写入和读回。
         href: /blogs/sglang-to-mooncake-store-kv-cache-path/
         tags:
           - SGLang
@@ -194,7 +194,7 @@ workSections:
           - HiCache
           - 读写路径
           - 验证
-      - name: Mooncake KV 缓存全链路
+      - name: Mooncake KV Cache 全链路
         description: 区分运行状态、Store 元数据、副本生命周期与 Transfer Engine 职责。
         href: /blogs/mooncake-kv-cache-system-resource/
         tags:

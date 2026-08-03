@@ -1,6 +1,6 @@
 ---
-title: 'SGLang v0.5.14 接入 Mooncake Store：页键、零拷贝和共享 Transfer Engine'
-description: '沿着一次 KV 缓存的写入与读回，说明 SGLang 如何把分页缓存映射为 Mooncake 对象，以及主机内存为何是两套系统的交接点。'
+title: 'SGLang v0.5.14 接入 Mooncake Store：缓存页标识、零拷贝与共享 Transfer Engine'
+description: '沿着一次 KV Cache 的写入与读回，说明 SGLang 如何根据缓存页标识生成 Mooncake Store 对象，以及主机端 KV 缓冲区为何是两套系统的数据交接点。'
 author: 'Reese'
 date: '2026-06-30'
 topics:
@@ -15,17 +15,19 @@ series: 'Mooncake / HiCache Internals'
 featured: true
 ---
 
-SGLang 接入 Mooncake 的难点，不是找到一个名为 `MooncakeStore` 的后端，而是证明一段前缀 KV 缓存确实从 SGLang 推理引擎进入了以 Mooncake 为后端的存储路径，并且能够按 HiCache 的语义返回。
+SGLang 接入 Mooncake 的难点，不是找到一个名为 `MooncakeStore` 的后端，而是确认一段前缀 KV Cache 确实从 SGLang 推理引擎进入了以 Mooncake 为后端的存储路径，并且能够按照 HiCache 所需的形式返回命中结果。
 
-接口层看起来接上了，并不等于实际运行路径已经成立。SGLang 侧会说：HiCache 把 GPU KV 缓存扩展成 L1/L2/L3，L3 可以使用 `mooncake` 存储后端。Mooncake 侧会说：Store 提供对象、切片、副本和元数据语义，Client 通过 Transfer Engine 搬运数据。但这两句话之间还隔着页键、主机内存池、对象展开、零拷贝读写和页级结果聚合。
+接口层看起来已经接通，并不等于实际调用链已经走通。SGLang 侧会说：HiCache 把 GPU KV Cache 扩展成 L1/L2/L3，L3 可以使用 `mooncake` 存储后端。Mooncake 侧会说：Store 提供对象、切片、副本和元数据语义，Client 通过 Transfer Engine 搬运数据。但这两句话之间还隔着缓存页标识的生成、Store 对象键的映射、主机缓冲区关联、零拷贝读写，以及按缓存页汇总结果等环节。
 
-真正关键的问题是：**SGLang 的一段前缀 KV 缓存什么时候会变成 Mooncake Store 中的对象？它又怎样从 Mooncake Store 回到 SGLang 的主机内存池和 GPU 内存池？**
+真正关键的问题是：**SGLang 的一段前缀 KV Cache 什么时候会变成 Mooncake Store 中的对象？它又怎样从 Mooncake Store 回到 SGLang 的主机内存池和 GPU 内存池？**
 
-这篇文章不是罗列 Mooncake 后端支持哪些功能，而是沿着页键、主机缓冲区指针和 Store 对象这三种身份追踪系统边界。读完以后，应该能够判断一次远端 KV 是否真的跨过了 SGLang 与 Mooncake 的集成边界，而不是只看到配置里写了 `mooncake`。
+这篇文章不是罗列 Mooncake 后端支持哪些功能，而是沿着缓存页标识、主机端 KV 缓冲区和 Store 对象之间的转换关系追踪系统边界。读完以后，应该能够判断一次远端 KV Cache 读写是否真的跨过了 SGLang 与 Mooncake 的集成边界，而不是只看到配置里写了 `mooncake`。
+
+本文将 HiCache 为每个 token 页生成的滚动哈希称为 `page key`。它是这条代码路径中使用的缓存页标识；Mooncake Store 实际读写的则是由它派生出的 `object key`。下文会保留这两个英文术语，以免把两类键混为一谈。
 
 ## 源码版本与文章范围
 
-本文固定到 SGLang `v0.5.14`。Mooncake 侧参考 `kvcache-ai/Mooncake` 的稳定标签 `v0.3.11.post1`（提交 `e9c61075720039bcfc5fffd19f847608402be3d0`），阅读边界是 Store、Transfer Engine 和 SGLang 后端接口路径。
+本文基于 SGLang `v0.5.14`。Mooncake 侧参考 `kvcache-ai/Mooncake` 的稳定标签 `v0.3.11.post1`（提交 `e9c61075720039bcfc5fffd19f847608402be3d0`），只分析 Store、Transfer Engine 和 SGLang 后端之间的接口路径。
 
 本文追踪的具体工程问题：
 
@@ -33,9 +35,9 @@ SGLang 接入 Mooncake 的难点，不是找到一个名为 `MooncakeStore` 的�
 SGLang 推理引擎的缓存操作
   -> 如何进入 HiCache L3 存储接口
   -> 如何选择 MooncakeStore 后端
-  -> 如何把页键 + 主机 KV 指针翻译成 Store 对象
-  -> 如何从 Store 对象回到主机 KV 缓存页
-  -> 为什么这还不等于 GPU KV 已经可复用
+  -> 如何根据 page key 生成 object key，并关联主机端 KV 缓冲区
+  -> 如何从 Store 对象回到主机端 KV Cache 页
+  -> 为什么这还不等于 KV Cache 已被 GPU 侧计算复用
 ```
 
 SGLang 入口：
@@ -55,80 +57,84 @@ SGLang 请求与缓存生命周期
   -> write_backup or prefetch_from_storage
   -> HiCacheStorage.batch_get_v1/v2 or batch_set_v1/v2
   -> MooncakeStore.batch_get / batch_set
-  -> 展开逻辑页键
-  -> 主机 KV 缓存页指针
+  -> 根据 page key 生成 Store 对象键
+  -> 定位主机端 KV 缓冲区
   -> Mooncake Store batch_get_into / batch_put_from
   -> Store 元数据 / Transfer Engine 数据搬运
-  -> 向 HiCache 返回页级结果
+  -> 向 HiCache 返回按缓存页汇总的结果
 ```
 
 本文覆盖 SGLang HiCache 到 Mooncake Store 后端之间的对象和缓冲区边界；不覆盖注意力计算内核、完整调度策略、PD 分离式推理的全部 Transfer Engine 路径，也不提供基准测试结论。
 
-本文能证明的范围也有限：它能说明源码中的哪些接口把 SGLang 的页和内存池语义连接到 Mooncake Store 的对象语义；它不能单独证明远端 KV 在某个部署中一定有收益，也不能证明所有混合缓存组合都已完成验证。
+本文能证明的范围也有限：它能说明哪些源码接口把 SGLang 按页管理的缓存状态和主机内存池连接到 Mooncake Store 的对象模型；它不能单独证明远端 KV Cache 在某个部署中一定有收益，也不能证明所有混合缓存配置都已完成验证。
 
-要跟住的主线是：
+阅读时可以沿着下面的转换关系追踪：
 
 ```text
 基数树节点的 hash_value
-  -> HiCacheStorage 页键
-  -> MooncakeStore 对象键展开
-  -> 主机 KV 缓存页的缓冲区指针
+  -> HiCacheStorage 使用的 page key
+  -> MooncakeStore 根据 page key 生成一组 object key
+  -> 主机端 KV 缓冲区指针
   -> Mooncake Store 零拷贝批量 API
 ```
 
 <FlowDiagram
   eyebrow="路径概览"
   title="从 SGLang 推理引擎到 Mooncake Store"
-  caption="这张图只表达本文覆盖的源码路径：页键和主机指针怎样跨过 HiCacheStorage 边界。"
+  caption="这张图只表达本文覆盖的源码路径：page key 和主机端 KV 缓冲区怎样跨过 HiCacheStorage 边界。"
   steps={[
     {
       label: '推理引擎中的缓存生命周期',
       meta: 'UnifiedRadixCache / HiCache controller',
-      detail: '请求或缓存生命周期先在 SGLang 推理引擎内部形成页级缓存操作。',
+      detail:
+        '请求进入缓存生命周期后，SGLang 推理引擎会产生按页执行的缓存读写操作。',
       tone: 'teal',
       items: ['write_backup', 'prefetch_from_storage'],
     },
     {
       label: 'HiCache 存储接口',
       meta: 'HiCacheStorage.batch_*',
-      detail: 'L3 后端只看到页键、主机索引和可选的 PoolTransfer。',
+      detail: 'L3 后端接收 page key、主机页索引和可选的 PoolTransfer。',
       tone: 'blue',
       items: ['batch_set_v1/v2', 'batch_get_v1/v2'],
     },
     {
       label: 'Mooncake 后端',
       meta: 'MooncakeStore.batch_*',
-      detail: '后端把逻辑页键展开成对象键，并收集主机缓冲区指针。',
+      detail:
+        '后端根据 page key 生成 Store 对象键，并取得对应的主机端缓冲区指针。',
       tone: 'mauve',
-      items: ['键展开', '缓冲区元数据'],
+      items: ['对象键生成', '缓冲区元数据'],
     },
     {
       label: 'Store 与传输层边界',
       meta: 'batch_put_from / batch_get_into',
-      detail: 'Mooncake Store 处理对象元数据和字节搬运；结果再聚合回页级语义。',
+      detail:
+        'Mooncake Store 处理对象元数据和字节搬运；后端再按缓存页汇总各对象的读写结果。',
       tone: 'amber',
-      items: ['对象结果', '页级结果'],
+      items: ['对象读写结果', '每页汇总结果'],
     },
     {
       label: '可观察结果',
-      meta: '主机页已填充 / Store 对象已写入',
-      detail: '这一步仍不代表 GPU 已经复用；完整复用还要看 HiCache 回载和调度器。',
+      meta: '主机端缓存页已填充 / Store 对象已写入',
+      detail:
+        '这一步仍不代表数据已被 GPU 侧计算复用；还要确认 HiCache 回载和调度器状态。',
       tone: 'green',
-      items: ['主机 KV 缓存页', '尚不能由 GPU 使用'],
+      items: ['主机端 KV Cache 页', '尚未回载至 GPU'],
     },
   ]}
 />
 
 <SequenceDiagram
   title="SGLang 和 Mooncake Store 的真正分界线"
-  caption="SGLang 交出页键和主机缓冲区；Mooncake Store 接手对象键、元数据和零拷贝读写。"
+  caption="SGLang 向后端传入 page key 和主机端缓冲区信息；Mooncake Store 负责对象键、元数据和零拷贝读写。"
   actors={['基数树节点', 'HiCacheStorage', 'Mooncake 后端', 'Mooncake Store']}
   steps={[
     {
       from: '基数树节点',
       to: 'HiCacheStorage',
       label: 'hash_value + host_indices',
-      detail: '页键来自 token 页的滚动哈希，缓冲区来自主机 KV 池',
+      detail: 'page key 是 token 页的滚动哈希结果，缓冲区来自主机 KV 池',
       tone: 'teal',
     },
     {
@@ -141,8 +147,8 @@ SGLang 请求与缓存生命周期
     {
       from: 'Mooncake 后端',
       to: 'Mooncake Store',
-      label: '展开后的对象键 + 指针',
-      detail: '根据 MHA、MLA 或混合缓存布局展开对象，并调用零拷贝 API',
+      label: 'Store 对象键 + 缓冲区指针',
+      detail: '根据 MHA、MLA 或混合缓存布局生成对象键，并调用零拷贝 API',
       tone: 'mauve',
     },
   ]}
@@ -164,7 +170,7 @@ batch_get_v2(pool_transfers)
 batch_set_v2(pool_transfers)
 ```
 
-v1 主要服务普通 KV 池：一组页键对应主机 KV 池中的一组页索引。
+v1 适用于普通 KV 池：一组 `page key` 对应主机 KV 池中的一组页索引。
 
 v2 面向混合缓存：除了 KV，还可能有 Mamba 状态、SWA、DeepSeek V4 辅助内存池和草稿模型 KV。它用 `PoolTransfer` 描述每个内存池的主机与设备索引、键和命中策略。
 
@@ -172,15 +178,15 @@ v2 面向混合缓存：除了 KV，还可能有 Mamba 状态、SWA、DeepSeek V
 
 ```text
 SGLang HiCache
-  -> 页键
-  -> 主机 KV 缓存页索引
+  -> page key
+  -> 主机端 KV Cache 页索引
   -> 可选的辅助状态 PoolTransfer
   -> HiCacheStorage 后端
 ```
 
 `--hicache-storage-backend mooncake` 只是告诉 `StorageBackendFactory`：这些接口由 `MooncakeStore` 后端实现。
 
-因此，这一步的证据不是“配置里写了 mooncake”，而是推理引擎后续确实调用了 `HiCacheStorage.batch_*`，并且后端实例把页键和主机索引交给 MooncakeStore。没有这一步，Mooncake Store 只是一个可用组件，并不能证明当前请求实际走过了这条缓存路径。
+因此，这一步的证据不是“配置里写了 mooncake”，而是推理引擎后续确实调用了 `HiCacheStorage.batch_*`，并且后端实例把 `page key` 和主机页索引交给 `MooncakeStore`。没有这一步，Mooncake Store 只是一个可用组件，并不能证明当前请求实际走过了这条缓存路径。
 
 <ExpandableNotes
   title="关键函数说明"
@@ -188,21 +194,24 @@ SGLang HiCache
   notes={[
     {
       title: 'StorageBackendFactory',
-      detail: '`--hicache-storage-backend mooncake` 的意义是选择后端实现；它本身不证明当前请求已经产生页键或进入读写路径。',
+      detail:
+        '`--hicache-storage-backend mooncake` 的意义是选择后端实现；它本身不证明当前请求已经生成 page key 或进入读写路径。',
       tone: 'blue',
       items: ['后端选择', '不是命中信号'],
     },
     {
       title: 'HiCacheStorage.batch_get_v1/v2 与 batch_set_v1/v2',
-      detail: '这是 SGLang 推理引擎和 L3 后端的接口边界。SGLang 交出页键、主机索引和 PoolTransfer，而不是直接交出请求或 GPU 张量。',
+      detail:
+        '这是 SGLang 推理引擎和 L3 后端的接口边界。SGLang 向后端传入 page key、主机页索引和 PoolTransfer，而不是直接传入请求或 GPU 张量。',
       tone: 'teal',
-      items: ['页键', '主机索引', 'PoolTransfer'],
+      items: ['page key', '主机页索引', 'PoolTransfer'],
     },
     {
       title: 'MooncakeStore.batch_get / batch_set',
-      detail: 'Mooncake 后端在这里把逻辑页键展开成 Store 对象键，并把主机 KV 缓存页指针交给零拷贝接口。',
+      detail:
+        'Mooncake 后端在这里根据 page key 生成 Store 对象键，并把主机端 KV 缓冲区指针交给零拷贝接口。',
       tone: 'mauve',
-      items: ['对象键', '主机指针', '页级结果'],
+      items: ['对象键', '缓冲区指针', '每页读写结果'],
     },
   ]}
 />
@@ -226,22 +235,22 @@ MooncakeStore.register_mem_pool_host
 
 如果是混合模型，还会通过 `register_mem_host_pool_v2` 注册额外内存池的缓冲区。
 
-这一步把 SGLang 的主机 KV 池变成 Mooncake Store 零拷贝接口可以读写的内存。后续 `batch_get_into` 可以直接把 Mooncake 对象读入指定的主机指针，`batch_put_from` 可以直接从主机指针写出，不需要 Python 层把 KV 缓存复制成字节串。
+这一步让 Mooncake Store 的零拷贝接口可以直接读写 SGLang 的主机 KV 池。后续 `batch_get_into` 可以把 Mooncake 对象直接读入指定的主机端缓冲区，`batch_put_from` 可以直接从该缓冲区写出，不需要 Python 层把 KV Cache 复制成字节串。
 
 这也是 Mooncake 后端不能只提供普通 `get(key) -> tensor` 的原因：真正关键的是零拷贝批量接口。
 
-从可观察结果看，这一步应该让后续读写围绕主机 KV 缓存页指针工作。如果主机缓冲区没有注册成功，后面即使对象键和元数据都正确，零拷贝读写也没有稳定的目标地址。
+从可观察结果看，后续读写应该直接使用主机端 KV 缓冲区指针。如果缓冲区没有注册成功，后面即使对象键和元数据都正确，零拷贝读写也没有有效的目标地址。
 
 ## 写入路径：GPU 数据先回到主机内存，再写入 Mooncake
 
-SGLang 的 KV 缓存最初位于 GPU。要写入 Mooncake Store，第一步不是直接从 GPU 进入 Store，而是先进入 HiCache 的 L2 主机内存池。
+SGLang 的 KV Cache 最初位于 GPU。要写入 Mooncake Store，第一步不是直接从 GPU 进入 Store，而是先进入 HiCache 的 L2 主机内存池。
 
 普通写入链路大概是：
 
 ```text
 radix node on GPU
   -> write_backup(node)
-  -> D2H：设备 KV 槽位 -> 主机 KV 缓存页索引
+  -> D2H：设备 KV 槽位 -> 主机端 KV Cache 页索引
   -> node.backuped = true
   -> write_backup_storage(node)
   -> MooncakeStore.batch_set_v1 / batch_set_v2
@@ -254,11 +263,11 @@ radix node on GPU
 
 这里要注意一个边界：Mooncake Store 不知道基数树节点是什么，也不知道这个前缀怎样在调度器中命中。它看到的是一批键和主机缓冲区指针。
 
-所以，“Store 写入发生了”只能证明主机缓存页被翻译成一组 Store 对象写入动作；它不能证明这段前缀将来一定能被调度器复用。复用还依赖页键是否稳定、对象组是否完整、读回时能否聚合为页级成功，以及从主机内存到 GPU 的回载是否提交。
+所以，“Store 写入发生了”只能证明主机缓存页已经转换为一组 Store 对象写入操作；它不能证明这段前缀将来一定能被调度器复用。复用还取决于 `page key` 是否稳定、对象组是否完整、后端能否确认每个缓存页读取成功，以及从主机内存到 GPU 的回载是否完成。
 
-## 页键如何转换成 Mooncake 对象键
+## page key 如何映射为 Mooncake 对象键
 
-HiCache 写入 L3 时，不会把原始 token 列表直接当作键，而是按页生成哈希键。
+HiCache 写入 L3 时，不会把原始 token 列表直接当作键，而是为每个 token 页生成滚动哈希。
 
 在存储查询和备份路径中，控制器会按 `page_size` 切分 token，然后持续计算哈希：
 
@@ -268,7 +277,7 @@ HiCache 写入 L3 时，不会把原始 token 列表直接当作键，而是按�
   hash_value.append(last_hash)
 ```
 
-这些 `hash_value` 就是 L3 存储的页键。Mooncake 后端再根据模型布局，把一个逻辑页键展开成实际的 Store 对象键。
+这些 `hash_value` 是 L3 存储中用于标识缓存页的 `page key`。Mooncake 后端再根据模型布局，将一个 `page key` 映射为实际使用的 Store 对象键。
 
 对 MHA 来说，一个缓存页通常会拆成 K/V 两个对象：
 
@@ -283,22 +292,22 @@ HiCache 写入 L3 时，不会把原始 token 列表直接当作键，而是按�
 {page_key}_{rank}_k
 ```
 
-如果开启流水线并行，后缀中还会带 `pp_rank`。如果启用注意力头拆分，一个页键会按目标 rank 展开成更多 K/V 对象。
+如果开启流水线并行，后缀中还会带 `pp_rank`。如果启用注意力头拆分，一个 `page key` 会根据目标 rank 对应到更多 K/V 对象。
 
 所以，从 SGLang 到 Mooncake Store 的键不是一个简单字符串，而会经历：
 
 ```text
 前缀 token 页
-  -> 滚动哈希页键
+  -> page key（滚动哈希结果）
   -> 与模型布局对应的对象键
   -> Mooncake Store batch_is_exist / batch_put_from / batch_get_into
 ```
 
 <MappingDiagram
-  title="一个逻辑页键会按模型布局展开成多个 Store 对象"
+  title="一个 page key 会按模型布局映射为多个 Store 对象"
   caption="HiCache 只关心这一页前缀是否可用；Mooncake Store 看到的是多个对象的存在性和传输结果。"
   source={{
-    label: '逻辑页键',
+    label: 'page key',
     detail: 'hash_value[i]，由 token 页和上一个哈希滚动生成',
     tone: 'teal',
   }}
@@ -317,32 +326,30 @@ HiCache 写入 L3 时，不会把原始 token 列表直接当作键，而是按�
     },
     {
       label: '注意力头拆分 / 混合内存池',
-      detail: '同一页可能继续展开到多个 rank 或辅助状态',
+      detail: '同一页可能继续映射到多个 rank 或辅助状态',
       tone: 'amber',
       items: ['KV 对象', '辅助内存池对象', '草稿模型对象'],
     },
   ]}
 />
 
-这解释了为什么 Mooncake 后端中有 `_get_mha_buffer_meta`、`_get_mla_buffer_meta`、`_get_mha_split_heads_buffer_meta` 等函数。它们并非装饰性代码，而是在把 SGLang 的主机 KV 布局翻译成 Mooncake Store 对象列表和指针列表。
+这解释了为什么 Mooncake 后端中有 `_get_mha_buffer_meta`、`_get_mla_buffer_meta`、`_get_mha_split_heads_buffer_meta` 等函数。它们并非装饰性代码，而是把 SGLang 的主机 KV 布局转换为 Mooncake Store 所需的对象键列表和缓冲区指针列表。
 
 ## Mooncake Store 存的是缓存页，不是整个请求
 
-这一点很重要。
-
-SGLang 不会把一次请求的所有 KV 缓存当成一个大对象直接塞进 Mooncake Store，而是按页写入。每个页键对应一页 KV 数据，MHA 还会进一步拆成 K/V 两个对象。
+SGLang 不会把一次请求的所有 KV Cache 当成一个大对象直接写入 Mooncake Store，而是按页存储。每个 `page key` 标识一页 KV 数据；在 MHA 布局下，这一页还会进一步拆分为 K/V 两个对象。
 
 这样做有几个工程收益：
 
 - 前缀可以按页判断命中长度。
 - 预取可以只拉回命中的连续前缀。
 - 一个长前缀不需要整体成功，前面连续命中的缓存页可以先用。
-- 辅助内存池可以与 KV 缓存页对齐，再裁剪命中长度。
+- 辅助内存池可以与 KV Cache 页对齐，再裁剪命中长度。
 
-这也解释了 `batch_exists` 的返回值：它不是把每个键的布尔结果返回给上层调度器，而是返回“从头连续命中了多少页”。Mooncake 后端会对展开后的对象键调用 `batch_is_exist`；只要中间某个 K/V 对象缺失，就停止计算连续前缀。
+这也解释了 `batch_exists` 的返回值：它不是把每个键的布尔结果返回给上层调度器，而是返回“从头连续命中了多少页”。Mooncake 后端会对映射出的对象键调用 `batch_is_exist`；只要中间某个 K/V 对象缺失，就停止计算连续前缀。
 
 ```text
-查询页键：p0、p1、p2
+查询 page key：p0、p1、p2
 
 MHA expanded:
   p0_k, p0_v, p1_k, p1_v, p2_k, p2_v
@@ -353,7 +360,7 @@ if p1_v missing:
 
 这才符合前缀缓存的语义：中间一旦断开，后面的缓存页即使存在，也不能当作连续前缀直接使用。
 
-这里的核心判断有一个很朴素的依据：HiCache 的上层语义需要的是连续前缀，而不是无序对象集合。Mooncake Store 可以告诉后端哪些对象存在，但后端必须把对象级结果聚合成页级前缀长度，否则调度器会得到一个不符合前缀缓存语义的结果。
+这里的依据很直接：HiCache 需要的是连续前缀，而不是无序的对象集合。Mooncake Store 可以告诉后端哪些对象存在，但后端必须先按缓存页汇总对象的存在性，再计算连续命中的页数，否则调度器得到的结果就不符合前缀缓存的要求。
 
 ## 读取路径：Mooncake 先写入主机内存，再由 HiCache 回载
 
@@ -365,25 +372,25 @@ SGLang 调度器会在请求排队阶段进行本地 L1/L2 匹配。对于主机
 请求进入等待队列
   -> 本地前缀匹配找到 last_host_node
   -> 构造按页对齐的 prefetch_key
-  -> 分配主机 KV 页
+  -> 分配主机端 KV Cache 页
   -> cache_controller.prefetch(...)
   -> MooncakeStore.batch_get_v1 / batch_get_v2
   -> 数据进入主机 KV 池
   -> check_prefetch_progress 插入主机内存节点
 ```
 
-Mooncake 后端的 `batch_get_v1` 会把页键展开成 Store 对象键，然后调用：
+Mooncake 后端的 `batch_get_v1` 会根据 `page key` 生成 Store 对象键，然后调用：
 
 ```text
 batch_get_into(key_strs, buffer_ptrs, buffer_sizes)
 ```
 
-返回值是每个对象读取到的字节数，Mooncake 后端再把它聚合为页级成功结果。对于 MHA，K 和 V 都成功，才算这一页成功。
+返回值是每个对象实际读取的字节数，Mooncake 后端据此判断每个缓存页是否读取成功。对于 MHA，K 和 V 对象都读取成功，这一页才算成功。
 
 数据读回主机内存后，SGLang 还不能直接让注意力内核使用它。GPU 计算内核需要设备 KV 槽位。因此，如果这段前缀要真正参与计算，还要经过 HiCache 从主机内存到设备的回载：
 
 ```text
-主机 KV 页
+主机端 KV Cache 页
   -> load_back(best_match_node)
   -> 分配 GPU KV 槽位
   -> 主机内存 -> GPU 复制
@@ -404,31 +411,31 @@ Mooncake 只负责从 L3 读回 L2，HiCache 再负责从 L2 回载到 L1。
 
 如果只有普通 MHA KV，`batch_get_v1` / `batch_set_v1` 已经够用。但 SGLang 目前的缓存不一定只有一类 KV。
 
-一些模型还有额外状态，例如 Mamba 的递推和卷积状态、SWA 内存池、DeepSeek V4 辅助内存池，以及草稿模型 KV。它们与主 KV 缓存页的关系不是简单的一一对应，所以 SGLang 引入了 `PoolTransfer` 和 batch v2。
+一些模型还有额外状态，例如 Mamba 的递推和卷积状态、SWA 内存池、DeepSeek V4 辅助内存池，以及草稿模型 KV。它们与主 KV Cache 页的关系不是简单的一一对应，所以 SGLang 引入了 `PoolTransfer` 和 batch v2。
 
 Mooncake 后端的 v2 路径会做三件事：
 
 1. 根据 `PoolTransfer.name` 找到已注册的主机内存池。
-2. 根据内存池类型生成每个缓存页对应的组成对象键。
+2. 根据内存池类型生成每个缓存页对应的一组对象键。
 3. 调用 Mooncake Store 的零拷贝多缓冲区接口或普通批量接口。
 
 命中判断也更复杂。主 KV 池命中 10 页，不代表辅助内存池也命中 10 页。最终可用的前缀要取所有必要内存池共同支持的长度。对于只需要尾部状态的内存池，例如某些 Mamba/SWA 状态，还会采用 `TRAILING_PAGES` 策略，只要求尾部若干页存在。
 
-这说明 SGLang 到 Mooncake Store 的接口已经不只是“KV 缓存页存取”，而是在表达更一般的问题：多个内存池中的缓存状态怎样共同构成一个可用前缀。
+这说明 SGLang 到 Mooncake Store 的接口已经不只是“KV Cache 页存取”，而是在表达更一般的问题：多个内存池中的缓存状态怎样共同构成一个可用前缀。
 
-## 分组语义让各组件重新对齐到同一个逻辑页
+## 分组信息把多个对象关联到同一个缓存页
 
-在 MHA 中，一个逻辑页会展开成多个 Mooncake 对象。注意力头拆分或辅助内存池会产生更多对象。
+在 MHA 中，一个缓存页会映射为多个 Mooncake 对象。按注意力头拆分或引入辅助内存池后，还会产生更多对象。
 
-如果安装的 Mooncake Python 包支持 `ReplicateConfig.group_ids`，SGLang 后端可以启用分组语义。它会给同一个逻辑页展开出的多个对象设置相同的分组编号：
+如果安装的 Mooncake Python 包支持 `ReplicateConfig.group_ids`，SGLang 后端可以为同一个缓存页映射出的多个对象设置相同的分组编号：
 
 ```text
 sglang-hicache:{logical_page_key}
 ```
 
-这样做不是为了改变 SGLang 的页键，而是告诉 Mooncake Store：这些对象属于同一个逻辑缓存单元。后续复制、管理、去重或一致性语义可以按分组理解，而不是只看到一组独立对象键。
+这样做不是为了改变 SGLang 的 `page key`，而是告诉 Mooncake Store：这些对象属于同一个逻辑缓存单元。后续复制、管理、去重或一致性处理可以以这个分组为单位，而不是把它们视为一组彼此独立的对象键。
 
-本文参考的 Mooncake 稳定标签 `v0.3.11.post1` 中，`ReplicateConfig` 没有 `group_ids` 字段。因此，SGLang `v0.5.14` 的后端会在运行时探测这项能力：安装包不支持时，就回退到原来的 `batch_put_from` 路径。这是一处很现实的兼容性边界：SGLang 后端需要适配不同版本的 Mooncake Python 接口。
+本文参考的 Mooncake 稳定标签 `v0.3.11.post1` 中，`ReplicateConfig` 没有 `group_ids` 字段。因此，SGLang `v0.5.14` 的后端会在运行时探测这项能力：安装包不支持时，就回退到原来的 `batch_put_from` 路径。这是实际存在的兼容性边界：SGLang 后端需要适配不同版本的 Mooncake Python 接口。
 
 ## 共享 Mooncake Transfer Engine 的条件很严格
 
@@ -449,44 +456,44 @@ Mooncake 后端会尝试从并行状态中取得已经初始化的 `MooncakeTran
 - HiCache L3 后端使用的 Mooncake Store。
 - 编码器或弹性专家并行路径使用的 Mooncake 后端。
 
-它们的名字都包含 Mooncake，但不一定属于同一条数据路径。共享 Transfer Engine 是一种优化，不是语义前提。
+它们的名字都包含 Mooncake，但不一定属于同一条数据路径。共享 Transfer Engine 是一种性能优化，不是保证 Store 读写正确性的前提。
 
 ## 常见失败模式与排查顺序
 
-调试这条链路时，不要从“Mooncake 是否开启”直接跳到“远端 KV 是否有效”。更稳妥的顺序是按语义边界逐层检查：
+调试这条链路时，不要从“Mooncake 是否开启”直接跳到“远端 KV Cache 是否可用”。更稳妥的顺序是沿接口边界逐层检查：
 
 ```text
 现象：配置看起来启用了 Mooncake，但没有远端命中
   -> 先查 StorageBackendFactory 是否真的选到 MooncakeStore
-  -> 再查 HiCache 是否产生页键和主机内存索引
+  -> 再查 HiCache 是否生成 page key 和主机页索引
 
 现象：batch_set 已执行，但后续 batch_exists 的命中长度很短
-  -> 检查逻辑页键是否稳定
-  -> 检查 MHA/MLA/分头布局展开后的对象是否完整
+  -> 检查 page key 是否稳定
+  -> 检查 MHA、MLA 或按注意力头拆分后生成的对象是否完整
   -> 检查附加标签或 rank 后缀是否导致读写键不一致
 
 现象：batch_get_into 返回成功，但推理仍像重新执行 prefill
   -> 检查数据是否只回到了主机内存池
   -> 检查 HiCache load_back 是否分配并提交 GPU 槽位
-  -> 检查页级结果是否被 Scheduler 使用
+  -> 检查按缓存页汇总的结果是否被 Scheduler 使用
 
 现象：共享 Transfer Engine 没有被复用
-  -> 先确认这是不是语义问题
+  -> 先确认这是否影响 Store 读写的正确性
   -> 共享条件不满足时，Store 客户端独立初始化可能仍然是正确路径
 ```
 
-这类系统最容易混淆三种成功：后端已经创建、字节已经搬完、前缀已被推理引擎复用。它们发生在不同层，不能互相替代。
+这类系统最容易混淆三种状态：后端已经创建、数据传输已经完成、前缀已经被推理引擎复用。它们发生在不同层，不能互相替代。
 
 ## 这条链路的完整图
 
-把写入和读取放在一起，可以压成下面这张图：
+把写入和读取放在一起，可以概括为下面这条双向路径：
 
 ```text
 写入路径：
 
 GPU KV 槽位
   -> HiCache write_backup
-  -> 主机 KV 缓存页
+  -> 主机端 KV Cache 页
   -> write_backup_storage
   -> HiCacheStorage.batch_set_v1/v2
   -> MooncakeStore.batch_put_from(_multi_buffers)
@@ -497,7 +504,7 @@ GPU KV 槽位
 Mooncake Store 对象
   -> MooncakeStore.batch_get_into(_multi_buffers)
   -> HiCacheStorage.batch_get_v1/v2
-  -> 主机 KV 缓存页
+  -> 主机端 KV Cache 页
   -> check_prefetch_progress 插入主机内存前缀
   -> HiCache load_back
   -> GPU KV 槽位
@@ -505,21 +512,26 @@ Mooncake Store 对象
 
 <SequenceDiagram
   title="写入和读取其实是同一条边界的两个方向"
-  caption="无论是 batch_put_from 还是 batch_get_into，Mooncake 后端处理的都是主机指针和对象键之间的对应关系。"
-  actors={['GPU KV 槽位', '主机 KV 缓存页', 'Mooncake 后端', 'Mooncake Store']}
+  caption="无论是 batch_put_from 还是 batch_get_into，Mooncake 后端处理的都是主机端缓冲区与对象键之间的对应关系。"
+  actors={[
+    'GPU KV 槽位',
+    '主机端 KV Cache 页',
+    'Mooncake 后端',
+    'Mooncake Store',
+  ]}
   steps={[
     {
       from: 'GPU KV 槽位',
-      to: '主机 KV 缓存页',
+      to: '主机端 KV Cache 页',
       label: 'write_backup',
-      detail: 'SGLang 先把设备 KV 降级到主机内存',
+      detail: 'SGLang 先把 GPU 中的 KV Cache 备份到主机内存',
       tone: 'teal',
     },
     {
-      from: '主机 KV 缓存页',
+      from: '主机端 KV Cache 页',
       to: 'Mooncake 后端',
       label: 'batch_set_v1/v2',
-      detail: '主机页索引和页键进入存储后端',
+      detail: 'page key 和主机页索引进入存储后端',
       tone: 'blue',
     },
     {
@@ -531,13 +543,13 @@ Mooncake Store 对象
     },
     {
       from: 'Mooncake Store',
-      to: '主机 KV 缓存页',
+      to: '主机端 KV Cache 页',
       label: 'batch_get_into',
       detail: '读取时先把对象写回主机缓冲区',
       tone: 'mauve',
     },
     {
-      from: '主机 KV 缓存页',
+      from: '主机端 KV Cache 页',
       to: 'GPU KV 槽位',
       label: 'load_back',
       detail: 'HiCache 再把主机内存中的前缀提交回 GPU',
@@ -557,7 +569,7 @@ Mooncake Store 对象
       detail: '决定前缀是否值得复用',
       tone: 'teal',
       items: ['基数树节点', '调度器', '页哈希'],
-      signals: ['前缀匹配', '页级结果'],
+      signals: ['前缀匹配', '每页汇总结果'],
     },
     {
       label: 'HiCache 层',
@@ -585,7 +597,7 @@ Mooncake Store 对象
 
 ## 这条路径能证明什么
 
-这条链路能证明的是：SGLang HiCache 和 Mooncake Store 的集成边界不是一次普通的函数调用，而是从推理引擎缓存状态到 Store 对象状态的一组翻译。
+这条链路能证明的是：SGLang HiCache 和 Mooncake Store 的集成边界不是一次普通的函数调用，而是一组从推理引擎缓存状态到 Store 对象状态的转换。
 
 <CompareCallout
   title="这条路径能证明什么，又不能证明什么"
@@ -594,16 +606,16 @@ Mooncake Store 对象
       title: '本文可以确认',
       tone: 'green',
       items: [
-        'SGLang 通过 HiCacheStorage 把页键和主机指针交给 Mooncake 后端。',
-        'Mooncake 后端把逻辑页展开成 Store 对象，并把对象结果聚合回页级结果。',
-        '共享 Transfer Engine 是满足特定条件时的优化路径，不是语义前提。',
+        'SGLang 通过 HiCacheStorage 把 page key 和主机端 KV 缓冲区信息传给 Mooncake 后端。',
+        'Mooncake 后端将每个 page key 映射为 Store 对象，并按缓存页汇总各对象的读写结果。',
+        '共享 Transfer Engine 是满足特定条件时的性能优化，不是保证 Store 读写正确性的前提。',
       ],
     },
     {
       title: '本文不能证明',
       tone: 'amber',
       items: [
-        '远端 KV 在某种负载下一定降低延迟。',
+        '远端 KV Cache 在某种负载下一定能够降低延迟。',
         '`batch_get_into` 成功后注意力计算已经复用缓存。',
         '所有混合缓存组合都已经完成验证。',
       ],
@@ -611,31 +623,31 @@ Mooncake Store 对象
   ]}
 />
 
-所以公开讨论这条路径时，最可信的说法不是“Mooncake 处理完整 KV 路径”，而是：在这条源码路径中，SGLang 通过 HiCacheStorage 把页键和主机 KV 指针交给 Mooncake Store 后端；Mooncake Store 负责对象元数据和字节搬运；完整 KV 复用还要回到 HiCache 的页级结果和 GPU 回载。
+所以公开讨论这条路径时，更准确的说法不是“Mooncake 处理完整 KV 路径”，而是：在这条源码路径中，SGLang 通过 HiCacheStorage 把 `page key` 和主机端 KV 缓冲区信息传给 Mooncake Store 后端；Mooncake Store 负责对象元数据和数据搬运；要完整复用这部分 KV Cache，HiCache 还需确认每个缓存页读取成功，并将数据回载到 GPU。
 
 ## 这条链路的边界
 
-SGLang 到 Mooncake Store 的技术边界，不能用“把 KV 缓存放进 Mooncake”一句话概括。
+SGLang 到 Mooncake Store 的技术边界，不能用“把 KV Cache 放进 Mooncake”一句话概括。
 
-SGLang 先把前缀 KV 缓存分页并生成哈希，再把 GPU KV 降级到主机内存池；Mooncake 后端将主机页索引翻译成 Mooncake 对象键和缓冲区指针，通过零拷贝批量接口写入 Store。读取时，数据也会先回到主机内存池，再由 HiCache 回载到 GPU。
+SGLang 先把前缀 KV Cache 按页切分并生成 `page key`，再将 GPU 中的 KV 数据备份到主机内存池。Mooncake 后端根据 `page key` 生成 Store 对象键，并根据主机页索引取得对应的缓冲区指针，然后通过零拷贝批量接口写入 Store。读取时，数据也会先回到主机内存池，再由 HiCache 回载到 GPU。
 
 所以这条链路真正连接的是两套系统抽象：
 
 - SGLang HiCache：前缀树、页哈希、主机与 GPU 内存池、预取和回载。
 - Mooncake Store：对象键、批量存在性查询、零拷贝读写、副本与元数据、Transfer Engine。
 
-理解这个边界以后，才不会把 Mooncake 当成普通远端 KV，也不会把 HiCache 存储后端误解成一层简单的 Python 字典。二者连接起来，是为了让前缀 KV 缓存从单个 SGLang 工作进程中的内存状态，变成可以跨节点查询、搬运和复用的系统资源。
+理解这个边界以后，才不会把 Mooncake 当成普通的远程键值存储，也不会把 HiCache 存储后端误解成一层简单的 Python 字典。二者连接起来，是为了让前缀 KV Cache 从单个 SGLang 工作进程中的内存状态，变成可以跨节点查询、传输和复用的系统资源。
 
-## 结论：共享 Transfer Engine 是优化，主机内存页才是语义入口
+## 结论：共享 Transfer Engine 是优化，主机端 KV 缓冲区才是数据交接点
 
-这条链路的关键结论是：SGLang 和 Mooncake 的语义交接点不是 GPU 张量，也不是一个抽象的“KV 缓存对象”，而是**页键 + 主机 KV 缓存页指针 + 后端结果**。
+这条链路的关键结论是：SGLang 和 Mooncake 的接口不会直接传递 GPU 张量或抽象的“KV Cache 对象”，而是传递 **`page key`、主机端 KV 缓冲区信息，以及后端返回的每页读写结果**。
 
 因此调试或设计类似系统时，先不要问“Mooncake 是否开启”，而要问：
 
 - `HiCacheStorage` 为什么是 SGLang 和 Mooncake Store 的分界线？
-- 一个逻辑页键在 MHA 下为什么会展开成 K/V 对象键？
-- `batch_get_into` 为什么要接收主机 KV 指针，而不是返回张量？
+- 一个 `page key` 在 MHA 下为什么会映射为 K/V 两个对象键？
+- `batch_get_into` 为什么要接收主机端 KV 缓冲区指针，而不是返回张量？
 - `PoolTransfer` 如何让辅助内存池参与同一个前缀的命中判断？
-- 共享 Mooncake Transfer Engine 为什么只是优化，而不是语义前提？
+- 为什么共享 Mooncake Transfer Engine 只影响性能，不决定 Store 读写是否正确？
 
-这些问题能把配置项、源码路径和运行时现象串起来。只要主机缓存页没有正确注册、对象键没有按布局展开，或页级结果没有从对象级结果聚合出来，共享 Transfer Engine 即使工作顺畅，也只能说明字节有机会被搬运，不能说明这段前缀已经被 SGLang 推理引擎复用。
+这些问题能把配置项、源码路径和运行时现象串起来。只要主机缓冲区没有正确注册、对象键没有按模型布局生成，或对象读写结果没有正确汇总到每个缓存页，共享 Transfer Engine 即使工作正常，也只能说明数据传输路径可用，不能说明这段前缀已经被 SGLang 推理引擎复用。

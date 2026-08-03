@@ -51,7 +51,13 @@ python/sglang/srt/mem_cache/storage/backend_factory.py
       label: 'L3: HiCacheStorage',
       detail: '远端或本地持久化后端',
       tone: 'blue',
-      items: ['hash_value', 'batch_exists', 'batch_get', 'batch_set', 'PoolTransfer'],
+      items: [
+        'hash_value',
+        'batch_exists',
+        'batch_get',
+        'batch_set',
+        'PoolTransfer',
+      ],
     },
     {
       label: '存储后端实现',
@@ -83,7 +89,7 @@ HiCache 的第一步不是推翻这套机制，而是在它之上补充主机内
 ```text
 value             这段前缀在 GPU KV 池中的 token 索引
 host_value        这段前缀在主机 KV 池中的 token 索引
-hash_value        这段前缀对应的存储页键
+hash_value        这段前缀对应的 page key
 backuped          是否已经完成 GPU 到主机内存的备份
 backuped_storage  是否已经完成主机内存到存储层的备份
 lock_ref          GPU 侧引用保护，避免异步回载或驱逐时节点被删除
@@ -140,7 +146,7 @@ v2:
   batch_set_v2(transfers)
 ```
 
-v1 面向普通 KV 池：一组页键对应一组主机 KV 页索引。
+v1 面向普通 KV 池：一组 `page key` 对应一组主机端 KV Cache 页索引。
 
 v2 面向混合缓存：除了 KV 以外，还可能有 Mamba 状态、SWA 状态、DeepSeek V4 辅助内存池和草稿模型 KV 等额外数据。v2 用 `PoolTransfer` 描述每个内存池的主机与设备索引、键、命中策略和依赖关系。
 
@@ -155,7 +161,7 @@ PoolTransfer
   indices_from_pool
 ```
 
-这样 HiCache 不需要了解 Mooncake、NIXL、3FS 每个后端的内部实现，只需围绕页键和主机内存池索引组织读写。
+这样 HiCache 不需要了解 Mooncake、NIXL、3FS 每个后端的内部实现，只需围绕 `page key` 和主机内存池索引组织读写。
 
 ## 写策略决定何时进入 L2/L3
 
@@ -218,10 +224,10 @@ load_back(...)
 `StorageBackendFactory` 会创建 Mooncake 后端。该后端实现 `HiCacheStorage`，并把 SGLang 的主机 KV 缓冲区注册给 Mooncake Store。之后：
 
 ```text
-HiCache 页键
+HiCache page key
   -> Mooncake 对象键
 
-主机 KV 页指针
+主机端 KV 缓冲区指针
   -> Mooncake 零拷贝缓冲区指针
 
 batch_set_v1/v2
@@ -235,7 +241,7 @@ Mooncake 只接住 L3 这一段。前缀树、请求调度和 GPU 槽位管理�
 
 ## 把 HiCache 看作推理系统中的状态机
 
-HiCache 难读，是因为它不是一个独立 KV 存储，而是嵌在 SGLang 推理引擎中的状态机。基数树节点同时保存 GPU、主机内存和存储三层位置：`value` 指向 GPU token 索引，`host_value` 指向主机内存池索引，`hash_value` 指向 L3 页键。
+HiCache 难读，是因为它不是一个独立 KV 存储，而是嵌在 SGLang 推理引擎中的状态机。基数树节点同时保存 GPU、主机内存和存储三层位置：`value` 指向 GPU token 索引，`host_value` 指向主机内存池索引，`hash_value` 保存 L3 使用的 `page key`。
 
 这也解释了为什么 L3 后端读写的是主机内存池，而不是 GPU 内存池。存储层负责把缓存页写入或读出主机缓冲区；从主机内存到 GPU 的回载仍由 HiCache 和缓存控制器处理。存储层命中只说明“远端可能有数据”，不代表“注意力计算已经能够复用”。
 

@@ -178,7 +178,7 @@ workSections:
     intro: Articles that follow concrete code paths through inference, caching, and data transfer.
     items:
       - name: SGLang to Mooncake Store KV path
-        description: A walkthrough of a complete write and read cycle, from page keys and host KV pointers to Store objects and the shared Transfer Engine.
+        description: A walkthrough of a complete write and read cycle, from page keys and host-memory KV buffer pointers to Store objects and the shared Transfer Engine.
         href: /blogs/sglang-to-mooncake-store-kv-cache-path/
         tags:
           - SGLang

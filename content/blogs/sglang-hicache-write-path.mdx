@@ -46,7 +46,7 @@ write_backup(node)
   -> write_backup_storage(...)
   -> HiCacheStorage.batch_set_v1/v2
   -> MooncakeStore.batch_set_v1/v2
-  -> Store 对象写入结果聚合为页级结果
+  -> 按缓存页汇总 Store 对象的写入结果
 ```
 
 本文只分析 HiCache 写入路径和 Mooncake 后端的页与对象边界，不覆盖完整淘汰策略、GPU 计算内核和分布式部署基准测试，也不声称某种写入策略在所有负载下都更优。
@@ -64,7 +64,7 @@ H->Storage 备份:
 ```
 
 <LayerDiagram
-  title="HiCache 写路径不是一次 set，而是两次降级"
+  title="HiCache 写路径不是一次 set，而是两级备份"
   caption="第一段保证 GPU KV 被驱逐时不会丢失；第二段让主机 KV 也可以释放，并在需要时从 L3 拉回来。"
   layers={[
     {
@@ -81,7 +81,7 @@ H->Storage 备份:
     },
     {
       label: 'L3：存储后端',
-      detail: 'Mooncake 后端按页键写入对象',
+      detail: 'Mooncake 后端根据 page key 生成并写入 Store 对象',
       tone: 'mauve',
       items: ['node.hash_value', 'batch_set_v1/v2', '对象键'],
     },
@@ -92,7 +92,7 @@ H->Storage 备份:
 
 <FlowDiagram
   title="写路径总览：写入发生到真正可复用之间还有提交边界"
-  caption="这条路径把 GPU 上已经生成的 KV 逐层降级，但每层成功都只能证明该层的状态。"
+  caption="这条路径把 GPU 上已经生成的 KV Cache 逐级备份，但每一级成功都只能证明该层的数据已经就绪。"
   steps={[
     {
       label: '已生成的 GPU KV',
@@ -104,21 +104,24 @@ H->Storage 备份:
     {
       label: 'D->H 备份',
       meta: 'write_backup',
-      detail: '主机内存池分配成功并提交 host_value 后，GPU 驱逐才有本地恢复路径。',
+      detail:
+        '主机内存池分配成功并提交 host_value 后，GPU 驱逐才有本地恢复路径。',
       tone: 'blue',
       items: ['PoolTransfer', '主机缓存页', 'commit_hicache_transfer'],
     },
     {
       label: 'H->Storage 写入',
       meta: 'write_backup_storage',
-      detail: '存储后端从主机指针读取缓存页或对象，并返回页级结果。',
+      detail:
+        '存储后端从主机端缓冲区读取缓存页或对象，并返回每个缓存页的写入结果。',
       tone: 'mauve',
       items: ['node.hash_value', 'batch_set_v1/v2', 'ongoing_backup'],
     },
     {
       label: '后续读取复用',
       meta: '未来请求',
-      detail: '后续还要经过 exists、prefetch、load_back；写入发生不等于复用完成。',
+      detail:
+        '后续还要经过 exists、prefetch、load_back；写入发生不等于复用完成。',
       tone: 'green',
       items: ['batch_exists', 'batch_get', 'load_back'],
     },
@@ -152,7 +155,7 @@ write_backup(node)
 ```
 
 <SequenceDiagram
-  title="write_backup 把一个基数树节点从 GPU 降级到主机内存"
+  title="write_backup 把一个基数树节点从 GPU 备份到主机内存"
   caption="这段流程只完成 D->H，不代表数据已经进入 Mooncake Store。"
   actors={['基数树节点', 'HiCache', '缓存控制器', '主机 KV 池']}
   steps={[
@@ -205,7 +208,7 @@ device_indices=<GPU token 索引>
 ```text
 name=PoolName.KV
 host_indices=<主机 token/页面索引>
-keys=<存储页键>
+keys=<page key>
 ```
 
 这就是 `PoolTransfer` 同时包含 `device_indices`、`host_indices` 和 `keys` 的原因：它需要跨越多个缓存层级。
@@ -290,7 +293,7 @@ v2 的意义在于，多个内存池必须共同构成可复用前缀。例如�
 
 ## 接到 Mooncake 时发生什么
 
-当后端为 Mooncake 时，`batch_set_v1` 会把逻辑页键展开成 Mooncake 对象键。
+当后端为 Mooncake 时，`batch_set_v1` 会根据 `page key` 生成 Mooncake 对象键。
 
 MHA 通常是：
 
@@ -357,11 +360,11 @@ batch_put_from_multi_buffers(...)
 
 - 主机内存不足，执行 `evict_host` 后仍无法分配。
 - D->H 传输失败，`cache_controller.write` 返回 `None`。
-- 存储后端写入失败，页级结果返回 false。
+- 存储后端写入失败，对应缓存页的结果为 false。
 - 混合缓存中的某个辅助内存池写入失败，导致整体可用前缀缩短。
 - 主机内存锁或节点拆分处理不当，可能造成写入中的节点状态不一致。
 
-HiCache 通过锁、进行中的操作记录和页级结果，尽量把失败限制在可回退状态，而不是直接把基数树标记为“全部可用”。
+HiCache 通过锁、进行中的操作记录和每个缓存页的写入结果，尽量把失败限制在可回退状态，而不是直接把基数树标记为“全部可用”。
 
 ## 这条路径能证明什么
 
@@ -373,9 +376,9 @@ HiCache 通过锁、进行中的操作记录和页级结果，尽量把失败限
       title: '能够确认',
       tone: 'green',
       items: [
-        'HiCache 写路径先把 GPU KV 降级到主机内存，再把主机缓存页写入存储后端。',
+        'HiCache 写路径先把 GPU 中的 KV Cache 备份到主机内存，再把主机端缓存页写入存储后端。',
         '主机内存锁和进行中的备份用于保护异步写入期间的主机缓冲区生命周期。',
-        'Mooncake 后端看到的是主机指针和对象或页级结果，不是 GPU 张量。',
+        'Mooncake 后端接收的是主机端缓冲区指针，并返回对象或缓存页的写入结果，而不是直接处理 GPU 张量。',
         'v2 写路径需要把 KV 与辅助内存池的结果汇总为共同可用边界。',
       ],
     },
@@ -394,7 +397,7 @@ HiCache 通过锁、进行中的操作记录和页级结果，尽量把失败限
 
 ## 结论：写入成功必须按页提交
 
-HiCache 写入路径最容易误读的地方，是把“某个缓冲区搬完”当成“这个前缀以后可以复用”。更稳妥的读法是按页级语义检查提交条件：
+HiCache 写入路径最容易误读的地方，是把“某个缓冲区已经传输完成”当成“这个前缀以后可以复用”。更稳妥的读法是按缓存页检查提交条件：
 
 ```text
 父前缀可以恢复
