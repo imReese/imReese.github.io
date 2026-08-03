@@ -2,7 +2,7 @@ name: Snake Contrib
 
 on:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: '0 0 * * *'
 
   # allows to manually run the job at any time
   workflow_dispatch:
@@ -15,14 +15,23 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
       # generates a snake game from a github user (<github_user_name>) contributions graph, output a svg animation at <svg_out_path>
       - name: generate github-contribution-grid-snake.svg
         uses: Platane/snk/svg-only@v3.5.0
         with:
           github_user_name: ${{ github.repository_owner }}
           outputs: |
-            dist/public/github-contribution-snake/github-contribution-grid-snake.svg
-            dist/public/github-contribution-snake/github-contribution-grid-snake-dark.svg?palette=github-dark
+            dist/public/github-contribution-snake/github-contribution-grid-snake.svg?color_snake=#8839ef&color_dots=#dce0e8,#acd8a3,#78b66a,#4b9342,#2d7330
+            dist/public/github-contribution-snake/github-contribution-grid-snake-dark.svg?color_snake=#cba6f7&color_dots=#313244,#42674d,#5f8f60,#82b879,#a6e3a1
+
+      - name: Apply site motion preferences
+        run: >-
+          node scripts/postprocess-github-snake.mjs
+          dist/public/github-contribution-snake/github-contribution-grid-snake.svg
+          dist/public/github-contribution-snake/github-contribution-grid-snake-dark.svg
 
       # push the content of <build_dir> to a branch
       # the content will be available at https://raw.githubusercontent.com/<github_user>/<repository>/<target_branch>/<file> , or as github page

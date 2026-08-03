@@ -379,6 +379,13 @@ function BlogReadingMap({
                   })}
                   scroll={false}
                   aria-current={selectedYear === year ? 'true' : undefined}
+                  aria-label={
+                    locale === 'zh'
+                      ? `${year} 年，${count} 篇文章`
+                      : `${year}, ${count} ${
+                          count === 1 ? copy.noteSingular : copy.notePlural
+                        }`
+                  }
                   className={clsx(
                     'group flex items-baseline justify-between gap-3 py-0.5 text-sm transition',
                     selectedYear === year

@@ -146,6 +146,16 @@
     outline: 2px solid hsl(var(--focus-ring));
     outline-offset: 3px;
   }
+
+  .table-scroll-hint-en,
+  .table-scroll-hint-zh {
+    display: none;
+  }
+
+  html:lang(en) .table-scroll-hint-en,
+  html:lang(zh-CN) .table-scroll-hint-zh {
+    display: inline;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

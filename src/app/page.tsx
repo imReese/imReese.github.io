@@ -5,16 +5,14 @@ import { ElegantIntro } from '@/components/home/ElegantIntro'
 import { getAllBlogs } from '@/lib/blogs'
 import { OpenSourcePulse } from '@/components/home/OpenSourcePulse'
 import { HomepageNotes } from '@/components/home/HomepageNotes'
-import { siteContent } from '@/config/content'
+import { contentByLocale, siteContent } from '@/config/content'
 import { createPageMetadata, serializeJsonLd, absoluteUrl } from '@/lib/seo'
 
-const homeTitle = 'Reese — LLM inference and systems performance'
-const homeDescription =
-  'Backend and systems engineering work on LLM inference runtimes, KV cache systems, Mooncake integration, and performance analysis.'
+const homeMetadata = contentByLocale.en.pages.metadata.home
 
 export const metadata: Metadata = createPageMetadata({
-  title: homeTitle,
-  description: homeDescription,
+  title: homeMetadata.title,
+  description: homeMetadata.description,
   path: '/',
   absoluteTitle: true,
 })

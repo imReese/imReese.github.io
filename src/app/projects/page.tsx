@@ -1,12 +1,14 @@
 import { type Metadata } from 'next'
 
 import { ProjectsPageContent } from '@/components/project/ProjectsPageContent'
+import { contentByLocale } from '@/config/content'
 import { createPageMetadata } from '@/lib/seo'
 
+const projectsMetadata = contentByLocale.en.pages.metadata.projects
+
 export const metadata: Metadata = createPageMetadata({
-  title: 'Projects',
-  description:
-    'Projects and code walkthroughs on SGLang, NexusKV, Mooncake, HiCache, KV cache management, and LLM serving systems.',
+  title: projectsMetadata.title,
+  description: projectsMetadata.description,
   path: '/projects/',
 })
 

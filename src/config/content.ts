@@ -253,6 +253,13 @@ export type ProjectsContent = {
 }
 
 export type PagesContent = {
+  metadata: Record<
+    'home' | 'about' | 'projects' | 'blog',
+    {
+      title: string
+      description: string
+    }
+  >
   about: {
     headline: string
     timelineTitle: string

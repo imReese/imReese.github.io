@@ -1,15 +1,17 @@
 import { type Metadata } from 'next'
 
 import { BlogsPageContent } from '@/components/blog/BlogsPageContent'
+import { contentByLocale } from '@/config/content'
 import { getAllBlogs } from '@/lib/blogs'
 import { createPageMetadata } from '@/lib/seo'
 
 export const runtime = process.env.NEXT_RUNTIME === 'edge' ? 'edge' : 'nodejs'
 
+const blogMetadata = contentByLocale.en.pages.metadata.blog
+
 export const metadata: Metadata = createPageMetadata({
-  title: 'Blog',
-  description:
-    'Chinese engineering articles on SGLang runtime, Mooncake and HiCache internals, KV cache systems, storage, performance, and runbooks.',
+  title: blogMetadata.title,
+  description: blogMetadata.description,
   path: '/blogs/',
 })
 

@@ -4,6 +4,17 @@ import test from 'node:test'
 
 import { localeToHtmlLang } from '../src/lib/language.ts'
 
+const languageProviderSource = readFileSync(
+  'src/components/shared/LanguageProvider.tsx',
+  'utf8',
+)
+const localizedMetadataSource = readFileSync(
+  'src/lib/localizedPageMetadata.ts',
+  'utf8',
+)
+const englishPagesSource = readFileSync('content/en/pages.yml', 'utf8')
+const chinesePagesSource = readFileSync('content/zh/pages.yml', 'utf8')
+
 test('maps navigation locale to a valid document language tag', () => {
   assert.equal(localeToHtmlLang('en'), 'en')
   assert.equal(localeToHtmlLang('zh'), 'zh-CN')
@@ -30,12 +41,25 @@ test('server defaults to English UI without inventing language routes', () => {
   assert.equal(rootLayout.includes('/zh/'), false)
 })
 
+test('keeps page metadata synchronized with the selected UI language', () => {
+  assert.match(englishPagesSource, /title: About/)
+  assert.match(englishPagesSource, /title: Projects/)
+  assert.match(chinesePagesSource, /title: 关于/)
+  assert.match(chinesePagesSource, /title: 项目/)
+  assert.match(chinesePagesSource, /title: 技术博客/)
+  assert.match(localizedMetadataSource, /documentTitle/)
+  assert.match(localizedMetadataSource, /openGraphLocale/)
+  assert.match(
+    languageProviderSource,
+    /document\.title = metadata\.documentTitle/,
+  )
+  assert.match(languageProviderSource, /meta\[property="og:title"\]/)
+  assert.match(languageProviderSource, /meta\[name="twitter:title"\]/)
+})
+
 test('localizes the 404 page and its return action', () => {
   const notFound = readFileSync('src/app/not-found.tsx', 'utf8')
-  const translations = readFileSync(
-    'src/components/shared/LanguageProvider.tsx',
-    'utf8',
-  )
+  const translations = languageProviderSource
 
   assert.match(notFound, /useLanguage\(\)/)
   assert.match(notFound, /t\('notFound\.title'\)/)

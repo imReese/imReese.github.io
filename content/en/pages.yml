@@ -1,3 +1,17 @@
+metadata:
+  home:
+    title: 'Reese — LLM inference and systems performance'
+    description: 'Backend and systems engineering work on LLM inference runtimes, KV cache systems, Mooncake integration, and performance analysis.'
+  about:
+    title: About
+    description: 'Reese’s engineering path from distributed storage and CPU workload analysis to LLM inference runtimes, KV cache systems, and transfer infrastructure.'
+  projects:
+    title: Projects
+    description: 'Projects and code walkthroughs on SGLang, NexusKV, Mooncake, HiCache, KV cache management, and LLM serving systems.'
+  blog:
+    title: Blog
+    description: 'Chinese engineering articles on SGLang runtime, Mooncake and HiCache internals, KV cache systems, storage, performance, and runbooks.'
+
 about:
   headline: 'From distributed storage and CPU performance analysis to LLM serving.'
   timelineTitle: Experience

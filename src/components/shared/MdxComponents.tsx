@@ -7,6 +7,7 @@ import {
   type TableHTMLAttributes,
 } from 'react'
 import clsx from 'clsx'
+import { MoveHorizontal } from 'lucide-react'
 import { AlignmentDiagram } from './AlignmentDiagram'
 import {
   AttentionSpeedupCurve,
@@ -59,18 +60,28 @@ const ResponsiveTable = ({
   className,
   ...props
 }: TableHTMLAttributes<HTMLTableElement>) => (
-  <div className="not-prose my-8 w-full max-w-[72rem] overflow-x-auto rounded-xl border border-border bg-card/30 shadow-sm">
-    <table
-      {...props}
-      className={clsx(
-        'w-full min-w-[48rem] border-collapse text-left text-sm',
-        '[&_code]:rounded-md [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em] [&_code]:text-foreground',
-        '[&_td]:border-b [&_td]:border-border/70 [&_td]:px-4 [&_td]:py-3 [&_td]:align-top [&_td]:leading-6 [&_td]:text-muted-foreground',
-        '[&_th]:border-b [&_th]:border-border [&_th]:bg-muted/45 [&_th]:px-4 [&_th]:py-3 [&_th]:align-bottom [&_th]:font-semibold [&_th]:text-foreground',
-        '[&_tbody_tr:last-child_td]:border-b-0',
-        className,
-      )}
-    />
+  <div className="not-prose my-8 w-full max-w-[72rem] overflow-hidden rounded-xl border border-border bg-card/30 shadow-sm">
+    <div
+      className="flex items-center justify-end gap-1.5 border-b border-border/70 bg-muted/20 px-3 py-2 text-[0.6875rem] font-medium text-muted-foreground sm:hidden"
+      aria-hidden="true"
+    >
+      <MoveHorizontal className="h-3.5 w-3.5" />
+      <span className="table-scroll-hint-en">Swipe horizontally</span>
+      <span className="table-scroll-hint-zh">左右滑动查看完整表格</span>
+    </div>
+    <div className="overflow-x-auto overscroll-x-contain">
+      <table
+        {...props}
+        className={clsx(
+          'w-full min-w-[48rem] border-collapse text-left text-sm',
+          '[&_code]:rounded-md [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em] [&_code]:text-foreground',
+          '[&_td]:border-b [&_td]:border-border/70 [&_td]:px-4 [&_td]:py-3 [&_td]:align-top [&_td]:leading-6 [&_td]:text-muted-foreground',
+          '[&_th]:border-b [&_th]:border-border [&_th]:bg-muted/45 [&_th]:px-4 [&_th]:py-3 [&_th]:align-bottom [&_th]:font-semibold [&_th]:text-foreground',
+          '[&_tbody_tr:last-child_td]:border-b-0',
+          className,
+        )}
+      />
+    </div>
   </div>
 )
 

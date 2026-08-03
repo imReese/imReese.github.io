@@ -1,3 +1,17 @@
+metadata:
+  home:
+    title: '段冰 — 大模型推理与系统性能'
+    description: '段冰的个人网站，记录大模型推理引擎、KV Cache 系统、Mooncake 集成与性能优化实践。'
+  about:
+    title: 关于
+    description: '段冰从分布式存储、CPU 性能分析到大模型推理系统的工作经历与关注方向。'
+  projects:
+    title: 项目
+    description: '大模型推理、KV Cache、Mooncake、HiCache 与性能工程相关的项目和源码笔记。'
+  blog:
+    title: 技术博客
+    description: '记录 SGLang、KV Cache、Mooncake Store、Transfer Engine、分布式系统和性能优化。'
+
 about:
   headline: '我做过分布式存储和 CPU 性能分析，现在专注大模型推理。'
   timelineTitle: 工作经历

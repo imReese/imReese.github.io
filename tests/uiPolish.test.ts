@@ -33,6 +33,27 @@ const systemsPanelSource = readFileSync(
   'utf8',
 )
 const globalsSource = readFileSync('src/styles/globals.css', 'utf8')
+const mdxComponentsSource = readFileSync(
+  'src/components/shared/MdxComponents.tsx',
+  'utf8',
+)
+const githubSnakeSource = readFileSync(
+  'src/components/home/GitHubSnake.tsx',
+  'utf8',
+)
+const snakeWorkflowSource = readFileSync('.github/workflows/snk.yml', 'utf8')
+const snakePostprocessSource = readFileSync(
+  'scripts/postprocess-github-snake.mjs',
+  'utf8',
+)
+const lightSnakeSource = readFileSync(
+  'public/github-contribution-snake/github-contribution-grid-snake.svg',
+  'utf8',
+)
+const darkSnakeSource = readFileSync(
+  'public/github-contribution-snake/github-contribution-grid-snake-dark.svg',
+  'utf8',
+)
 const englishProfileSource = readFileSync('content/en/profile.yml', 'utf8')
 const chineseProfileSource = readFileSync('content/zh/profile.yml', 'utf8')
 
@@ -130,6 +151,32 @@ test('limits blog card metadata without changing filter parameters', () => {
 test('uses one shared content rail across every blog article', () => {
   assert.match(blogLayoutSource, /mx-auto w-full max-w-6xl/)
   assert.match(globalsSource, /--blog-content-width: 72rem/)
+})
+
+test('keeps wide article tables discoverable on mobile', () => {
+  assert.match(mdxComponentsSource, /table-scroll-hint-en/)
+  assert.match(mdxComponentsSource, /table-scroll-hint-zh/)
+  assert.match(mdxComponentsSource, /overflow-x-auto overscroll-x-contain/)
+  assert.match(globalsSource, /html:lang\(en\) \.table-scroll-hint-en/)
+  assert.match(globalsSource, /html:lang\(zh-CN\) \.table-scroll-hint-zh/)
+})
+
+test('gives archive years unambiguous accessible labels', () => {
+  assert.match(blogsSource, /`\$\{year\} 年，\$\{count\} 篇文章`/)
+  assert.match(blogsSource, /`\$\{year\}, \$\{count\}/)
+})
+
+test('keeps GitHub activity responsive, theme-aware, and motion-safe', () => {
+  assert.equal(githubSnakeSource.includes('w-[640px]'), false)
+  assert.match(githubSnakeSource, /className="h-auto w-full"/)
+  assert.match(snakeWorkflowSource, /color_snake=#8839ef/)
+  assert.match(snakeWorkflowSource, /color_snake=#cba6f7/)
+  assert.match(snakeWorkflowSource, /postprocess-github-snake\.mjs/)
+  assert.match(snakePostprocessSource, /prefers-reduced-motion:reduce/)
+  assert.match(lightSnakeSource, /--c1:#acd8a3/)
+  assert.match(darkSnakeSource, /--c1:#42674d/)
+  assert.match(lightSnakeSource, /prefers-reduced-motion:reduce/)
+  assert.match(darkSnakeSource, /prefers-reduced-motion:reduce/)
 })
 
 test('keeps blog list navigation available on direct article visits', () => {

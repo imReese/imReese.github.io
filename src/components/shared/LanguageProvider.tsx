@@ -8,7 +8,9 @@ import {
   useMemo,
   useState,
 } from 'react'
+import { usePathname } from 'next/navigation'
 import { localeToHtmlLang, type Locale } from '@/lib/language'
+import { getLocalizedPageMetadata } from '@/lib/localizedPageMetadata'
 
 const STORAGE_KEY = 'reese-language'
 
@@ -91,6 +93,7 @@ function readInitialLocale(): Locale {
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>('en')
+  const pathname = usePathname()
 
   useEffect(() => {
     setLocaleState(readInitialLocale())
@@ -119,6 +122,34 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     document.documentElement.lang = localeToHtmlLang(locale)
   }, [locale])
+
+  useEffect(() => {
+    const metadata = getLocalizedPageMetadata(locale, pathname)
+
+    if (!metadata) {
+      return
+    }
+
+    document.title = metadata.documentTitle
+
+    const fields = [
+      ['meta[name="description"]', metadata.description],
+      ['meta[property="og:title"]', metadata.title],
+      ['meta[property="og:description"]', metadata.description],
+      ['meta[property="og:locale"]', metadata.openGraphLocale],
+      ['meta[property="og:site_name"]', metadata.siteName],
+      ['meta[name="twitter:title"]', metadata.title],
+      ['meta[name="twitter:description"]', metadata.description],
+    ] as const
+
+    for (const [selector, content] of fields) {
+      document
+        .querySelectorAll<HTMLMetaElement>(selector)
+        .forEach((element) => {
+          element.content = content
+        })
+    }
+  }, [locale, pathname])
 
   return (
     <LanguageContext.Provider value={value}>
