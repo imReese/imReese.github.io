@@ -625,7 +625,7 @@ export function CompareCallout({
 }
 
 export function ExpandableNotes({
-  eyebrow = 'source notes',
+  eyebrow = 'code walkthrough',
   title,
   caption,
   notes,

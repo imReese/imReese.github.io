@@ -126,7 +126,7 @@ Mooncake 提供的是这类决策可以依赖的数据面能力。
   ]}
 />
 
-## LMCache / vLLM 更像 Store 后端关系
+## 对 LMCache / vLLM 来说，Mooncake Store 更像缓存后端
 
 LMCache 和 vLLM 的语境稍有不同。LMCache 本身就是围绕 KV 缓存复用构建的一层系统，Mooncake Store 可以作为后端基础之一：把 KV 缓存对象放进分布式对象缓存，再通过 Store 和 Transfer Engine 跨节点访问。
 

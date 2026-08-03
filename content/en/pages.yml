@@ -21,7 +21,7 @@ home:
     empty: No articles yet.
   selectedWork:
     title: Recent projects
-    intro: Recent engineering projects and ongoing source-code studies.
+    intro: Recent engineering projects and ongoing code walkthroughs.
 
 projectsPage:
   githubActivityTitle: GitHub activity
@@ -30,10 +30,10 @@ projectsPage:
 
 blogPage:
   headline: Blog
-  intro: Source notes on SGLang, KV cache management, Mooncake Store, Transfer Engine, and related performance work. Articles are currently written in Chinese.
+  intro: Engineering notes on SGLang, KV cache management, Mooncake Store, Transfer Engine, and related performance work. Articles are currently written in Chinese.
   readBlog: Read article
   categories:
-    engineering-deep-dive: Source analysis
+    engineering-deep-dive: Code walkthroughs
     debugging-validation: Debugging and validation
     engineering-notes: Engineering notes
     runbooks: Runbooks
@@ -52,7 +52,7 @@ blogPage:
     descriptionLabel: Article summary
   sections:
     featuredTitle: Recommended reading
-    featuredIntro: 'A few in-depth source analyses and systems notes.'
+    featuredIntro: 'A selection of in-depth code walkthroughs and systems notes.'
     recentTitle: Recent articles
     recentIntro: Recently published articles.
     notesTitle: Notes and runbooks

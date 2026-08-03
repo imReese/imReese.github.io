@@ -9,7 +9,7 @@ focusAreas:
 aboutParagraphs:
   - I currently optimize LLM inference engines, focusing on scheduling, KV cache management, cross-node data movement, and accelerator backends.
   - Earlier in my career, I worked on high availability and cluster management for distributed storage, then on cloud workload analysis and CPU architecture.
-  - This site collects my engineering projects, source-code notes, and lessons from debugging and validation work.
+  - This site collects my engineering projects, notes from reading source code, and lessons from debugging and validation work.
 
 currentFocus:
   eyebrow: Current focus
@@ -25,7 +25,7 @@ currentFocus:
   links:
     - label: Projects
       href: /projects/
-    - label: Source notes
+    - label: Code walkthroughs
       href: /blogs/
 
 selectedWork:
@@ -41,11 +41,11 @@ selectedWork:
     link:
       label: Read the design notes
       href: https://github.com/imReese/NexusKV/blob/main/docs/design/execution-boundary.md
-  - eyebrow: Source analysis
+  - eyebrow: Code walkthrough
     title: Mooncake and HiCache internals
     description: Follows real read and write paths across SGLang, HiCache, and Mooncake Store to explain cache lookup, host-memory loading, metadata updates, and cross-node transfer.
     link:
-      label: Read the source analysis
+      label: Read the walkthrough
       href: /blogs/sglang-to-mooncake-store-kv-cache-path/
 
 researchAreas:
@@ -129,10 +129,10 @@ experience:
 
 education:
   - school: Nanjing University
-    major: B.Eng. Environmental Engineering
+    major: B.Eng. in Environmental Engineering
     logo: college
     start: '2017.09'
     end: '2021.06'
     details:
       - GPA 4.2 / 5.0.
-      - Computer organization, data structures, operating systems, networks, computer architecture, linear algebra, probability and statistics, and algorithm design.
+      - Coursework included computer organization, data structures, operating systems, networks, computer architecture, linear algebra, probability and statistics, and algorithm design.

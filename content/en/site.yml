@@ -31,7 +31,7 @@ navigation:
       href: /about/
     - name: Projects
       href: /projects/
-    - name: Blogs
+    - name: Blog
       href: /blogs/
   footer:
     - name: Home
@@ -40,7 +40,7 @@ navigation:
       href: /about/
     - name: Projects
       href: /projects/
-    - name: Blogs
+    - name: Blog
       href: /blogs/
 
 socialLinks:

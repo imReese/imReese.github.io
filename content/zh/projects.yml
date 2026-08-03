@@ -136,7 +136,7 @@ diagrams:
 
 workSections:
   - title: 关注的上游项目
-    intro: 这些仓库用于同步上游代码；相关笔记记录我关注的实现和集成流程。
+    intro: 这些仓库用于跟踪上游项目；相关笔记记录我关注的实现和集成流程。
     items:
       - name: SGLang
         description: 主要关注调度器、HiCache、PD 传输及其与推理服务流程的衔接。

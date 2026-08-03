@@ -6,7 +6,7 @@ import { createPageMetadata } from '@/lib/seo'
 export const metadata: Metadata = createPageMetadata({
   title: 'Projects',
   description:
-    'Projects and source notes on SGLang, NexusKV, Mooncake, HiCache, KV cache management, and LLM serving systems.',
+    'Projects and code walkthroughs on SGLang, NexusKV, Mooncake, HiCache, KV cache management, and LLM serving systems.',
   path: '/projects/',
 })
 

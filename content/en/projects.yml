@@ -1,5 +1,5 @@
-headline: Projects and source notes
-intro: This page collects the projects I maintain and the source-code notes I write while studying SGLang, Mooncake, and HiCache. Each project includes its current status and known gaps.
+headline: Projects and code walkthroughs
+intro: This page collects the projects I maintain and code walkthroughs based on my study of SGLang, Mooncake, and HiCache. Each project includes its current status and known gaps.
 
 overview:
   - label: Rust serving prototype
@@ -8,7 +8,7 @@ overview:
   - label: KV cache platform
     value: NexusKV
     description: Separates cache reuse, state indexing, data movement, and inference-engine integration.
-  - label: Source-code notes
+  - label: Code walkthroughs
     value: Mooncake and HiCache
     description: Follows real read and write paths through cache lifecycle, Store semantics, and Transfer Engine integration.
 
@@ -21,7 +21,7 @@ items:
       label: Experimental
       description: Request lifecycle and several integration paths are implemented and tested. Production model execution, support for accelerator backends, and deployment tooling are still incomplete.
     capabilities:
-      - A Rust implementation of request lifecycle, prefill/decode scheduling, bounded KV page allocation, and RadixCache-style prefix reuse.
+      - A Rust implementation of the request lifecycle, prefill/decode scheduling, bounded KV page allocation, and RadixCache-style prefix reuse.
       - Tonic gRPC and an OpenAI-compatible HTTP interface, plus a process-level CPU PD smoke test.
       - CPU reference execution with runtime detection of CUDA/cuBLAS support and clear errors when no backend is available.
       - PD transfer plans, readiness polling, descriptor checks, and memory registration through the Mooncake ABI.
@@ -49,9 +49,9 @@ items:
       description: Data structures, reuse planning, engine integration, and baseline backends are implemented. RDMA, GPU Direct, distributed coordination, and performance work are not complete.
     capabilities:
       - Uses versioned attention-state definitions and a Rust nxradixtree core to plan exact matches and prefix reuse.
-      - A PyO3 bridge that connects the Rust planner to SGLang and vLLM.
+      - Provides a PyO3 bridge that connects the Rust planner to SGLang and vLLM.
       - Includes a baseline executor, backend registry, fallback handling, data handles, and an in-memory store.
-      - Go control-plane configuration and policy reloads that preserve the last valid configuration on failure.
+      - Supports Go control-plane configuration and policy reloads while preserving the last valid configuration on failure.
     evidenceLinks:
       - label: Target architecture
         href: https://github.com/imReese/NexusKV/blob/main/docs/architecture/target-platform.md
@@ -136,7 +136,7 @@ diagrams:
 
 workSections:
   - title: Upstream projects I follow
-    intro: These repositories mirror upstream code; the related notes cover the implementation and integration paths I study.
+    intro: These repositories track upstream projects; the related notes cover the implementation and integration paths I study.
     items:
       - name: SGLang
         description: Focuses on the scheduler, HiCache, PD transfer, and how they fit into the serving flow.
@@ -173,12 +173,12 @@ workSections:
         tags:
           - Structured generation
           - Inference runtime
-          - Grammar parser
-  - title: Source notes
+          - Grammar compilation
+  - title: Code walkthroughs
     intro: Articles that follow concrete code paths through inference, caching, and data transfer.
     items:
       - name: SGLang to Mooncake Store KV path
-        description: A walkthrough of one write-and-read cycle, from page keys and host KV pointers to Store objects and the shared Transfer Engine.
+        description: A walkthrough of a complete write and read cycle, from page keys and host KV pointers to Store objects and the shared Transfer Engine.
         href: /blogs/sglang-to-mooncake-store-kv-cache-path/
         tags:
           - SGLang

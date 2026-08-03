@@ -52,7 +52,7 @@ blogPage:
     descriptionLabel: 文章摘要
   sections:
     featuredTitle: 推荐阅读
-    featuredIntro: '几篇整理得比较完整的源码分析和系统笔记。'
+    featuredIntro: '精选的源码分析和系统笔记。'
     recentTitle: 最近更新
     recentIntro: '最近发布的文章。'
     notesTitle: 笔记与工具手册
@@ -62,7 +62,7 @@ blogPage:
     resultsTitle: 筛选结果
   seriesNav:
     title: 按系列阅读
-    intro: 可以沿系统主线阅读，也可以从工具手册快速查找命令与日常操作。
+    intro: 可以按主题连续阅读，也可以从工具手册快速查找命令与日常操作。
     items:
       - value: sglang-runtime
         label: SGLang 推理系统
