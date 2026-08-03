@@ -1,6 +1,6 @@
 ---
 title: 'Mooncake Transfer Engine 传输层：MultiTransport 如何选择 TCP、RDMA 和设备路径'
-description: '梳理 MultiTransport 的安装与后端选择流程，说明 TCP、RDMA 和设备传输如何接入统一 API。'
+description: '梳理 MultiTransport 的安装与后端选择流程，说明 TCP、RDMA 和设备传输如何接入统一接口。'
 author: 'Reese'
 date: '2026-06-05'
 topics:
@@ -13,9 +13,9 @@ series: 'Mooncake / HiCache Internals'
 featured: false
 ---
 
-Transfer Engine 的上层 API 很统一，但真正的数据搬运要落到具体 transport。Mooncake 通过 MultiTransport 把不同 backend 统一起来。
+Transfer Engine 的上层接口很统一，但真正的数据搬运要落到具体传输方式。Mooncake 通过 MultiTransport 统一不同后端。
 
-读这一层时，重点不是背每个 transport 的实现细节，而是理解选择链路：
+读这一层时，重点不是背下每种传输后端的实现细节，而是理解选择链路：
 
 ```text
 TransferRequest
@@ -25,36 +25,36 @@ TransferRequest
 ```
 
 <MappingDiagram
-  title="MultiTransport 的选择输入不是只有 protocol"
-  caption="transport 选择要同时看 Segment metadata、已安装 backend、本地 buffer 注册状态和路径本地性。"
+  title="MultiTransport 不能只根据协议选择路径"
+  caption="选择传输方式时，要同时看 Segment 元数据、已安装后端、本地缓冲区注册状态和路径本地性。"
   source={{
     label: 'TransferRequest',
-    detail: 'opcode、local addr、target id、offset 和 length',
+    detail: '操作码、本地地址、目标 ID、偏移量和长度',
     tone: 'teal',
   }}
   groups={[
     {
-      label: 'segment metadata',
+      label: 'Segment 元数据',
       detail: '目标位置和协议提示',
       tone: 'blue',
-      items: ['protocol', 'te_endpoint', 'segment id', 'same endpoint?'],
+      items: ['协议', 'te_endpoint', 'Segment ID', '是否在同一节点'],
     },
     {
-      label: 'installed transports',
-      detail: '运行时真正可用的 backend',
+      label: '已安装的传输后端',
+      detail: '当前环境中真正可用的实现',
       tone: 'mauve',
-      items: ['tcp', 'rdma', 'efa', 'nvlink', 'vendor backend'],
+      items: ['TCP', 'RDMA', 'EFA', 'NVLink', '厂商后端'],
     },
     {
-      label: 'chosen path',
+      label: '最终路径',
       detail: '最终执行的搬运方式',
       tone: 'green',
-      items: ['local memcpy', 'RDMA READ/WRITE', 'TCP transfer', 'device path'],
+      items: ['本地内存复制', 'RDMA READ/WRITE', 'TCP 传输', '设备路径'],
     },
   ]}
 />
 
-## installTransport 决定可用 backend
+## installTransport 决定可用后端
 
 TransferEngine 暴露：
 
@@ -64,7 +64,7 @@ getTransport(proto)
 uninstallTransport(proto)
 ```
 
-proto 可以对应不同实现。常见路径包括：
+协议标识可以对应不同实现。常见路径包括：
 
 ```text
 tcp
@@ -75,7 +75,7 @@ intranode nvlink
 hip / ascend / vendor-specific backend
 ```
 
-是否真的可用取决于编译选项、运行环境、设备发现和配置。文档里写支持某种协议，不代表当前 build 一定启用。
+某个后端是否真的可用，取决于编译选项、运行环境、设备发现和配置。文档中写明支持某种协议，不代表当前构建一定启用了它。
 
 ## MultiTransport 的职责
 
@@ -83,35 +83,35 @@ MultiTransport 不是新的传输协议。它是路由和聚合层。
 
 它需要做几件事：
 
-- 管理已安装的 transport。
-- 根据 proto 或 Segment 信息找到目标 transport。
-- 把 batch transfer 拆给对应 backend。
-- 汇总 batch status。
+- 管理已安装的传输后端。
+- 根据协议或 Segment 信息找到目标后端。
+- 把批量传输拆给对应后端。
+- 汇总批次状态。
 - 在多协议场景下处理注册内存和提交任务。
 
-这层让 Store 和上层框架不必关心每个 backend 的具体类名和状态查询方式。
+这一层让 Store 和上层框架不必关心每个后端的具体类名和状态查询方式。
 
-## memory registration 也要分 backend
+## 内存注册也要区分后端
 
-`registerLocalMemory` 看起来是一个统一 API，但底层每个 transport 的含义不同。
+`registerLocalMemory` 看起来是一个统一 API，但对不同传输后端有不同含义。
 
-RDMA/EFA 可能要注册 memory region 和 rkey/lkey。NVLink 或 GPU backend 可能要处理 device pointer、IPC handle 或 stream。TCP 可能不需要同等级的硬件注册，但仍要进入统一接口。
+RDMA/EFA 可能需要注册内存区域和 rkey/lkey。NVLink 或 GPU 后端可能要处理设备指针、IPC 句柄或执行流。TCP 可能不需要同等级的硬件注册，但仍要接入统一接口。
 
-因此注册内存不是可选优化，而是数据面协议的一部分。
+因此，注册内存不是可选优化，而是数据传输协议的一部分。
 
-对 HiCache + Mooncake Store 来说，Host KV pool 必须在 Store setup 后注册。否则 zero-copy get/put 拿到 pointer，也不一定能被底层 transport 使用。
+对 HiCache 与 Mooncake Store 的组合来说，主机 KV 池必须在 Store 初始化后完成注册。否则，即使零拷贝读写拿到了指针，底层传输后端也不一定能够使用。
 
-## local path 不能盲目走 TCP
+## 本地路径不能盲目走 TCP
 
-同机或同 endpoint 的传输不一定应该走 TCP loopback。Mooncake 里有注释强调，当只有 TCP transport 时，同主机 transfer 可能更适合 local memcpy。
+同机或同节点的传输不一定应该走 TCP 回环。Mooncake 的注释特别指出，即使只安装了 TCP 后端，同一主机内的数据传输也可能更适合直接复制内存。
 
 原因很直接：本地 memcpy 少了一层协议栈，也避免把同进程或同节点的数据搬运伪装成网络传输。
 
-这也是 Store 的 TransferSubmitter 要判断本地性的原因。不是所有 replica 都需要 Transfer Engine 走网络。
+这也是 Store 的 TransferSubmitter 要判断数据本地性的原因。并非所有副本都需要通过 Transfer Engine 走网络传输。
 
-## transport 选择依赖 Segment 信息
+## 传输方式取决于 Segment 信息
 
-Store replica 指向 Segment。Segment 中包含 protocol 和 endpoint 信息。
+Store 副本指向 Segment，Segment 中包含协议和节点信息。
 
 简化关系：
 
@@ -124,61 +124,61 @@ Replica
        offset
 ```
 
-TransferSubmitter 根据 replica/Segment 构造 TransferRequest 后，Transfer Engine 通过 target Segment 和 proto 找到 transport。
+TransferSubmitter 根据副本和 Segment 构造 TransferRequest 后，Transfer Engine 再根据目标 Segment 与协议找到传输后端。
 
-如果 Segment 的 protocol、TE endpoint、registered memory 和 installed transport 不匹配，就会出现看似“Store key 存在”，但数据搬不回来的问题。
+如果 Segment 协议、Transfer Engine 节点、已注册内存和已安装后端彼此不匹配，就会出现“Store 中明明有对象键，数据却搬不回来”的问题。
 
 ## RDMA 路径要看设备选择
 
-RDMA/EFA 这类路径还涉及 NIC、NUMA、device filter、auto discovery。设备选错可能导致：
+RDMA 和 EFA 这类路径还涉及网卡、NUMA、设备筛选和自动发现。设备选错可能导致：
 
 - 注册内存失败
-- peer 建连失败
+- 对端连接失败
 - 带宽远低于预期
-- 跨 NUMA 访问导致 tail latency 抖动
+- 跨 NUMA 访问导致尾延迟抖动
 
-SGLang Mooncake backend 里复用 shared Transfer Engine 也有严格条件，例如 protocol、metadata server、device name 等要匹配。条件不匹配时，HiCache Mooncake Store 会创建自己的 Store client，而不是盲目复用 PD disaggregation 的 Transfer Engine。
+SGLang Mooncake 后端复用共享 Transfer Engine 也有严格条件，例如协议、元数据服务器和设备名称都要匹配。条件不满足时，HiCache Mooncake Store 会创建自己的 Store 客户端，而不是盲目复用 PD 分离式推理使用的 Transfer Engine。
 
-## transport 层不负责对象一致性
+## 传输层不负责对象一致性
 
-Transport 层只知道任务成败。它不会判断：
+传输层只知道任务成败，不会判断：
 
-- 这个 key 是不是最新。
-- replica 是否 COMPLETE。
-- lease 是否过期。
-- K/V object 是否同属于一个 logical page。
-- side pool 是否一起命中。
+- 这个对象键是不是最新。
+- 副本是否为 COMPLETE。
+- 租约是否过期。
+- K/V 对象是否同属于一个逻辑页。
+- 辅助内存池是否一起命中。
 
 这些是 Store 和 HiCache 的职责。
 
-排障时不要把 transport 成功当成系统正确。正确链路需要同时满足：
+排障时不要把传输成功当成整个系统正确。完整链路需要同时满足：
 
 ```text
-metadata correct
-replica readable
-lease valid
-buffer registered
-transport success
+元数据正确
+副本可读
+租约有效
+缓冲区已注册
+传输成功
 HiCache commit 成功
 ```
 
 ## 性能边界
 
-transport 层常见瓶颈包括：
+传输层常见的瓶颈包括：
 
-- page 太小，batch 提交和 completion 开销过高。
-- buffer 未提前注册，热路径上发生注册。
+- 页太小，批量提交和完成通知的开销过高。
+- 缓冲区未提前注册，导致热路径上临时注册。
 - 选择 TCP 而不是 RDMA/NVLink。
 - NIC/NUMA 不匹配。
-- batch 内部目标分散，无法有效聚合。
-- Host layout 不适合 zero-copy page 传输。
+- 批次内的目标过于分散，无法有效聚合。
+- 主机内存布局不适合零拷贝分页传输。
 
-这些问题最终会表现为 HiCache remote hit 变慢，甚至比重新 prefill 还慢。
+这些问题最终会让 HiCache 的远端命中变慢，甚至比重新做预填充还慢。
 
-## transport 成功只是链路的一段
+## 传输成功只是整条链路的一部分
 
-排查 Mooncake + HiCache 时，transport 层要回答的是“这批 bytes 能不能以合适成本搬完”，不是“这段 remote KV 能不能被 attention 复用”。前者需要看 backend 是否安装、Segment protocol 是否匹配、本地 buffer 是否注册、设备和 NUMA 是否合理；后者还要继续看 Store replica、lease、page key 展开和 HiCache load back。
+排查 Mooncake + HiCache 时，传输层要回答的是“这批字节能不能以合适的成本搬完”，而不是“这段远端 KV 能不能被注意力计算复用”。前者需要看后端是否安装、Segment 协议是否匹配、本地缓冲区是否注册、设备和 NUMA 是否合理；后者还要继续检查 Store 副本、租约、页键展开和 HiCache 回载。
 
-同机路径尤其容易误判。能走 TCP 不代表应该走 TCP；如果本地 memcpy 就能完成，绕一圈协议栈只会把数据面变复杂。反过来，跨节点 RDMA 路径如果 device 选错，即使功能正确，tail latency 也可能把 remote hit 的收益吃掉。
+同机路径尤其容易误判。能走 TCP 不代表应该走 TCP；如果直接复制内存就能完成，绕一圈协议栈只会让数据路径更复杂。反过来，跨节点 RDMA 路径如果选错设备，即使功能正确，尾延迟也可能吞掉远端命中的收益。
 
-所以 transport 层的结论通常不是“成功/失败”这么粗，而是：当前这条路径是否符合部署预期，是否避开了热路径注册，是否让 batch 里的 page object 被足够高效地聚合。
+所以传输层的结论通常不能只写成“成功/失败”，还要回答：当前路径是否符合部署预期，是否避开了热路径注册，以及批次中的缓存页对象是否得到足够高效的聚合处理。

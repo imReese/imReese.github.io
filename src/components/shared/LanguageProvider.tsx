@@ -18,7 +18,7 @@ const translations = {
     'common.closeMenu': 'Close menu',
     'common.switchLanguage': 'Switch language',
     'common.toggleTheme': 'Toggle theme',
-    'common.githubRepo': 'GitHub Profile',
+    'common.githubRepo': 'GitHub profile',
     'common.home': 'Home',
     'common.profileAvatar': 'Profile photo',
     'common.portrait': 'Cat portrait',
@@ -36,6 +36,9 @@ const translations = {
     'projects.capabilities': 'What is implemented',
     'projects.evidence': 'Implementation references',
     'projects.repository': 'Repository',
+    'notFound.title': 'Page not found',
+    'notFound.description': "We couldn't find the page you're looking for.",
+    'notFound.backHome': 'Back to home',
   },
   zh: {
     'common.menu': '菜单',
@@ -60,6 +63,9 @@ const translations = {
     'projects.capabilities': '已实现内容',
     'projects.evidence': '相关资料',
     'projects.repository': '项目仓库',
+    'notFound.title': '页面不存在',
+    'notFound.description': '没有找到你要访问的页面。',
+    'notFound.backHome': '返回首页',
   },
 } as const
 

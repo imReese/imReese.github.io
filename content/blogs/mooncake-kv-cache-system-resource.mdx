@@ -1,6 +1,6 @@
 ---
-title: 'Mooncake 和 HiCache 总览：KV Cache 如何变成系统资源'
-description: '从 SGLang HiCache、Mooncake Store 和 Transfer Engine 的职责边界出发，说明一段 KV Cache 如何成为可跨节点复用的系统资源。'
+title: 'Mooncake 和 HiCache 总览：KV 缓存如何变成系统资源'
+description: '从 SGLang HiCache、Mooncake Store 和 Transfer Engine 的职责边界出发，说明一段 KV 缓存如何成为可跨节点复用的系统资源。'
 author: 'Reese'
 date: '2026-05-24'
 topics:
@@ -13,55 +13,55 @@ series: 'Mooncake / HiCache Internals'
 featured: true
 ---
 
-这组文章的目标不是介绍 Mooncake 有多快，而是回答一个工程问题：**一段 prefix 的 KV Cache，怎样从单个 worker 的 GPU tensor，变成可以降级、查询、搬运、跨节点复用的系统资源。**
+这组文章的目标不是介绍 Mooncake 有多快，而是回答一个工程问题：**一段前缀的 KV 缓存，怎样从单个工作进程中的 GPU 张量，变成可以逐层降级、查询、搬运和跨节点复用的系统资源。**
 
-这个问题值得单独拆开，是因为 remote KV cache 很容易被一句“接入 Mooncake”讲模糊。真正影响系统行为的不是一个 backend 名字，而是 runtime cache 状态、Store metadata 可见性和 Transfer Engine 数据搬运之间的边界。
+这个问题值得单独拆开，因为远端 KV 缓存很容易被一句“接入 Mooncake”含糊带过。真正影响系统行为的不是一个后端名称，而是推理引擎中的缓存状态、Store 元数据可见性和 Transfer Engine 数据搬运之间的边界。
 
 要把这条链路讲清楚，需要同时看三层：
 
 ```text
 SGLang HiCache
-  负责 prefix cache、GPU/Host/Storage tier 状态、调度时机
+  负责前缀缓存、GPU/主机/存储层状态和调度时机
 
 Mooncake Store
-  负责 object、slice、replica、lease、metadata、可读性判断
+  负责对象、切片、副本、租约、元数据和可读性判断
 
 Mooncake Transfer Engine
-  负责 Segment、registered memory、BatchTransfer、transport 数据搬运
+  负责 Segment、注册内存、批量传输和传输方式选择
 ```
 
 <LayerDiagram
-  title="KV Cache 从 runtime 状态变成分布式资源，需要经过三层语义"
-  caption="HiCache 决定缓存什么时候写、什么时候读；Store 决定对象是否存在、是否可读；Transfer Engine 只负责把已知地址上的 bytes 搬过去。"
+  title="KV 缓存从引擎状态变成分布式资源，需要经过三层语义"
+  caption="HiCache 决定缓存什么时候写、什么时候读；Store 决定对象是否存在、是否可读；Transfer Engine 只负责搬运已知地址上的字节。"
   layers={[
     {
       label: 'SGLang HiCache',
-      detail: 'runtime cache policy',
+      detail: '推理引擎中的缓存策略',
       tone: 'teal',
-      items: ['radix node', 'GPU KV pool', 'Host KV pool', 'page hash', 'prefetch', 'load_back'],
+      items: ['基数树节点', 'GPU KV 池', '主机 KV 池', '页哈希', '预取', '回载'],
     },
     {
       label: 'Mooncake Store',
-      detail: 'object metadata and visibility',
+      detail: '对象元数据与可见性',
       tone: 'blue',
-      items: ['object key', 'slice', 'replica', 'lease', 'PROCESSING', 'COMPLETE'],
+      items: ['对象键', '切片', '副本', '租约', 'PROCESSING', 'COMPLETE'],
     },
     {
       label: 'Mooncake Transfer Engine',
-      detail: 'remote memory movement',
+      detail: '远端内存传输',
       tone: 'mauve',
-      items: ['Segment', 'offset', 'length', 'registered memory', 'BatchID', 'transport'],
+      items: ['Segment', '偏移', '长度', '注册内存', 'BatchID', '传输方式'],
     },
   ]}
 />
 
-这三层经常被一句“把 KV Cache 放到 Mooncake”糊在一起。实际读源码时必须拆开，否则很容易把 Store 当普通 KV 服务，或者把 Transfer Engine 当完整缓存系统。
+这三层经常被一句“把 KV 缓存放到 Mooncake”混在一起。实际阅读源码时必须拆开，否则很容易把 Store 当作普通 KV 服务，或者把 Transfer Engine 当成完整缓存系统。
 
 ## 源码版本与三层边界
 
 本文是 Mooncake / HiCache 系列的入口篇，基于 SGLang `v0.5.14` 的 HiCache 相关源码路径，以及 `kvcache-ai/Mooncake` 稳定 release tag `v0.3.11.post1`（commit `e9c61075720039bcfc5fffd19f847608402be3d0`）的 Store / Transfer Engine 源码路径阅读。下文重点放在可复核的源码路径、接口职责和系统边界。
 
-HiCache 是 SGLang runtime 内部的缓存层级机制。它知道 request、prefix、radix node、token indices、GPU KV pool、Host KV pool，也知道调度器什么时候应该 prefetch 或 load back。它的核心边界在 SGLang 代码里，SGLang `v0.5.14` 主要入口包括：
+HiCache 是 SGLang 推理引擎内部的分层缓存机制。它知道请求、前缀、基数树节点、token 索引、GPU KV 池和主机 KV 池，也知道调度器什么时候应该预取或回载。它的核心边界在 SGLang 代码里，SGLang `v0.5.14` 主要入口包括：
 
 ```text
 python/sglang/srt/mem_cache/hicache_storage.py
@@ -70,7 +70,7 @@ python/sglang/srt/mem_cache/hiradix_cache.py
 python/sglang/srt/mem_cache/storage/mooncake_store/mooncake_store.py
 ```
 
-Mooncake Store 是对象/副本语义层。它不知道 SGLang 的 radix tree，也不决定某个请求是否能跳过 prefill。它看到的是 object key、slice、replica、Segment、状态和 lease。Mooncake 侧主要入口是：
+Mooncake Store 是对象和副本的语义层。它不知道 SGLang 的基数树，也不决定某个请求是否能跳过预填充。它看到的是对象键、切片、副本、Segment、状态和租约。Mooncake 侧主要入口是：
 
 ```text
 mooncake-store/include/client_service.h
@@ -80,7 +80,7 @@ mooncake-store/include/replica.h
 mooncake-store/include/types.h
 ```
 
-Mooncake Transfer Engine 是数据搬运层。它不理解 KV Cache，也不理解 object 是否可读。它处理的是本地地址、远端 Segment、offset、length、READ/WRITE、BatchID 和 transport。主要入口是：
+Mooncake Transfer Engine 是数据搬运层。它不理解 KV 缓存，也不理解对象是否可读。它处理的是本地地址、远端 Segment、偏移、长度、读写方向、BatchID 和传输方式。主要入口是：
 
 ```text
 mooncake-transfer-engine/include/transfer_engine.h
@@ -89,69 +89,69 @@ mooncake-transfer-engine/src/transfer_engine_impl.cpp
 mooncake-transfer-engine/src/multi_transport.cpp
 ```
 
-本文覆盖的是 KV Cache 从 runtime 状态进入 Store/Transfer 层的系统边界；不覆盖完整 benchmark、模型 kernel 执行细节，也不把 Mooncake 的长期愿景写成当前已完成能力。
+本文关注 KV 缓存从推理引擎状态进入 Store 和传输层的系统边界；不覆盖完整基准测试和模型计算内核细节，也不会把 Mooncake 的长期愿景写成当前已经具备的能力。
 
-## 一段 KV Cache 的生命周期
+## 一段 KV 缓存的生命周期
 
-从 SGLang 角度看，一段可复用 prefix 会经历几种状态：
+从 SGLang 角度看，一段可复用前缀会经历几种状态：
 
 ```text
-GPU KV pool
-  -> Host KV pool
-  -> HiCacheStorage backend
-  -> Mooncake Store object
-  -> Mooncake replica on Segment
-  -> Transfer Engine transport path
+GPU KV 池
+  -> 主机 KV 池
+  -> HiCacheStorage 后端
+  -> Mooncake Store 对象
+  -> Segment 上的 Mooncake 副本
+  -> Transfer Engine 传输链路
 ```
 
 反向读取时顺序也不是直接从 Mooncake 回 GPU：
 
 ```text
-Mooncake Store object
-  -> zero-copy get into Host KV pool
-  -> HiCache load_back
-  -> GPU KV pool
-  -> attention kernel 使用 device KV slots
+Mooncake Store 对象
+  -> 零拷贝读取到主机 KV 池
+  -> HiCache 回载
+  -> GPU KV 池
+  -> 注意力内核使用设备 KV 槽位
 ```
 
 <SequenceDiagram
-  title="一页 remote KV 从写出到读回的完整路径"
-  caption="注意 Mooncake 只把数据读回 Host pool；真正让 attention 使用，还要由 HiCache 再 load back 到 GPU。"
-  actors={['GPU KV pool', 'HiCache', 'Mooncake Store', 'Transfer Engine', 'Host KV pool']}
+  title="一页远端 KV 从写出到读回的完整路径"
+  caption="Mooncake 只把数据读回主机内存池；要让注意力计算真正使用这些数据，还要由 HiCache 回载到 GPU。"
+  actors={['GPU KV 池', 'HiCache', 'Mooncake Store', 'Transfer Engine', '主机 KV 池']}
   steps={[
     {
-      from: 'GPU KV pool',
+      from: 'GPU KV 池',
       to: 'HiCache',
       label: 'write_backup(node)',
-      detail: 'device KV slots 先降级成 Host KV pages',
+      detail: '设备 KV 槽位先降级成主机 KV 缓存页',
       tone: 'teal',
     },
     {
       from: 'HiCache',
       to: 'Mooncake Store',
-      label: 'batch_set(page keys, host pointers)',
-      detail: 'HiCacheStorage backend 把 page key 和 Host buffer 交给 Store',
+      label: 'batch_set(页键, 主机指针)',
+      detail: 'HiCacheStorage 后端把页键和主机缓冲区交给 Store',
       tone: 'blue',
     },
     {
       from: 'Mooncake Store',
       to: 'Transfer Engine',
-      label: 'WRITE object slices',
-      detail: 'Store 根据 replica 的 Segment/offset/length 生成传输请求',
+      label: '写入对象切片',
+      detail: 'Store 根据副本的 Segment、偏移和长度生成传输请求',
       tone: 'mauve',
     },
     {
       from: 'Mooncake Store',
-      to: 'Host KV pool',
+      to: '主机 KV 池',
       label: 'batch_get_into(...)',
-      detail: '远端 object 读回时先落到 Host KV pages',
+      detail: '远端对象读回时先落到主机 KV 缓存页',
       tone: 'blue',
     },
     {
-      from: 'Host KV pool',
-      to: 'GPU KV pool',
+      from: '主机 KV 池',
+      to: 'GPU KV 池',
       label: 'load_back(best_match_node)',
-      detail: 'HiCache 分配 device slots 后，prefix 才真正回到 L1',
+      detail: 'HiCache 分配设备槽位后，前缀才真正回到 L1',
       tone: 'green',
     },
   ]}
@@ -159,48 +159,48 @@ Mooncake Store object
 
 这条路径说明两个事实。
 
-第一，HiCache 的 L3 backend 不直接替代 GPU cache。它只是让已经离开 GPU 的 KV Cache 仍然有机会被找回。真正参与 attention kernel 的仍然是 GPU KV slots。
+第一，HiCache 的 L3 后端不直接替代 GPU 缓存。它只是让已经离开 GPU 的 KV 缓存仍有机会被找回。真正参与注意力计算的仍然是 GPU KV 槽位。
 
-第二，Mooncake Store 存的不是“一个请求”，而是 SGLang 按 page 组织出来的 cache object。MHA 通常会拆成 K/V 两类 object，MLA 又是另一套 key 和 buffer 组织方式。
+第二，Mooncake Store 存的不是“一个请求”，而是 SGLang 按页组织出的缓存对象。MHA 通常会拆成 K/V 两类对象，MLA 则使用另一套键和缓冲区组织方式。
 
 <FlowDiagram
-  title="Resource lifecycle: 一段 KV 从计算结果变成系统资源"
+  title="资源生命周期：一段 KV 从计算结果变成系统资源"
   caption="这篇总览更关心生命周期和所有权边界，而不是某个函数调用是否漂亮。"
   steps={[
     {
-      label: 'Materialize',
-      meta: 'GPU KV pool',
-      detail: 'prefill 产生的 KV 先属于 runtime 的 device slots。',
+      label: '生成',
+      meta: 'GPU KV 池',
+      detail: '预填充产生的 KV 先属于推理引擎的设备槽位。',
       tone: 'teal',
-      items: ['device memory', 'radix node', 'request context'],
+      items: ['设备内存', '基数树节点', '请求上下文'],
     },
     {
-      label: 'Demote',
-      meta: 'Host KV pool',
-      detail: 'HiCache 把可恢复 prefix 降级到 Host，并用引用保护生命周期。',
+      label: '降级',
+      meta: '主机 KV 池',
+      detail: 'HiCache 把可恢复前缀降级到主机内存，并用引用保护生命周期。',
       tone: 'blue',
       items: ['host_value', 'host_ref_counter', 'PoolTransfer'],
     },
     {
-      label: 'Publish',
-      meta: 'Store metadata',
-      detail: 'Store 把 object/slice/replica 状态推进到可读边界。',
+      label: '发布',
+      meta: 'Store 元数据',
+      detail: 'Store 把对象、切片和副本状态推进到可读边界。',
       tone: 'mauve',
-      items: ['object key', 'PROCESSING', 'COMPLETE'],
+      items: ['对象键', 'PROCESSING', 'COMPLETE'],
     },
     {
-      label: 'Move bytes',
+      label: '搬运字节',
       meta: 'Transfer Engine',
-      detail: 'TE 只搬已知地址上的 bytes，不判断 KV 语义。',
+      detail: 'Transfer Engine 只搬运已知地址上的字节，不判断 KV 语义。',
       tone: 'green',
-      items: ['Segment', 'offset', 'length', 'transport'],
+      items: ['Segment', '偏移', '长度', '传输方式'],
     },
     {
-      label: 'Recover',
-      meta: 'Host -> GPU',
-      detail: '读回后还要由 HiCache load_back，才重新成为 attention 可用资源。',
+      label: '恢复',
+      meta: '主机内存 -> GPU',
+      detail: '读回后还要由 HiCache 回载，才重新成为注意力计算可以使用的资源。',
       tone: 'amber',
-      items: ['batch_get_into', 'load_back', 'device commit'],
+      items: ['batch_get_into', '回载', '设备侧提交'],
     },
   ]}
 />
@@ -209,108 +209,108 @@ Mooncake Store object
 
 Store 解决的是“这份数据是否存在、在哪里、能不能读”。它需要维护：
 
-- object key 到 metadata 的映射
-- object 被拆成哪些 slice
-- 每个 replica 的 Segment、offset、length
-- replica 是 `PROCESSING`、`COMPLETE` 还是已经移除
-- client 拿到的 metadata lease 什么时候失效
+- 对象键到元数据的映射
+- 对象被拆成哪些切片
+- 每个副本所在的 Segment、偏移量和长度
+- 副本处于 `PROCESSING`、`COMPLETE` 还是已被移除
+- Client 拿到的元数据租约何时失效
 
 Transfer Engine 解决的是“知道远端地址以后，字节怎么过去”。它需要处理：
 
-- local memory 是否已经 register
-- remote Segment 是否 open
-- 这批 transfer 是 READ 还是 WRITE
-- 该走 TCP、RDMA、EFA、NVLink 还是其他 transport
-- BatchID 的生命周期和 transfer status
+- 本地内存是否已经注册
+- 远端 Segment 是否已经打开
+- 这批传输是 READ 还是 WRITE
+- 应该使用 TCP、RDMA、EFA、NVLink 还是其他传输方式
+- BatchID 的生命周期和传输状态
 
-如果只看 Store，会知道对象语义，但不知道大块 KV 数据怎么跨节点搬。如果只看 Transfer Engine，会知道数据怎么搬，但不知道为什么这些 bytes 是可读的。完整理解必须把两边接上。
+如果只看 Store，会知道对象语义，却不知道大块 KV 数据如何跨节点搬运；如果只看 Transfer Engine，会知道数据如何搬运，却不知道这些字节为什么已经可读。要理解完整链路，必须把两边接起来。
 
 ## HiCache 把缓存问题变成状态机
 
-普通 prefix cache 里，radix node 的 `value` 指向 GPU KV indices。命中就复用，没命中就计算。
+普通前缀缓存里，基数树节点的 `value` 指向 GPU KV 索引：命中就复用，没有命中就重新计算。
 
 HiCache 多了一层状态：
 
 ```text
-value             GPU KV indices
-host_value        Host KV indices
-hash_value        L3 storage page keys
-backuped          是否已经有 Host 备份
+value             GPU KV 索引
+host_value        主机 KV 索引
+hash_value        L3 存储页键
+backuped          是否已经有主机内存备份
 backuped_storage  是否已经写到 L3
 lock_ref          GPU 侧引用保护
-host_ref_counter  Host 侧引用保护
+host_ref_counter  主机侧引用保护
 ```
 
-因此 prefix match 不再只是“命中了多少 token”，而是要区分：
+因此前缀匹配不再只是“命中了多少 token”，还要区分：
 
 ```text
 哪些 token 已经在 GPU
-哪些 token 只在 Host
-哪些 token 可能在 Storage
-哪些 token 需要重新 prefill
+哪些 token 只在主机内存
+哪些 token 可能在存储层
+哪些 token 需要重新执行 prefill
 ```
 
-这就是 HiCache 与 Mooncake Store 接起来的原因。HiCache 负责把 prefix cache page 化、hash 化、调度化；Mooncake Store 负责让这些 page 在分布式环境中可查询、可传输、可复用。
+这就是 HiCache 与 Mooncake Store 接起来的原因。HiCache 负责把前缀缓存分页、计算哈希并纳入调度；Mooncake Store 则让这些页能在分布式环境中查询、传输和复用。
 
 ## 一个实用读法
 
 后续章节可以按这个顺序读：
 
 1. HiCache 总览和写路径，先理解 SGLang 为什么需要 L1/L2/L3。
-2. HiCache 读路径，理解 prefetch 和 load back 怎么进入调度。
-3. Mooncake Store 对象模型，理解 object、slice、replica、lease。
-4. Store Put/Get，理解 metadata 控制面和数据面如何分离。
-5. Transfer Engine，理解 Segment、memory registration、BatchTransfer。
-6. SGLang 到 Mooncake Store 串联篇，把 page key 和 zero-copy batch API 接起来。
-7. 共享 Transfer Engine 和部署边界，理解哪些是性能优化，哪些才是 cache 语义。
+2. HiCache 读取路径，理解预取和回载怎样进入调度。
+3. Mooncake Store 对象模型，理解对象、切片、副本和租约。
+4. Store Put/Get，理解元数据控制面和数据面如何分离。
+5. Transfer Engine，理解 Segment、内存注册和 BatchTransfer。
+6. SGLang 到 Mooncake Store 串联篇，把页键与零拷贝批量 API 接起来。
+7. 共享 Transfer Engine 和部署边界，理解哪些是性能优化，哪些属于缓存语义。
 
-读完以后，应该能画出一段 prefix KV Cache 从 GPU 写到远端、再从远端读回 GPU 的完整路径，并知道每个阶段该去哪个源码文件里验证。
+读完以后，应该能画出一段前缀 KV 缓存从 GPU 写到远端、再从远端读回 GPU 的完整路径，并知道每个阶段该去哪个源码文件里验证。
 
 ## 职责与边界
 
 <SystemBoundaryDiagram
-  title="KV cache resource ownership is split across runtime, metadata, and transport"
-  caption="每一层都有自己的所有权和失败语义。把它们混成一个 cache service，会让调试结论过度外推。"
+  title="KV 缓存资源的所有权分散在引擎、元数据和传输三层"
+  caption="每一层都有自己的所有权和失败语义。把它们混成一个缓存服务，会让调试结论过度外推。"
   groups={[
     {
-      label: 'Runtime owns reuse decisions',
+      label: '推理引擎决定是否复用',
       detail: 'SGLang / HiCache',
       tone: 'teal',
-      items: ['prefix match', 'GPU slots', 'Host pages', 'load_back'],
-      signals: ['radix node state', 'threshold / quota checks'],
+      items: ['前缀匹配', 'GPU 槽位', '主机缓存页', '回载'],
+      signals: ['基数树节点状态', '阈值与配额检查'],
     },
     {
-      label: 'Store owns visibility',
+      label: 'Store 管理可见性',
       detail: 'Mooncake Store',
       tone: 'blue',
-      items: ['object metadata', 'replica state', 'lease', 'optional group semantics'],
+      items: ['对象元数据', '副本状态', '租约', '可选分组语义'],
       signals: ['PROCESSING', 'COMPLETE', 'GetReplicaList'],
     },
     {
-      label: 'Transport owns byte movement',
+      label: '传输层负责搬运字节',
       detail: 'Transfer Engine',
       tone: 'mauve',
-      items: ['Segment', 'registered memory', 'READ / WRITE', 'BatchID'],
-      signals: ['transfer status', 'open segment', 'transport error'],
+      items: ['Segment', '注册内存', '读 / 写', 'BatchID'],
+      signals: ['传输状态', '打开内存段', '传输错误'],
     },
     {
-      label: 'Article boundary',
-      detail: 'what not to infer',
+      label: '本文结论边界',
+      detail: '不能据此推断的内容',
       tone: 'amber',
-      items: ['no benchmark claim', 'no production proof', 'no full failure model'],
-      signals: ['requires logs', 'requires source snapshot'],
+      items: ['不宣称性能结果', '不等同生产验证', '不覆盖完整故障模型'],
+      signals: ['需要日志证据', '需要固定源码快照'],
     },
   ]}
 />
 
-## 结论：remote KV Cache 是三层状态机，不是一个远端字典
+## 结论：远程 KV 缓存是三层状态机，不是一个远端字典
 
 理解 Mooncake / HiCache 的核心价值，不是记住某个 API 名字，而是能回答这几个边界问题：
 
-- HiCache 为什么不能直接把 GPU KV tensor 存进 Mooncake Store？
-- Mooncake Store 的 master 为什么不负责搬大块数据？
-- `PROCESSING` replica 和 `COMPLETE` replica 的读语义有什么区别？
-- Transfer Engine 为什么不需要知道 object key？
-- 一次 remote KV 命中为什么仍然需要 load back 到 GPU？
+- HiCache 为什么不能直接把 GPU KV 张量存进 Mooncake Store？
+- Mooncake Store 的 Master 为什么不负责搬运大块数据？
+- `PROCESSING` 副本和 `COMPLETE` 副本的读取语义有什么区别？
+- Transfer Engine 为什么不需要知道对象键？
+- 一次远端 KV 命中为什么仍然需要回载到 GPU？
 
-这些问题背后的同一个原则是：**runtime 负责判断 KV 是否值得复用，Store 负责判断 object 是否可读，Transfer Engine 只负责把确定地址上的 bytes 搬完。** 把这三层混在一起，调试时就会把 metadata 命中、transport 成功和 GPU 可复用误认为同一件事。
+这些问题背后遵循同一条原则：**推理引擎负责判断 KV 是否值得复用，Store 负责判断对象是否可读，Transfer Engine 只负责搬完确定地址上的字节。** 把这三层混在一起，调试时就会把元数据命中、传输成功和 GPU 可复用误认为同一件事。

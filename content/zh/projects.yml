@@ -1,4 +1,4 @@
-headline: 项目与源码研究
+headline: 项目与源码笔记
 intro: 这里收录我正在开发的项目，以及围绕 SGLang、Mooncake 和 HiCache 整理的源码笔记。每个项目都会说明当前进展和未完成的部分。
 
 overview:
@@ -37,7 +37,7 @@ items:
     tags:
       - Rust
       - SGLang
-      - Scheduler
+      - 调度器
       - KV Cache
       - Mooncake
   - name: NexusKV
@@ -48,9 +48,9 @@ items:
       label: 基础功能开发中
       description: 数据结构、复用规划、引擎接入流程和基础后端已有实现；RDMA、GPU Direct、分布式协调和性能优化尚未完成。
     capabilities:
-      - 通过版本化的注意力状态定义和 Rust nxradixtree，实现精确匹配与前缀复用规划。
+      - 使用版本化的注意力状态定义和 Rust nxradixtree 完成精确匹配与前缀复用规划。
       - 通过 PyO3 将 Rust 规划器接入 SGLang 和 vLLM。
-      - 提供基础执行器、后端注册表、回退处理、数据句柄和内存存储。
+      - 基础执行器、后端注册表、回退处理、数据句柄和内存存储均已有实现。
       - 支持 Go 控制面配置和策略热更新；加载失败时继续使用最近一次有效配置。
     evidenceLinks:
       - label: 目标架构
@@ -68,7 +68,7 @@ items:
       - Rust
       - Python
       - KV Cache
-      - LLM Serving
+      - 大模型推理
 
 diagrams:
   runtime:
@@ -78,28 +78,28 @@ diagrams:
     steps:
       - label: 协议处理
         meta: HTTP / gRPC / 路由
-        detail: 校验文本或已分词请求，并保留 PD 启动元数据。
+        detail: 校验文本或已分词请求，并保留建立 PD 传输所需的信息。
         items:
-          - 类型化协议
+          - 类型安全的协议
           - OpenAI 兼容接口
       - label: 调度器
         meta: 等待 → 预填充 → 解码
-        detail: 组成批次、应用 token 预算，并在 KV 传输就绪前阻止解码。
+        detail: 组成批次、控制每批 token 数量，并在 KV 传输就绪前阻止解码。
         items:
           - 请求生命周期
           - 就绪检查
       - label: 缓存与工作进程
         meta: RadixCache + KV 页
-        detail: 匹配可复用前缀、分配有限 KV 页，并派发本地或拆分工作进程。
+        detail: 匹配可复用前缀、从容量有限的页池分配 KV 页，并派发到本地、预填充或解码工作进程。
         items:
           - 页布局
           - 前缀复用
       - label: PD 传输
-        meta: 模拟 / 快照 / Mooncake ABI
+        meta: 模拟后端 / 状态快照 / Mooncake ABI
         detail: 构造并轮询传输计划；生产级 Mooncake 传输尚未实现。
         items:
           - 校验和
-          - 受管内存区域
+          - 已注册内存
   platform:
     eyebrow: 模块划分
     title: NexusKV — 已实现模块与后续计划
@@ -114,11 +114,11 @@ diagrams:
         signals:
           - 保留最近一次有效配置
       - label: 状态与索引
-        detail: 已实现版本化契约与 Rust 复用规划器。
+        detail: 已实现可版本化的状态格式与 Rust 复用规划器。
         items:
           - 描述符
           - nxradixtree
-          - 精确 / 前缀匹配
+          - 精确匹配 / 前缀匹配
       - label: 执行与数据传输
         detail: 已有基础执行器和内存后端；远程传输仍在开发中。
         items:
@@ -126,17 +126,17 @@ diagrams:
           - 数据句柄
           - 回退处理
         signals:
-          - 远程传输待实现
+          - 远程传输尚未完成
       - label: 引擎适配
         detail: 已接入 SGLang 与 vLLM 的请求生命周期。
         items:
-          - 预填充 / 扩展
+          - 预填充 / 扩展阶段
           - 请求启动
-          - 规划器桥接
+          - 接入复用规划器
 
 workSections:
-  - title: 上游源码跟踪
-    intro: 这些仓库用于跟踪上游代码；相关笔记记录我关注的实现和集成流程。
+  - title: 关注的上游项目
+    intro: 这些仓库用于同步上游代码；相关笔记记录我关注的实现和集成流程。
     items:
       - name: SGLang
         description: 主要关注调度器、HiCache、PD 传输及其与推理服务流程的衔接。
@@ -148,8 +148,8 @@ workSections:
           - label: 相关文章
             href: /blogs/sglang-hicache-read-path/
         tags:
-          - Serving
-          - Scheduler
+          - 推理服务
+          - 调度器
           - HiCache
       - name: Mooncake
         description: 主要关注 Store 对象生命周期、Transfer Engine 的内存与传输流程，以及和 SGLang 的集成方式。
@@ -171,35 +171,35 @@ workSections:
           label: 上游项目
           href: https://github.com/mlc-ai/xgrammar
         tags:
-          - Structured Generation
-          - Runtime
-          - Parser
+          - 结构化生成
+          - 推理执行
+          - 解析器
   - title: 源码笔记
     intro: 这些文章沿具体代码路径梳理推理、缓存和数据传输流程。
     items:
       - name: SGLang 到 Mooncake Store 的 KV 路径
-        description: 沿着页键、主机 KV 指针、Store 对象和共享 Transfer Engine 边界，追踪一次写入与读回。
+        description: 从页键和主机 KV 指针出发，追踪 Store 对象如何通过共享的 Transfer Engine 完成一次写入和读回。
         href: /blogs/sglang-to-mooncake-store-kv-cache-path/
         tags:
           - SGLang
           - Mooncake
           - KV Cache
       - name: HiCache 读写路径
-        description: 区分存储命中、主机内存回载、GPU 复用、备份与批量持久化，让缓存命中的表述保持精确。
+        description: 梳理存储命中、主机内存回载、GPU 复用、备份和批量持久化各自代表的状态。
         href: /blogs/sglang-hicache-read-path/
         evidenceLinks:
           - label: 写路径
             href: /blogs/sglang-hicache-write-path/
         tags:
           - HiCache
-          - Read / Write
-          - Validation
-      - name: Mooncake KV 资源模型
+          - 读写路径
+          - 验证
+      - name: Mooncake KV 缓存全链路
         description: 区分运行状态、Store 元数据、副本生命周期与 Transfer Engine 职责。
         href: /blogs/mooncake-kv-cache-system-resource/
         tags:
-          - Resource Model
+          - 缓存体系
           - Store
-          - Transfer
+          - 数据传输
 
 githubItems: []

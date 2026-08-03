@@ -4,7 +4,7 @@ import { type BlogType, getPublishedBlogs } from './blogs.ts'
 import { absoluteUrl, RSS_PATH, RSS_TITLE } from './seo.ts'
 
 const RSS_DESCRIPTION =
-  'Chinese engineering notes on LLM serving, distributed systems, storage, and performance.'
+  '关于大模型推理、分布式系统、存储与性能优化的技术文章。'
 
 function publicationDate(date: string) {
   return new Date(`${date}T00:00:00.000Z`)

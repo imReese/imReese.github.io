@@ -81,6 +81,10 @@ test('RSS is valid XML with published, unique articles in descending order', () 
   const { channel, items } = parseItems(xml)
 
   assert.equal(value(channel.language), 'zh-CN')
+  assert.equal(
+    value(channel.description),
+    '关于大模型推理、分布式系统、存储与性能优化的技术文章。',
+  )
   assert.equal(items.length, 2)
   assert.deepEqual(
     items.map((item) => value(item.title)),

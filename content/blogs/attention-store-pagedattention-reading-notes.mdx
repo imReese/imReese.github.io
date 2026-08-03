@@ -1,5 +1,5 @@
 ---
-title: 'PagedAttention 笔记：KV Cache 为什么要像内存系统一样管理'
+title: 'PagedAttention 笔记：为什么要像管理内存一样管理 KV 缓存'
 description: '梳理块表、物理块、写时复制和调度流程，说明 PagedAttention、HiCache 与 Mooncake 分别负责什么。'
 author: 'Reese'
 date: '2025-07-20'
@@ -12,36 +12,36 @@ series: 'SGLang Runtime Notes'
 featured: false
 ---
 
-读 [PagedAttention](https://arxiv.org/abs/2309.06180) 时，我觉得最重要的不是“像操作系统分页”这个类比，而是它把 KV Cache 从一个缓存名词变成了一个内存管理对象。
+读 [PagedAttention](https://arxiv.org/abs/2309.06180) 时，我觉得最重要的不是“像操作系统分页”这个类比，而是它把 KV 缓存变成了需要明确管理的内存对象。
 
-LLM serving 里的 KV Cache 有几个麻烦属性：
+大模型推理中的 KV 缓存有几个棘手的特点：
 
 - 请求长度不同。
-- decode 长度不可提前知道。
+- 解码长度无法提前知道。
 - 请求随时结束，显存要回收。
-- parallel sampling / beam search 会共享 prompt。
-- prefix cache 命中时，多个请求可能复用同一段历史。
-- scheduler 每一步都在重新组织 batch。
+- 并行采样和束搜索会共享提示词。
+- 前缀缓存命中时，多个请求可能复用同一段历史。
+- 调度器每一步都在重新组织批次。
 
-如果仍然用“每个请求一大段连续 KV buffer”的思路，显存很快会浪费在预留和碎片上。
+如果仍然采用“每个请求占一大段连续 KV 缓冲区”的方式，显存很快会浪费在预留和碎片上。
 
 ## 先看一个请求怎么长大
 
-一个请求进入 runtime 后，KV Cache 不是一次性完整确定的。
+一个请求进入推理引擎后，它需要的 KV 缓存不会一次性完整确定。
 
 ```text
-prefill prompt
-  -> allocate blocks for prompt K/V
-  -> run prefill attention
-  -> store K/V blocks
+预填充提示词
+  -> 为提示词 K/V 分配块
+  -> 执行预填充注意力计算
+  -> 保存 K/V 块
 
-decode token 1
-  -> read prompt blocks
-  -> append new K/V
+解码第 1 个 token
+  -> 读取提示词对应的块
+  -> 追加新的 K/V
 
-decode token 2
-  -> read prompt + token 1 blocks
-  -> append new K/V
+解码第 2 个 token
+  -> 读取提示词和第 1 个 token 对应的块
+  -> 追加新的 K/V
 ```
 
 这个请求像一条不断增长的序列。它需要保持逻辑 token 顺序，但物理上不一定非要连续。
@@ -49,46 +49,46 @@ decode token 2
 PagedAttention 的核心就是把这两个问题拆开：
 
 ```text
-logical token order:
-  owned by request / scheduler
+token 的逻辑顺序：
+  由请求和调度器维护
 
-physical KV placement:
-  owned by block manager
+KV 的物理位置：
+  由块管理器维护
 ```
 
 <LayerDiagram
-  title="KV Cache 从请求序列拆成 block table 和 physical blocks"
+  title="KV 缓存从请求序列拆成块表和物理块"
   layers={[
     {
-      label: 'sequence',
+      label: '序列',
       detail: '请求看到的 token 顺序',
       tone: 'teal',
-      items: ['prompt', 'decode tokens', 'causal order'],
+      items: ['提示词', '解码 token', '因果顺序'],
     },
     {
-      label: 'logical blocks',
-      detail: '按固定 block size 切分',
+      label: '逻辑块',
+      detail: '按固定块大小切分',
       tone: 'blue',
       items: ['L0', 'L1', 'L2'],
     },
     {
-      label: 'block table',
+      label: '块表',
       detail: '每个请求自己的逻辑到物理映射',
       tone: 'green',
       items: ['L0 -> P8', 'L1 -> P2', 'L2 -> P15'],
     },
     {
-      label: 'physical blocks',
+      label: '物理块',
       detail: '显存里的真实 K/V 存储单元',
       tone: 'mauve',
-      items: ['ref count', 'free list', 'COW'],
+      items: ['引用计数', '空闲链表', '写时复制'],
     },
   ]}
 />
 
-## block table 像一层小 MMU
+## 块表像一层小型 MMU
 
-PagedAttention 里，请求的 KV Cache 被切成 logical blocks。每个 logical block 通过 block table 指向一个 physical block。
+在 PagedAttention 中，请求的 KV 缓存被切成逻辑块，每个逻辑块再通过块表指向一个物理块。
 
 ```text
 request A:
@@ -97,37 +97,37 @@ request A:
   logical block 2 -> physical block 15
 ```
 
-attention kernel 仍然要按 token 顺序读取历史 K/V。区别在于，它不能再假设 K/V 在一段连续地址里，而要通过 block table 找物理位置。
+注意力内核仍然要按 token 顺序读取历史 K/V。区别在于，它不能再假设 K/V 位于一段连续地址，而要通过块表找到物理位置。
 
 这层间接性换来两个能力：
 
 1. 请求不需要连续显存。
-2. physical block 可以被释放、复用、共享。
+2. 物理块可以被释放、复用和共享。
 
-代价也很清楚：kernel 要理解 block table，runtime 要维护 block 生命周期，debug 时也多了一层映射。
+代价也很清楚：计算内核要理解块表，推理引擎要维护块的生命周期，调试时也多了一层映射。
 
-## block size 是系统参数
+## 块大小是系统参数
 
-block size 太大，尾部浪费明显。请求最后一个 block 可能只用了几个 token，却占住整个 physical block。
+块太大，尾部浪费就会很明显。请求的最后一个块可能只用了几个 token，却占住整个物理块。
 
-block size 太小，block table 更大，管理成本更高，kernel 间接寻址也更频繁。
+块太小，块表会更大，管理成本更高，计算内核的间接寻址也更频繁。
 
-所以 block size 不是论文里的装饰项。它和这些因素绑在一起：
+所以块大小不是论文里的装饰项，它与这些因素紧密相关：
 
-- 平均 prompt 长度。
-- 平均 decode 长度。
-- batch size。
-- head dimension。
-- kernel 对 block layout 的访问效率。
+- 平均提示词长度。
+- 平均解码长度。
+- 批次大小。
+- 单头维度。
+- 计算内核访问块布局的效率。
 - 共享前缀比例。
 
-这类参数不能脱离 workload 单独说好坏。
+这类参数不能脱离实际负载单独评价好坏。
 
 ## 共享前缀不是复制字符串
 
-parallel sampling 或 beam search 里，多个分支共享同一段 prompt。直觉上，这段 prompt 的 K/V 不应该复制多份。
+在并行采样或束搜索中，多个分支共享同一段提示词。直觉上，这段提示词的 K/V 不应该复制多份。
 
-PagedAttention 可以让多个 sequence 的 logical blocks 指向同一组 physical blocks：
+PagedAttention 可以让多个序列的逻辑块指向同一组物理块：
 
 ```text
 shared prompt blocks:
@@ -140,15 +140,15 @@ branch B:
   P8 -> P2 -> P15 -> P9
 ```
 
-这里必须有引用计数。只要还有一个 sequence 引用 `P8`，它就不能回到 free list。
+这里必须有引用计数。只要还有一个序列引用 `P8`，它就不能回到空闲链表。
 
-这也是 KV Cache 和普通“字符串前缀相同”不一样的地方。系统共享的是每层、每个 head、每个 token 对应的 K/V block，而不是共享一段文本。
+这也是 KV 缓存与普通“字符串前缀相同”不同的地方。系统共享的是每层、每个注意力头、每个 token 对应的 K/V 块，而不是一段文本。
 
-## copy-on-write 是正确性的边界
+## 写时复制是正确性的边界
 
-共享 block 只能读。分支要继续写入时，如果写到一个被多个 sequence 引用的 block，就会污染其它分支。
+共享块只能读取。分支继续写入时，如果改动了一个被多个序列引用的块，就会污染其它分支。
 
-所以需要 copy-on-write：
+所以需要写时复制：
 
 ```text
 P8 ref_count = 2
@@ -158,69 +158,69 @@ allocate P11
 copy P8 -> P11
 branch A maps logical block to P11
 P8 ref_count--
-write new token into P11
+将新 token 写入 P11
 ```
 
-这个过程如果做错，模型可能不会直接报错，而是悄悄 attend 到别的分支写出的 K/V。输出变奇怪，但栈上看不出普通异常。
+这个过程如果做错，模型可能不会直接报错，而会悄悄读到其它分支写入的 K/V。输出变得异常，调用栈却未必留下明显错误。
 
-调 KV Cache 系统时，这类 bug 比内存泄漏更讨厌，因为它污染的是上下文语义。
+调试 KV 缓存系统时，这类错误比内存泄漏更棘手，因为它污染的是上下文语义。
 
-## scheduler 不能只问还有多少显存
+## 调度器不能只看剩余显存
 
-PagedAttention 让 block 管理更灵活，但 scheduler 仍然要做选择。
+PagedAttention 让块管理更灵活，但调度器仍然要做选择。
 
 它要决定：
 
 - 新请求能不能进来。
-- 当前 batch 里哪些请求继续 decode。
-- block 不够时是抢占、等待、拒绝还是换出。
-- prefix 命中是否值得等。
-- 长请求是否挤压短请求 tail latency。
+- 当前批次中哪些请求继续解码。
+- 块不够时是抢占、等待、拒绝还是换出。
+- 前缀命中是否值得等待。
+- 长请求是否挤压短请求的尾延迟。
 
-也就是说，block manager 只回答“物理块怎么放”。scheduler 还要回答“这一步应该服务谁”。
+也就是说，块管理器只回答“物理块怎么放”，调度器还要回答“这一步应该服务谁”。
 
-这点和 HiCache/Mooncake 的关系很像：有远端 KV 不代表一定要等它，能 prefetch 不代表当前请求应该阻塞。
+这点和 HiCache/Mooncake 的关系很像：有远端 KV 不代表一定要等它，能够预取也不代表当前请求应该阻塞。
 
 ## PagedAttention 和 HiCache 不是同一层
 
 我会把它们这样分开：
 
 ```text
-PagedAttention:
-  inside one serving runtime
-  GPU KV physical block management
+PagedAttention：
+  位于单个推理服务运行时内部
+  管理 GPU KV 物理块
 
-HiCache:
-  inside SGLang runtime
-  GPU / Host / Storage 三层 cache state
+HiCache：
+  位于 SGLang 运行时内部
+  管理 GPU、主机内存和存储层的三级缓存状态
 
-Mooncake Store:
-  outside runtime
-  remote object / replica / transfer path
+Mooncake Store：
+  位于运行时外部
+  管理远端对象、副本和传输链路
 ```
 
-PagedAttention 管的是 GPU 里 KV block 怎么组织。HiCache 继续把 prefix KV 状态扩到 Host 和 Storage。Mooncake Store 再提供远端 object 存取和传输。
+PagedAttention 管理 GPU 中 KV 块的组织方式。HiCache 继续把前缀 KV 状态扩展到主机内存和外部存储。Mooncake Store 再提供远端对象存取和传输。
 
 它们都和 KV Cache 有关，但状态对象不一样：
 
-- PagedAttention 的对象是 physical KV block。
-- HiCache 的对象是 prefix node 的 GPU/Host/Storage 状态。
-- Mooncake 的对象是 object、slice、replica 和 Segment。
+- PagedAttention 的对象是物理 KV 块。
+- HiCache 的对象是前缀树节点的 GPU、主机内存和存储状态。
+- Mooncake 的对象是对象、切片、副本和 Segment。
 
-混在一起讲“KV cache 命中”，很容易把读路径说错。
+混在一起讲“KV 缓存命中”，很容易把读取路径说错。
 
 ## 我会重点查的几处实现
 
-读 vLLM、SGLang 或类似 runtime 时，我会直接找这些点：
+阅读 vLLM、SGLang 或类似推理引擎的实现时，我会直接找这些点：
 
-- block table 在 sequence 上怎么存。
-- physical block 的 free list 怎么维护。
-- prefill 后 blocks 如何提交。
-- decode append 如何申请新 block。
-- shared prefix 如何增加 ref count。
-- request finish/cancel 如何释放 blocks。
-- copy-on-write 在写入前还是写入后做。
-- attention kernel 如何从 block table 读 K/V。
-- block 不足时 scheduler 采取什么策略。
+- 块表怎样记录在序列上。
+- 物理块的空闲链表怎样维护。
+- 预填充后的块怎样提交。
+- 解码追加数据时怎样申请新块。
+- 共享前缀怎样增加引用计数。
+- 请求结束或取消时怎样释放块。
+- 写时复制发生在写入之前还是之后。
+- 注意力内核怎样通过块表读取 K/V。
+- 块不足时调度器采取什么策略。
 
-PagedAttention 的价值，不在于它有一个好记的分页比喻，而在于它把 KV Cache 从连续数组改成了有映射、有引用、有生命周期的内存对象。
+PagedAttention 的价值不在于有一个好记的分页比喻，而在于把 KV 缓存从连续数组改成了有映射、有引用、有生命周期的内存对象。

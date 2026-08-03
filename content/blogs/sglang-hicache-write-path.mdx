@@ -13,9 +13,9 @@ series: 'SGLang Runtime Notes'
 featured: true
 ---
 
-HiCache 写路径回答的是：**一段已经在 GPU 上算出来的 prefix KV Cache，什么时候、怎么离开 GPU，并且离开以后还保持可复用。**
+HiCache 写路径回答的是：**一段已经在 GPU 上算出的前缀 KV 缓存，何时、如何离开 GPU，并在离开后仍然可以复用。**
 
-这个问题的坑在于，写路径里有两次“成功”：一次是 GPU KV 被备份到 Host，一次是 Host page 被写进 Storage backend。只看其中一次成功，就会误判后续请求能不能 remote hit。
+这个问题的难点在于，写路径里有两次“成功”：一次是 GPU KV 备份到主机内存，另一次是主机缓存页写入存储后端。只看其中一次，就会误判后续请求能否实现远端命中。
 
 ## 源码版本与范围
 
@@ -38,86 +38,86 @@ python/sglang/srt/mem_cache/storage/mooncake_store/mooncake_store.py
 
 ```text
 write_backup(node)
-  -> collect GPU device_indices
-  -> build PoolTransfer
+  -> 收集 GPU device_indices
+  -> 构造 PoolTransfer
   -> cache_controller.write(...)
   -> commit_hicache_transfer(...)
-  -> node gains Host backup
+  -> 节点获得主机内存备份
   -> write_backup_storage(...)
   -> HiCacheStorage.batch_set_v1/v2
   -> MooncakeStore.batch_set_v1/v2
-  -> Store object write result folds back to page result
+  -> Store 对象写入结果聚合为页级结果
 ```
 
-本文只分析 HiCache 写路径和 Mooncake backend 的 page/object 边界，不覆盖完整 eviction policy、GPU kernel、分布式部署 benchmark，也不声称某种 write policy 在所有 workload 下更优。
+本文只分析 HiCache 写入路径和 Mooncake 后端的页与对象边界，不覆盖完整淘汰策略、GPU 计算内核和分布式部署基准测试，也不声称某种写入策略在所有负载下都更优。
 
 ## 写路径分两段
 
-HiCache 写入不要理解成一次 `set(key, value)`。它至少分成两段：
+不要把 HiCache 写入理解为一次 `set(key, value)`。它至少分成两段：
 
 ```text
-D->H backup:
-  GPU KV pool -> Host KV pool
+D->H 备份:
+  GPU KV 池 -> 主机 KV 池
 
-H->Storage backup:
-  Host KV pool -> Storage backend
+H->Storage 备份:
+  主机 KV 池 -> 存储后端
 ```
 
 <LayerDiagram
   title="HiCache 写路径不是一次 set，而是两次降级"
-  caption="第一段保护 GPU KV 被驱逐时不丢；第二段让 Host KV 也可以释放，并在未来从 L3 拉回来。"
+  caption="第一段保证 GPU KV 被驱逐时不会丢失；第二段让主机 KV 也可以释放，并在需要时从 L3 拉回来。"
   layers={[
     {
-      label: 'L1: GPU KV pool',
-      detail: 'attention kernel 直接使用的 device slots',
+      label: 'L1：GPU KV 池',
+      detail: '注意力内核直接使用的设备槽位',
       tone: 'teal',
       items: ['node.value', 'device_indices', 'lock_ref'],
     },
     {
-      label: 'L2: Host KV pool',
-      detail: 'write_backup 的目标，也是 storage backend 的读写 buffer',
+      label: 'L2：主机 KV 池',
+      detail: 'write_backup 的目标，也是存储后端的读写缓冲区',
       tone: 'blue',
       items: ['node.host_value', 'host_indices', 'host_ref_counter'],
     },
     {
-      label: 'L3: Storage backend',
-      detail: 'Mooncake backend 按 page key 写 object',
+      label: 'L3：存储后端',
+      detail: 'Mooncake 后端按页键写入对象',
       tone: 'mauve',
-      items: ['node.hash_value', 'batch_set_v1/v2', 'object keys'],
+      items: ['node.hash_value', 'batch_set_v1/v2', '对象键'],
     },
   ]}
 />
 
-第一段让 GPU KV 可以被驱逐但不丢失。第二段让 Host KV 也可以释放，后续还可以从远端 storage prefetch 回来。
+第一段让 GPU KV 可以被驱逐而不丢失，第二段则允许释放主机 KV，并在后续请求中从远端存储重新预取。
 
 <FlowDiagram
-  title="Write path overview: 写入发生到可复用之间还有提交边界"
-  caption="这条路径把 GPU 上已经 materialize 的 KV 逐层降级，但每层成功都只证明该层的事实。"
+  title="写路径总览：写入发生到真正可复用之间还有提交边界"
+  caption="这条路径把 GPU 上已经生成的 KV 逐层降级，但每层成功都只能证明该层的状态。"
   steps={[
     {
-      label: 'Materialized GPU KV',
+      label: '已生成的 GPU KV',
       meta: 'node.value',
-      detail: 'prefix 已经在 GPU KV pool 中，可以被当前 runtime 直接使用。',
+      detail: '前缀已经在 GPU KV 池中，可以被当前推理引擎直接使用。',
       tone: 'teal',
-      items: ['device_indices', 'radix node', 'lock_ref'],
+      items: ['device_indices', '基数树节点', 'lock_ref'],
     },
     {
-      label: 'D->H backup',
+      label: 'D->H 备份',
       meta: 'write_backup',
-      detail: 'Host pool 分配成功并提交 host_value，GPU 驱逐后才有本地恢复路径。',
+      detail: '主机内存池分配成功并提交 host_value 后，GPU 驱逐才有本地恢复路径。',
       tone: 'blue',
-      items: ['PoolTransfer', 'Host pages', 'commit_hicache_transfer'],
+      items: ['PoolTransfer', '主机缓存页', 'commit_hicache_transfer'],
     },
     {
-      label: 'H->Storage write',
+      label: 'H->Storage 写入',
       meta: 'write_backup_storage',
-      detail: 'storage backend 从 Host pointer 读取 page/object，并返回 page 级结果。',
+      detail: '存储后端从主机指针读取缓存页或对象，并返回页级结果。',
       tone: 'mauve',
       items: ['node.hash_value', 'batch_set_v1/v2', 'ongoing_backup'],
     },
     {
-      label: 'Read-side reuse',
-      meta: 'future request',
+      label: '后续读取复用',
+      meta: '未来请求',
       detail: '后续还要经过 exists、prefetch、load_back；写入发生不等于复用完成。',
       tone: 'green',
       items: ['batch_exists', 'batch_get', 'load_back'],
@@ -125,114 +125,114 @@ H->Storage backup:
   ]}
 />
 
-## D->H：write_backup
+## GPU 到主机内存：write_backup
 
-`write_backup(node)` 的输入是一个 radix node。这个 node 对应一段 prefix，它的 GPU KV indices 保存在 base component 的 `value` 中。
+`write_backup(node)` 的输入是一个基数树节点。这个节点对应一段前缀，其 GPU KV 索引保存在基础组件的 `value` 中。
 
-写入 Host 前，代码会先维护一个重要不变量：
+写入主机内存前，代码会先维护一个重要不变量：
 
 ```text
-非 write_back 场景下，父节点必须先 backup。
+非回写场景下，父节点必须先完成备份。
 ```
 
-原因是 prefix cache 是树结构。如果子节点已经写到 Host，而父节点没有写，后续只保留子节点会破坏 prefix 的连续可恢复性。`write_backup` 因此会在必要时递归 backup parent。
+原因是前缀缓存是一棵树。如果子节点已经写入主机内存，而父节点没有，后续只保留子节点会破坏前缀的连续可恢复性。因此，`write_backup` 会在必要时递归备份父节点。
 
 核心流程可以压成：
 
 ```text
 write_backup(node)
-  -> 取 node 的 GPU device_indices
+  -> 获取节点的 GPU device_indices
   -> 构造 PoolTransfer(name=KV, device_indices=...)
-  -> 为 Mamba/SWA/DSA 等组件构造额外 transfers
-  -> Host 空间不够时 evict_host
+  -> 为 Mamba/SWA/DSA 等组件构造额外传输项
+  -> 主机内存不足时调用 evict_host
   -> cache_controller.write(...)
   -> 得到 host_indices
   -> commit_hicache_transfer(...)
-  -> 标记 node 已经有 Host 备份
+  -> 标记节点已经有主机内存备份
 ```
 
 <SequenceDiagram
-  title="write_backup 把一个 radix node 从 GPU 降级到 Host"
+  title="write_backup 把一个基数树节点从 GPU 降级到主机内存"
   caption="这段流程只完成 D->H，不代表数据已经进入 Mooncake Store。"
-  actors={['Radix node', 'HiCache', 'Cache controller', 'Host KV pool']}
+  actors={['基数树节点', 'HiCache', '缓存控制器', '主机 KV 池']}
   steps={[
     {
-      from: 'Radix node',
+      from: '基数树节点',
       to: 'HiCache',
-      label: 'read node.value',
-      detail: '取出这段 prefix 对应的 GPU KV indices',
+      label: '读取 node.value',
+      detail: '取出这段前缀对应的 GPU KV 索引',
       tone: 'teal',
     },
     {
       from: 'HiCache',
-      to: 'Cache controller',
+      to: '缓存控制器',
       label: 'write(PoolTransfer)',
-      detail: '为 KV 和 side pools 组织 D->H transfer descriptor',
+      detail: '为 KV 和辅助内存池组织 D->H 传输描述',
       tone: 'blue',
     },
     {
-      from: 'Cache controller',
-      to: 'Host KV pool',
-      label: 'allocate host pages and copy',
-      detail: 'Host 空间不足时先尝试 evict_host',
+      from: '缓存控制器',
+      to: '主机 KV 池',
+      label: '分配主机页并复制',
+      detail: '主机内存不足时先尝试 evict_host',
       tone: 'mauve',
     },
     {
       from: 'HiCache',
-      to: 'Radix node',
+      to: '基数树节点',
       label: 'commit_hicache_transfer',
-      detail: '写回 host_value，并标记 node 有 Host 备份',
+      detail: '写回 host_value，并标记节点已有主机内存备份',
       tone: 'green',
     },
   ]}
 />
 
-这里的 `cache_controller.write` 才是真正执行 D->H 拷贝的地方。`write_backup` 自己更多是在组织 transfer descriptor、分配 Host 空间、提交 node 状态。
+这里的 `cache_controller.write` 才是真正执行 D->H 复制的地方。`write_backup` 更多是在组织传输描述、分配主机内存和提交节点状态。
 
 ## PoolTransfer 是跨层描述符
 
-`PoolTransfer` 同时服务 D->H、H->D、H->Storage、Storage->H。它不是 Mooncake 专属结构，而是 HiCache 用来描述“某个 pool 的一批 page 怎么搬”的统一对象。
+`PoolTransfer` 同时服务 D->H、H->D、H->Storage 和 Storage->H。它不是 Mooncake 专属结构，而是 HiCache 用来描述“某个内存池中的一批页如何搬运”的统一对象。
 
-写 Host 时，KV transfer 主要关心：
-
-```text
-name=PoolName.KV
-device_indices=<GPU token indices>
-```
-
-写 Storage 时，同一个逻辑会变成：
+写入主机内存时，KV 传输主要关心：
 
 ```text
 name=PoolName.KV
-host_indices=<Host token/page indices>
-keys=<storage page keys>
+device_indices=<GPU token 索引>
 ```
 
-这就是为什么 `PoolTransfer` 里同时有 `device_indices`、`host_indices` 和 `keys`。它要跨越多个 tier。
+写入存储层时，同一个逻辑会变成：
+
+```text
+name=PoolName.KV
+host_indices=<主机 token/页面索引>
+keys=<存储页键>
+```
+
+这就是 `PoolTransfer` 同时包含 `device_indices`、`host_indices` 和 `keys` 的原因：它需要跨越多个缓存层级。
 
 ## 写穿和写回的区别
 
-HiCache 中的 write-through 和 write-back 容易混。
+HiCache 中的写穿与回写很容易混淆。
 
-write-through 更主动。一个 node 被命中到一定次数，或者策略要求写穿时，HiCache 会提前把它备份到 Host，甚至继续写到 Storage。这样后续驱逐 GPU 时成本更低。
+写穿更主动。一个节点被命中到一定次数，或者策略明确要求写穿时，HiCache 会提前把它备份到主机内存，甚至继续写入存储层。这样，后续从 GPU 驱逐时的成本更低。
 
-write-back 更像驱逐前的保护。GPU 空间不够，需要驱逐某个 node，但它还没有 Host 备份，此时先 `write_backup(node, write_back=True)`，再把 GPU slot 回收。
+回写更像驱逐前的保护。GPU 空间不足、需要驱逐某个节点，而该节点还没有主机内存备份时，先执行 `write_backup(node, write_back=True)`，再回收 GPU 槽位。
 
 区别可以这样看：
 
 ```text
-write-through:
-  cache 仍在 GPU，但先复制一份到 Host/Storage
+写穿：
+  缓存仍在 GPU，但提前复制一份到主机内存或存储层
 
-write-back:
-  为了释放 GPU，先保存到 Host，再移除 GPU 引用
+写回：
+  为了释放 GPU，先保存到主机内存，再移除 GPU 引用
 ```
 
 两者都会让 KV 离开纯 GPU 状态，但触发时机不同。
 
-## H->Storage：write_backup_storage
+## 主机内存到外部存储：write_backup_storage
 
-当 node 已经有 Host 备份，并且启用了 storage backend，`write_backup_storage(node)` 会把 Host page 写到 L3。
+当节点已经有主机内存备份，并且启用了存储后端时，`write_backup_storage(node)` 会把主机缓存页写入 L3。
 
 核心流程：
 
@@ -240,25 +240,25 @@ write-back:
 write_backup_storage(node)
   -> 检查 enable_storage、cache_controller、node.backuped
   -> 可选生成 prefix_keys
-  -> 为额外组件构造 BACKUP_STORAGE transfers
+  -> 为额外组件构造 BACKUP_STORAGE 传输项
   -> 构造 KV PoolTransfer(host_indices=node.host_value, keys=node.hash_value)
   -> cache_controller.write_storage(...)
-  -> 记录 ongoing_backup，持有 Host lock
+  -> 记录 ongoing_backup，并持有主机内存锁
 ```
 
-注意这里写入 storage 的 key 是 `node.hash_value`，不是原始 token list。HiCache 会按 page 计算 hash key，让 L3 storage 可以按 page 查询和复用。
+注意，这里写入存储层的键是 `node.hash_value`，而不是原始 token 列表。HiCache 会按页计算哈希键，让 L3 存储可以按页查询和复用。
 
-## 为什么要持有 Host lock
+## 为什么要持有主机内存锁
 
-Storage 写是异步的。`write_backup_storage` 发起后，Host KV page 还不能立刻被回收，否则 backend 可能正在从这块 Host buffer 读数据。
+存储层写入是异步的。`write_backup_storage` 发起后，主机 KV 缓存页不能立刻回收，否则后端可能仍在读取这块主机缓冲区。
 
-因此代码会在 `ongoing_backup` 里记录 operation id，并通过 host lock 保护 node：
+因此，代码会在 `ongoing_backup` 中记录操作编号，并通过主机内存锁保护节点：
 
 ```text
 ongoing_backup[operation_id] = (node, host_lock_params)
 ```
 
-等 storage 写完成后再释放。这个机制防止了一个经典错误：上层认为已经发起写入，于是复用 Host buffer，导致远端存到错误内容。
+锁要等存储写入完成后再释放。这个机制可以防止一种常见错误：上层认为写入已经发起便复用主机缓冲区，最终导致远端保存了错误内容。
 
 ## v1 和 v2 写入
 
@@ -268,15 +268,15 @@ ongoing_backup[operation_id] = (node, host_lock_params)
 batch_set_v1(keys, host_indices)
 ```
 
-hybrid cache 走 v2：
+混合缓存走 v2：
 
 ```text
 batch_set_v2(transfers)
 ```
 
-v2 的意义是多个 pool 必须一起构成可复用 prefix。比如某些模型除了 KV，还需要 side state。如果 KV 写入成功但 side pool 没写，下一次 prefix 命中也不能完整复用。
+v2 的意义在于，多个内存池必须共同构成可复用前缀。例如，某些模型除了 KV 还需要辅助状态；如果 KV 写入成功而辅助内存池没有写入，下一次前缀命中也无法完整复用。
 
-因此 v2 按 pool 返回结果：
+因此，v2 会按内存池返回结果：
 
 ```text
 {
@@ -286,11 +286,11 @@ v2 的意义是多个 pool 必须一起构成可复用 prefix。比如某些模�
 }
 ```
 
-最终可用 prefix 长度要取各 pool 的共同命中边界。
+最终可用的前缀长度，要取各内存池共同支持的命中边界。
 
 ## 接到 Mooncake 时发生什么
 
-当 backend 是 Mooncake，`batch_set_v1` 会把 logical page key 展开成 Mooncake object keys。
+当后端为 Mooncake 时，`batch_set_v1` 会把逻辑页键展开成 Mooncake 对象键。
 
 MHA 通常是：
 
@@ -307,13 +307,13 @@ page_key
   -> page_key_<tp_or_rank_suffix>_k
 ```
 
-然后 Mooncake backend 从 Host pool 拿 pointer 和 size：
+然后 Mooncake 后端从主机内存池取得指针和长度：
 
 ```text
 mem_pool_host.get_page_buffer_meta(host_indices)
 ```
 
-最后调用 zero-copy put：
+最后调用零拷贝写入接口：
 
 ```text
 batch_put_from(...)
@@ -321,87 +321,87 @@ batch_put_from_multi_buffers(...)
 ```
 
 <SequenceDiagram
-  title="write_backup_storage 把 Host page 写入 Mooncake Store"
-  caption="这段流程的输入是 Host pointer，不是 Python bytes，也不是 GPU tensor。"
-  actors={['HiCache', 'Host KV pool', 'Mooncake backend', 'Mooncake Store']}
+  title="write_backup_storage 把主机缓存页写入 Mooncake Store"
+  caption="这段流程的输入是主机内存指针，不是 Python 字节串，也不是 GPU 张量。"
+  actors={['HiCache', '主机 KV 池', 'Mooncake 后端', 'Mooncake Store']}
   steps={[
     {
       from: 'HiCache',
-      to: 'Mooncake backend',
+      to: 'Mooncake 后端',
       label: 'batch_set_v1/v2(keys, host_indices)',
       detail: 'keys 来自 node.hash_value，host_indices 来自 node.host_value',
       tone: 'teal',
     },
     {
-      from: 'Mooncake backend',
-      to: 'Host KV pool',
+      from: 'Mooncake 后端',
+      to: '主机 KV 池',
       label: 'get_page_buffer_meta',
-      detail: '拿到每页 KV 的 pointer 和 size',
+      detail: '取得每页 KV 的指针和大小',
       tone: 'blue',
     },
     {
-      from: 'Mooncake backend',
+      from: 'Mooncake 后端',
       to: 'Mooncake Store',
       label: 'batch_put_from(_multi_buffers)',
-      detail: 'Store 把 object/slice/replica 状态和 TE WRITE 接起来',
+      detail: 'Store 把对象、切片和副本状态接到 Transfer Engine WRITE',
       tone: 'mauve',
     },
   ]}
 />
 
-所以写到 Mooncake 的不是 Python bytes，也不是 GPU tensor，而是 Host KV page 的 pointer 列表。
+所以写入 Mooncake 的不是 Python 字节串，也不是 GPU 张量，而是一组主机 KV 页指针。
 
 ## 写路径的失败边界
 
 写路径可能在几个位置失败：
 
-- Host 空间不足，`evict_host` 后仍无法分配。
-- D->H transfer 失败，`cache_controller.write` 返回 `None`。
-- Storage backend 写失败，page 级结果返回 false。
-- hybrid pool 某个 side pool 写失败，导致整体 prefix 可用长度缩短。
-- Host lock 或 node split 处理不当，可能造成写入中的 node 状态不一致。
+- 主机内存不足，执行 `evict_host` 后仍无法分配。
+- D->H 传输失败，`cache_controller.write` 返回 `None`。
+- 存储后端写入失败，页级结果返回 false。
+- 混合缓存中的某个辅助内存池写入失败，导致整体可用前缀缩短。
+- 主机内存锁或节点拆分处理不当，可能造成写入中的节点状态不一致。
 
-HiCache 通过 lock、ongoing operation 和 page 级结果尽量把失败限制在可回退状态，而不是把 radix tree 直接标成“全都可用”。
+HiCache 通过锁、进行中的操作记录和页级结果，尽量把失败限制在可回退状态，而不是直接把基数树标记为“全部可用”。
 
 ## 这条路径能证明什么
 
 <CompareCallout
-  title="Write-path evidence boundary"
-  caption="写路径最需要克制的表达是：一次写入调用发生了，不代表完整 KV reuse contract 已经闭环。"
+  title="写路径能说明什么"
+  caption="一次写入调用已经发生，并不代表完整的 KV 复用链路已经打通。"
   columns={[
     {
-      title: 'This article establishes',
+      title: '能够确认',
       tone: 'green',
       items: [
-        'HiCache write path 先把 GPU KV 降级到 Host，再把 Host page 写入 storage backend。',
-        'Host lock 和 ongoing backup 是为了保护异步写入期间的 Host buffer 生命周期。',
-        'Mooncake backend 看到的是 Host pointer 和 object/page 结果，不是 GPU tensor。',
-        'v2 写路径需要把 KV 和 side pools 的结果折回共同可用边界。',
+        'HiCache 写路径先把 GPU KV 降级到主机内存，再把主机缓存页写入存储后端。',
+        '主机内存锁和进行中的备份用于保护异步写入期间的主机缓冲区生命周期。',
+        'Mooncake 后端看到的是主机指针和对象或页级结果，不是 GPU 张量。',
+        'v2 写路径需要把 KV 与辅助内存池的结果汇总为共同可用边界。',
       ],
     },
     {
-      title: 'This article does not prove',
+      title: '不能单独证明',
       tone: 'amber',
       items: [
-        '不证明某个 page 调用 batch_set 后，后续请求一定能 remote hit。',
-        '不证明 Store object 写成功等价于完整 prefix 语义正确。',
-        '不证明 write-through 或 write-back 在所有 workload 下更优。',
-        '不覆盖生产环境中的 replica、lease、transport retry 或 benchmark 结论。',
+        '不证明某个缓存页调用 batch_set 后，后续请求一定能够远端命中。',
+        '不证明 Store 对象写入成功就等于完整前缀语义正确。',
+        '不证明写穿或写回策略在所有负载下都更优。',
+        '不覆盖生产环境中的副本、租约、传输重试或基准测试结论。',
       ],
     },
   ]}
 />
 
-## 结论：写入成功必须按 page 级语义提交
+## 结论：写入成功必须按页提交
 
-HiCache 写路径最容易误读的地方，是把“某个 buffer 搬完”当成“这个 prefix 以后可复用”。更稳的读法是按 page 级语义看提交条件：
+HiCache 写入路径最容易误读的地方，是把“某个缓冲区搬完”当成“这个前缀以后可以复用”。更稳妥的读法是按页级语义检查提交条件：
 
 ```text
-parent prefix is recoverable
-  -> GPU page has Host backup
-  -> Host page stays locked during Storage write
-  -> every required pool/object reports success
-  -> logical page result is true
+父前缀可以恢复
+  -> GPU 页已有主机内存备份
+  -> 写入存储层期间，主机页保持锁定
+  -> 每个必要内存池或对象都返回成功
+  -> 逻辑页结果为真
 ```
 
-所以 `write_backup` 要关心父节点，`write_backup_storage` 要关心 Host page 生命周期，v2 写路径要关心 side pools 的共同结果。对 Mooncake backend 来说，写入的最终目标不是把一批 object 调用完 `put`，而是让一个 logical page 在后续 read path 中可以被完整地判断为 remote hit。
+所以 `write_backup` 要关注父节点，`write_backup_storage` 要关注主机缓存页生命周期，v2 写入路径要关注辅助内存池的共同结果。对于 Mooncake 后端，写入的最终目标不是对一批对象调用完 `put`，而是让一个逻辑页在后续读取路径中能够被完整地判定为远端命中。

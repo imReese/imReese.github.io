@@ -76,7 +76,7 @@ docker --version
 docker info
 ```
 
-如果 `docker version` 只有 client 没有 server，通常是 Docker Desktop 没启动，或者当前用户没有权限访问 Docker daemon。
+如果 `docker version` 只能看到客户端而没有服务端信息，通常是 Docker Desktop 没有启动，或者当前用户无权访问 Docker 守护进程。
 
 查看磁盘占用：
 
@@ -836,7 +836,7 @@ host.docker.internal
 curl http://host.docker.internal:3000
 ```
 
-Linux 上可能需要使用 host network：
+Linux 上可能需要使用主机网络：
 
 ```bash
 docker run --network host <image-name>
@@ -872,7 +872,7 @@ docker run --rm -it \
 ```text
 使用更小 base image，例如 alpine、distroless
 使用多阶段构建
-清理 package manager cache
+清理包管理器缓存
 .dockerignore 排除无关文件
 不要把测试数据、源码历史、node_modules 整包复制进去
 ```

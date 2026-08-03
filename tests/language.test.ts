@@ -29,3 +29,19 @@ test('server defaults to English UI without inventing language routes', () => {
   assert.equal(rootLayout.includes('/en/'), false)
   assert.equal(rootLayout.includes('/zh/'), false)
 })
+
+test('localizes the 404 page and its return action', () => {
+  const notFound = readFileSync('src/app/not-found.tsx', 'utf8')
+  const translations = readFileSync(
+    'src/components/shared/LanguageProvider.tsx',
+    'utf8',
+  )
+
+  assert.match(notFound, /useLanguage\(\)/)
+  assert.match(notFound, /t\('notFound\.title'\)/)
+  assert.match(notFound, /t\('notFound\.description'\)/)
+  assert.match(notFound, /t\('notFound\.backHome'\)/)
+  assert.match(translations, /'notFound\.title': 'Page not found'/)
+  assert.match(translations, /'notFound\.title': '页面不存在'/)
+  assert.match(translations, /'notFound\.backHome': '返回首页'/)
+})

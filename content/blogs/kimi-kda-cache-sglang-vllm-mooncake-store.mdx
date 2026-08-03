@@ -1,5 +1,5 @@
 ---
-title: 'Kimi Linear 的 KDA Cache：SGLang、vLLM 与 Mooncake Store 全链路'
+title: 'Kimi Linear 的 KDA 缓存：SGLang、vLLM 与 Mooncake Store 全链路'
 description: '从 Kimi Linear 的 KDA 状态出发，追踪 SGLang、vLLM 与 Mooncake Store 的混合缓存流程，并解释细粒度检查点、写时复制、部分分组命中与远端复用。'
 author: 'Reese'
 date: '2026-07-22'
@@ -19,38 +19,38 @@ series: 'Mooncake / HiCache Internals'
 featured: true
 ---
 
-Kimi Linear 的 prefix cache 不能只按普通 Transformer 的 KV block 来理解。模型里一部分层是 MLA，另一部分层是 KDA：前者需要一串可分页的 KV/latent pages，后者需要“前缀处理到当前位置以后”的有限状态。工程难点不只是保存数据，而是让 token prefix、MLA pages、KDA checkpoint、scheduler step、HiCache 层级和 Mooncake Store objects 始终落在同一个逻辑边界。
+Kimi Linear 的前缀缓存不能只按普通 Transformer 的 KV 块来理解。模型里一部分层是 MLA，另一部分层是 KDA：前者需要一串可分页的 KV 或低维缓存页，后者需要“前缀处理到当前位置以后”的有限状态。工程难点不只是保存数据，而是让 token 前缀、MLA 缓存页、KDA 检查点、调度步、HiCache 层级和 Mooncake Store 对象始终落在同一个逻辑边界。
 
 本文沿两条实现链路展开：
 
 ```text
 Kimi KDA
-  ├─ SGLang: KDA kernel → UnifiedRadixCache → HiCache Host
-  │            → MooncakeStore backend → Mooncake Distributed Store
+  ├─ SGLang：KDA 内核 → UnifiedRadixCache → HiCache 主机层
+  │            → MooncakeStore 后端 → Mooncake Distributed Store
   │
   └─ vLLM: KimiGatedDeltaNetAttention → HybridKVCacheCoordinator
                → MooncakeStoreConnector → Mooncake Distributed Store
 ```
 
-核心结论是：**Mooncake Store 负责保存、放置和搬运 opaque bytes；KDA checkpoint 在哪个 token 边界产生、是否与 MLA prefix 对齐、缺失时是否补算，仍由 SGLang 或 vLLM 的控制面决定。**
+核心结论是：**Mooncake Store 负责保存、放置和搬运不透明字节；KDA 检查点在哪个 token 边界产生、是否与 MLA 前缀对齐、缺失时是否补算，仍由 SGLang 或 vLLM 的控制面决定。**
 
-两套引擎采用不同的 checkpoint 创建方式：
+两套引擎采用不同的检查点创建方式：
 
 ```text
 SGLang
-  一个大 extend 可以让 KDA kernel 返回 chunk-aligned 中间状态
-  → runtime 从中抽取目标边界
-  → radix node 持有 KDA/Mamba slot
-  → HiCache 将 temporal + conv 写入 Mooncake
+  一次较长的扩展计算可以让 KDA 内核返回按块对齐的中间状态
+  → 推理引擎从中抽取目标边界
+  → 基数树节点持有 KDA/Mamba 槽位
+  → HiCache 将递推状态和卷积状态写入 Mooncake
 
 vLLM
-  KDA prefill 通常只提交当前 scheduler step 的 final state
-  → hybrid coordinator 发现 MLA/KDA 命中分歧
-  → scheduler 在真正需要的边界提前结束 forward
-  → 将该 final state 注册为 prefix checkpoint
+  KDA 预填充通常只提交当前调度步的最终状态
+  → 混合缓存协调器发现 MLA/KDA 命中分歧
+  → 调度器在真正需要的边界提前结束前向计算
+  → 将最终状态注册为前缀检查点
 ```
 
-SGLang 已有显式的 temporal/conv 远端读写链路；vLLM 的 raw-page/cache-group 结构也能够承载完整 KDA checkpoint，通用 Mooncake 传输基础设施已经存在，但 Kimi KDA + MooncakeStoreConnector 的专项调用链证据仍有限。共同尚未完全闭合的是 partial-group hit：当 MLA/KV 命中得更长、同边界 KDA state 却不存在时，runtime 是否能发现缺失边界，并只补算一次 checkpoint。
+SGLang 已有显式的递推状态和卷积状态远端读写链路；vLLM 的原始状态页与缓存分组结构也能承载完整 KDA 检查点。通用 Mooncake 传输基础设施已经存在，但 Kimi KDA + MooncakeStoreConnector 的专项调用链证据仍有限。两套实现共同尚未完全闭合的问题是部分分组命中：当 MLA/KV 命中得更长、同一边界的 KDA 状态却不存在时，推理引擎能否发现缺失边界，并只补算一次检查点。
 
 ## 源码版本与结论范围
 
@@ -71,14 +71,14 @@ Mooncake 12df58c7de65f88f37f5da99ab95ff3418a9ebef  2026-07-22 19:02:55 UTC+8
 ```text
 源码调用链可确认      可以从入口追到状态读写和测试
 接口形状允许          数据结构可以承载，但缺少完整专项调用链证据
-调用链仍有缺口        控制面信息未传播，或远端 partial hit 未形成闭环
+调用链仍有缺口        控制面信息未传播，或远端部分命中未形成闭环
 ```
 
 本文不做性能评测，也不把通用 Mamba/GDN 测试直接等价为 Kimi KDA 的完整生产调用链。文中的“当前实现”均指上述固定快照，而不是持续变化的最新 `main`。
 
-## 先统一记号：矩阵状态不等于完整 checkpoint
+## 先统一记号：矩阵状态不等于完整检查点
 
-记 tokenizer 产生的前 `t` 个 token ID 组成的 prefix 为：
+记分词器产生的前 `t` 个 token ID 所组成的前缀为：
 
 $$
 P_t=(\tau_1,\tau_2,\ldots,\tau_t),
@@ -86,7 +86,7 @@ P_t=(\tau_1,\tau_2,\ldots,\tau_t),
 \tau_i\in\{0,\ldots,|\mathcal V|-1\}.
 $$
 
-这里的 $\tau_i$ 是 token ID。后面 KDA 公式中的 $x_t^{(l)}$ 才表示第 $l$ 层当前位置的归一化 hidden state，二者不能混为一谈。
+这里的 $\tau_i$ 是 token ID。后面 KDA 公式中的 $x_t^{(l)}$ 才表示第 $l$ 层当前位置的归一化隐藏状态，二者不能混为一谈。
 
 对第 `l` 个 KDA layer，定义：
 
@@ -99,7 +99,7 @@ n_{h,l}^{\mathrm{local}}
 }
 $$
 
-为处理完 `P_t` 后的 recurrent matrices。定义同一边界上的 ShortConv window：
+为处理完 `P_t` 后的递推矩阵。再定义同一边界上的 ShortConv 窗口：
 
 $$
 \Gamma_l(t)
@@ -109,9 +109,9 @@ $$
 }.
 $$
 
-这里 $w_l$ 是 causal convolution kernel size；conv window 的物理实现也可能使用转置布局 `[dim, state_len]`。
+这里 $w_l$ 是因果卷积核大小；卷积窗口的物理实现也可能使用转置布局 `[dim, state_len]`。
 
-本文按数学语义将 $\mathbf S_l(t)$ 记作 `[local_heads, d_k, d_v]`。部分 kernel 和 state pool 的物理 layout 使用 `[local_heads, d_v, d_k]`，即最后两个维度转置存放；两种 layout 表示同一个关联状态。
+本文按数学语义将 $\mathbf S_l(t)$ 记作 `[local_heads, d_k, d_v]`。部分计算内核和状态池的物理布局使用 `[local_heads, d_v, d_k]`，即最后两个维度转置存放；两种布局表示同一个关联状态。
 
 一个 KDA layer 的完整续算状态是：
 
@@ -119,7 +119,7 @@ $$
 C_l(t)=\left(\Gamma_l(t),\mathbf S_l(t)\right).
 $$
 
-整个模型在 prefix `P_t` 上的 KDA checkpoint 是：
+整个模型在前缀 `P_t` 上的 KDA 检查点是：
 
 $$
 \boxed{
@@ -127,27 +127,27 @@ C(P_t)=\left\{C_l(t)\mid l\in\text{KDA layers}\right\}.
 }
 $$
 
-后文中的 $\mathbf S_l(t)$ 始终只表示 recurrent matrices；$C_l(t)$ 才表示某一层完整的 conv + recurrent state；$C(P_t)$ 则表示所有 KDA layers 在同一 token 边界上的 checkpoint。
+后文中的 $\mathbf S_l(t)$ 始终只表示递推矩阵；$C_l(t)$ 才表示某一层完整的卷积与递推状态；$C(P_t)$ 则表示所有 KDA 层在同一 token 边界上的检查点。
 
-MLA pages 不属于 `C(P_t)`。对 Kimi Linear 这样的 hybrid model，一个可直接恢复的 prefix 还必须同时拥有：
+MLA 缓存页不属于 `C(P_t)`。对于 Kimi Linear 这样的混合模型，一个可以直接恢复的前缀还必须同时拥有：
 
 ```text
-MLA / Full Attention cache [0, t)
+MLA / 全局注意力缓存 [0, t)
 +
-KDA checkpoint C(P_t)
+KDA 检查点 C(P_t)
 +
-其他必要 sidecar 与所有并行 rank 数据
+其它必要的辅助状态与所有并行 rank 数据
 ```
 
 ## KDA 的递推与充分状态
 
-对单个 head，KDA 维护固定大小的关联记忆矩阵：
+对单个注意力头，KDA 维护固定大小的关联记忆矩阵：
 
 $$
 \mathbf S_t\in\mathbb R^{d_k\times d_v}.
 $$
 
-当前位置的 key、value 和 query 分别是：
+当前位置的键、值和查询分别是：
 
 $$
 \boldsymbol{k}_t,\boldsymbol{q}_t\in\mathbb R^{d_k},
@@ -155,7 +155,7 @@ $$
 \boldsymbol{v}_t\in\mathbb R^{d_v}.
 $$
 
-KDA 先按 key channel 衰减旧状态，再计算旧记忆对当前 value 的预测误差，最后只写入 delta：
+KDA 先按键通道衰减旧状态，再计算旧记忆对当前值的预测误差，最后只写入增量：
 
 $$
 \begin{aligned}
@@ -194,9 +194,9 @@ $$
 \beta_t\boldsymbol{k}_t\boldsymbol{v}_t^\top.
 $$
 
-与普通 linear attention 的直接外积累加相比，delta rule 会先查看旧状态能否重建当前 value；只有预测错误的部分才被写回。KDA 又把 Gated DeltaNet 每个 head 一个标量遗忘率，细化成每个 key channel 一个遗忘率。
+与普通线性注意力的直接外积累加相比，Delta Rule 会先判断旧状态能否重建当前值，只有预测错误的部分才被写回。KDA 又把 Gated DeltaNet 中每个头一个标量遗忘率，细化成每个键通道一个遗忘率。
 
-Q/K/V 并不是直接进入 recurrence。对第 $l$ 层的输入 $x_t^{(l)}$，实际模型会先做线性投影、因果短卷积和激活，Q/K 还会做 L2Norm：
+Q/K/V 并不是直接进入递推计算。对第 $l$ 层的输入 $x_t^{(l)}$，实际模型会先做线性投影、因果短卷积和激活，Q/K 还会做 L2Norm：
 
 $$
 \begin{aligned}
@@ -213,24 +213,24 @@ $$
 \end{aligned}
 $$
 
-因此只有 recurrent matrix、没有 ShortConv window，并不足以继续计算下一个 token。
+因此，只有递推矩阵而没有 ShortConv 窗口，不足以继续计算下一个 token。
 
 不需要跨请求持久化的量包括：
 
 ```text
-完整 prefix 的 q/k/v
-逐 token alpha / beta / delta error
-prefill chunk 内的 WY / UT workspace
-attention 输出与 output gate 中间量
+完整前缀的 q/k/v
+逐 token 的 alpha / beta / delta 误差
+预填充块内的 WY / UT 临时空间
+注意力输出与输出门控的中间量
 ```
 
-它们要么已经被折叠进 $\mathbf S_l(t)$，要么在当前 kernel 结束后失效。
+它们要么已经被折叠进 $\mathbf S_l(t)$，要么在当前计算内核结束后失效。
 
-这也解释了 prefix 复用的单向性：`C(P_1k)` 可以随 suffix 向前推进成 `C(P_2k)`，但只有 `C(P_4k)` 时无法倒推出 `C(P_1k)`。递推中的衰减和 delta correction 是有损更新，较早边界的 ShortConv window 也已经被覆盖。
+这也解释了前缀复用的单向性：`C(P_1k)` 可以随新增后缀向前推进成 `C(P_2k)`，但只有 `C(P_4k)` 时无法倒推出 `C(P_1k)`。递推中的衰减和误差修正是有损更新，较早边界的 ShortConv 窗口也已经被覆盖。
 
-## prefill 为什么能按 chunk 并行
+## 预填充为什么能分块并行
 
-逐 token recurrence 适合 decode，但 prefill 如果每个 token 启动一次 kernel，GPU 利用率会很差。KDA 将一个 kernel chunk 内的多个 transition 压缩成：
+逐 token 递推适合解码，但预填充如果每个 token 启动一次计算内核，GPU 利用率会很差。KDA 将一个计算块内的多次状态转移压缩成：
 
 $$
 \mathbf S_r=\mathbf P_r\mathbf S_0+\mathbf H_r,
@@ -238,7 +238,7 @@ $$
 \mathbf P_r=\mathbf T_r\mathbf T_{r-1}\cdots\mathbf T_1.
 $$
 
-其中每个 transition 是 diagonal minus rank-1：
+其中每次状态转移都可以写成“对角矩阵减去秩一矩阵”：
 
 $$
 \mathbf T_t
@@ -249,70 +249,70 @@ $$
 \left(\boldsymbol{k}_t\odot\boldsymbol\alpha_t\right)^\top.
 $$
 
-KDA 利用 WY representation 和 UT transform，将 chunk 内的大部分工作转成矩阵乘法与小型下三角求解。论文与 SGLang Triton 实现常见的 `chunk_size=64` 是算子内部的计算 tile，不是 scheduler 的 chunked-prefill 大小，也不是 prefix checkpoint interval。
+KDA 利用 WY 表示和 UT 变换，将块内的大部分工作转成矩阵乘法与小型下三角求解。论文与 SGLang Triton 实现中常见的 `chunk_size=64` 是算子内部的计算单元，不是调度器的分块预填充大小，也不是前缀检查点间隔。
 
 ## 五种容易混淆的“粒度”
 
 <LayerDiagram
-  eyebrow="five independent granularities"
-  title="同一个 prefix cache 链路里，至少有五种不同的边界"
-  caption="它们分别服务于算子、查找、物理分配、调度和远端存储。能够形成 hash，不等于已经生成 checkpoint，也不等于可以成为 Mooncake object boundary。"
+  eyebrow="五种相互独立的粒度"
+  title="同一条前缀缓存链路里，至少有五种不同边界"
+  caption="它们分别服务于算子、查找、物理分配、调度和远端存储。能够形成哈希，不等于已经生成检查点，也不等于可以成为 Mooncake 对象边界。"
   layers={[
     {
-      label: 'KDA kernel chunk',
-      detail: '算子内部并行 tile',
-      items: ['intermediate h', 'chunk-aligned state'],
+      label: 'KDA 计算块',
+      detail: '算子内部的并行单元',
+      items: ['中间状态 h', '按块对齐的状态'],
       tone: 'mauve',
     },
     {
-      label: 'prefix_match_unit / hash block',
-      detail: 'rolling hash 与本地 lookup 粒度',
-      items: ['addressable boundary', '不自动生成 state'],
+      label: 'prefix_match_unit / 哈希块',
+      detail: '滚动哈希与本地查找粒度',
+      items: ['可寻址边界', '不自动生成状态'],
       tone: 'blue',
     },
     {
-      label: 'cache-group physical block',
-      detail: 'GPU allocator 与 block table 单位',
-      items: ['MLA page', 'KDA raw state page'],
+      label: '缓存分组的物理块',
+      detail: 'GPU 分配器与块表的管理单位',
+      items: ['MLA 缓存页', 'KDA 原始状态页'],
       tone: 'green',
     },
     {
-      label: 'scheduler / LCM block',
-      detail: '多 cache groups 与 connector 的共同对齐',
-      items: ['lookup alignment', 'store alignment'],
+      label: '调度器 / 最小公倍数块',
+      detail: '多个缓存分组与连接器的共同对齐单位',
+      items: ['查找对齐', '存储对齐'],
       tone: 'amber',
     },
     {
-      label: 'Mooncake object chunk',
-      detail: '一个 key 对应一个或多个 memory slices',
-      items: ['opaque bytes', 'scatter-gather'],
+      label: 'Mooncake 对象块',
+      detail: '一个键对应一个或多个内存切片',
+      items: ['不透明字节', '分散聚集传输'],
       tone: 'rose',
     },
   ]}
 />
 
-## 一个逻辑 checkpoint 如何展开
+## 一个逻辑检查点如何展开
 
-逻辑上，一个 checkpoint 由 prefix hash、精确 token length 和 `C(P_t)` 组成；物理上，它由所有 KDA layers 的状态共同构成。
+逻辑上，一个检查点由前缀哈希、精确 token 长度和 `C(P_t)` 组成；物理上，它由所有 KDA 层的状态共同构成。
 
-vLLM 在固定快照中把每层状态放进 blocks-first raw page：
+vLLM 在固定快照中把每层状态放进以块为首维的原始状态页：
 
 ```text
-raw page per KDA layer
-  = conv_state bytes
-  + recurrent_state bytes
-  + optional padding
+每个 KDA 层一页原始状态
+  = 卷积状态字节
+  + 递推状态字节
+  + 可选填充
 ```
 
-同一个逻辑 block id 在每个 KDA layer 的 page table 中索引出该层的 `C_l(t)`。
+同一个逻辑块编号会在每个 KDA 层的页表中索引出该层的 `C_l(t)`。
 
-SGLang 则让一个逻辑 Mamba slot 横跨所有 KDA layers：
+SGLang 则让一个逻辑 Mamba 槽位横跨所有 KDA 层：
 
 ```text
-temporal buffer
+递推状态缓冲区
   [num_kda_layers, slots, local_heads, d_v, d_k]
 
-conv buffer
+卷积状态缓冲区
   [num_kda_layers, slots, kernel_size - 1, qkv_width]
 ```
 
@@ -321,59 +321,59 @@ conv buffer
 ```text
 vLLM
   C(P_t)
-  → 每个 KDA layer 各有一页 raw state
+  → 每个 KDA 层各有一页原始状态
 
 SGLang
   C(P_t)
-  → 一个跨层 Mamba slot
-  → temporal + 一个或多个 conv buffers
+  → 一个跨层 Mamba 槽位
+  → 递推状态 + 一个或多个卷积缓冲区
 ```
 
-逻辑原子性不要求物理上只有一个 tensor 或 object。真正的约束是：所有 components 必须属于同一个 prefix hash 和 token boundary，并在 lookup 时共同验证。
+逻辑原子性不要求物理上只有一个张量或对象。真正的约束是：所有组成部分必须属于同一个前缀哈希和 token 边界，并在查找时共同验证。
 
-## Kimi K3 预览与 vLLM 的细粒度 checkpoint
+## Kimi K3 预览版与 vLLM 的细粒度检查点
 
-截至该代码快照，vLLM 的 [PR #46384](https://github.com/vllm-project/vllm/pull/46384) 已合入；同日 vLLM 发布了 [Kimi K3 serving 预览](https://vllm.ai/blog/2026-07-22-kimi-k3-preview)。这批变化进一步明确了三个必须分开的概念：
+截至该代码快照，vLLM 的 [PR #46384](https://github.com/vllm-project/vllm/pull/46384) 已合入；同日 vLLM 发布了 [Kimi K3 推理服务预览](https://vllm.ai/blog/2026-07-22-kimi-k3-preview)。这批变化进一步明确了三个必须分开的概念：
 
 ```text
-physical state block size
-  管状态页的物理分配与 block table
+物理状态块大小
+  管理状态页的物理分配与块表
 
 prefix_match_unit
-  管 rolling hash 与本地 lookup 的最细 token 边界
+  管理滚动哈希与本地查找的最细 token 边界
 
-actual checkpoint set
-  只有真正物化并注册 hash 的 C(P_t)
+实际检查点集合
+  只包含真正物化并注册哈希的 C(P_t)
 ```
 
 下面的 `4096 / 64 / 6976` 只是解释机制的示意值，不是 K3 的默认配置：
 
 ```text
-physical KDA block = 4096
+物理 KDA 块 = 4096
 prefix_match_unit  = 64
 ```
 
-vLLM 的本地 prefix cache 可以在物理 block `[4096, 8192)` 内注册：
+vLLM 的本地前缀缓存可以在物理块 `[4096, 8192)` 内注册：
 
 ```text
 Hash(P6976) → C(P6976)
 ```
 
-一个 physical state slot 只承载一个精确边界，并不会同时保存 `S4160、S4224、...、S6976`。一个 6976-token 请求可能保留物理边界 `C(P4096)` 和 partial tail `C(P6976)`，但不会因为 match unit 是 64 就自动生成 109 份状态。
+一个物理状态槽位只承载一个精确边界，并不会同时保存 `S4160、S4224、...、S6976`。一个 6976-token 请求可能保留物理边界 `C(P4096)` 和不满整块的尾部 `C(P6976)`，但不会因为匹配粒度是 64 就自动生成 109 份状态。
 
-配置的 match unit 必须整除每个 cache group 的 physical block size；若未显式配置，vLLM 可以从各 group block size 的公约数推导匹配粒度。
+配置的匹配粒度必须整除每个缓存分组的物理块大小；若未显式配置，vLLM 可以从各分组块大小的公约数推导匹配粒度。
 
 当另一条请求命中 `P6976` 并继续 64 token 时：
 
 ```text
-cached C(P6976) --Copy-on-Write--> request-private working state
+已缓存 C(P6976) --写时复制--> 请求私有工作状态
                                       |
-                                      +-- forward 64 tokens --> C(P7040)
+                                      +-- 向前计算 64 个 token --> C(P7040)
 ```
 
-共享的 `C(P6976)` 不会被原地更新成 `C(P7040)`。如果产生该 checkpoint 的原请求自己继续，vLLM 会把 `Hash(P6976) → C(P6976)` 迁移到 cache-owned copy，让原 working block 留在请求侧继续写。这是 owner-continue 场景下的反向 Copy-on-Write。
+共享的 `C(P6976)` 不会被原地更新成 `C(P7040)`。如果产生该检查点的原请求继续执行，vLLM 会把 `Hash(P6976) → C(P6976)` 迁移到缓存持有的副本，让原工作块留在请求侧继续写。这是原持有者继续执行时的反向写时复制。
 
-许多不同长度的请求理论上可以沿同一 prefix 链逐渐贡献：
+许多不同长度的请求理论上可以沿同一条前缀链逐渐贡献检查点：
 
 ```text
 Hash(P64)   → C(P64)
@@ -382,11 +382,11 @@ Hash(P128)  → C(P128)
 Hash(P8192) → C(P8192)
 ```
 
-但这是多个请求形成的唯一 `(prefix hash, token length)` checkpoint 集合，不是单个请求自动保存所有中间状态。相同 prefix 会去重，实际驻留数量还受 creation、retention、state-pool 容量和 LRU eviction 限制。
+但这是多个请求形成的唯一 `(前缀哈希, token 长度)` 检查点集合，不是单个请求自动保存所有中间状态。相同前缀会去重，实际驻留数量还受创建策略、保留策略、状态池容量和 LRU 淘汰限制。
 
-## checkpoint 的创建、匹配和保留是三件事
+## 检查点的创建、匹配和保留是三件事
 
-定义实际驻留的 KDA checkpoint 集合：
+定义实际驻留的 KDA 检查点集合：
 
 $$
 \mathcal C_{\mathrm{KDA}}
@@ -403,26 +403,26 @@ $$
 三类机制分别负责：
 
 ```text
-match granularity
-  哪些 L 可以形成 rolling hash 并参与 lookup
+匹配粒度
+  哪些 L 可以形成滚动哈希并参与查找
 
-creation policy
+创建策略
   哪些 L 真正生成了 C(P_L)
-  例如 scheduler step end、operator snapshot 或 replay
+  例如调度步结束、算子快照或重算
 
-retention policy
-  已生成的 C(P_L) 中，哪些继续留在 state pool
+保留策略
+  已生成的 C(P_L) 中，哪些继续留在状态池
 ```
 
-`prefix_match_unit=64` 只表示每 64 token 可以形成 hash boundary，不表示一次长 forward 会自动生成所有 64-token 边界的 KDA state。retention 也只能筛选已经生成的 checkpoint，不能从 `C(P_4k)` 反向创造 `C(P_1k)`。
+`prefix_match_unit=64` 只表示每 64 个 token 可以形成哈希边界，不表示一次较长的前向计算会自动生成所有 64-token 边界的 KDA 状态。保留策略也只能筛选已经生成的检查点，不能从 `C(P_4k)` 反向创造 `C(P_1k)`。
 
-更小的 match unit 也不是完全免费：它不会自动分配更多 recurrent-state pages，但会增加 block hashes、radix/lookup metadata 和候选 partial-tail 边界数量，从而扩大可被实际物化的 checkpoint 集合。
+更小的匹配粒度也不是完全没有成本：它不会自动分配更多递推状态页，但会增加块哈希、基数树与查找元数据，以及候选尾部边界数量，从而扩大可以被实际物化的检查点集合。
 
-对固定快照中的 MooncakeStoreCoordinator，还存在物理对齐约束：每个 cache-group block size 必须能被 hash block size 整除，scheduler block size 又必须是各 cache-group block size 的整数倍。
+对于固定快照中的 MooncakeStoreCoordinator，还存在物理对齐约束：每个缓存分组的块大小必须能被哈希块大小整除，调度块大小又必须是各缓存分组块大小的整数倍。
 
-### checkpoint state pool 的内存成本
+### 检查点状态池的内存成本
 
-使用当前 TP/PP shard 上的局部维度，单个 KDA layer 的 recurrent-state 字节数可写成：
+使用当前 TP/PP 分片的局部维度，单个 KDA 层的递推状态字节数可写成：
 
 $$
 B_{\mathrm{rec},l}
@@ -443,7 +443,7 @@ B_{\mathrm{conv},l}
 \,b_{\mathrm{conv},l}.
 $$
 
-一份完整模型 checkpoint 的逻辑大小是：
+一份完整模型检查点的逻辑大小是：
 
 $$
 B_{\mathrm{logical}}
@@ -454,7 +454,7 @@ B_{\mathrm{rec},l}+B_{\mathrm{conv},l}
 \right).
 $$
 
-若 state pool 中驻留 `N` 个唯一 prefix checkpoints：
+若状态池中驻留 `N` 个唯一前缀检查点：
 
 $$
 M_{\mathrm{logical\ pool}}
@@ -462,7 +462,7 @@ M_{\mathrm{logical\ pool}}
 N\,B_{\mathrm{logical}}.
 $$
 
-对 vLLM 这类“每层一个 raw state page”的布局，完整物理 checkpoint 的大小应按所有相关层的物理页求和：
+对 vLLM 这类“每层一个原始状态页”的布局，完整物理检查点的大小应按所有相关层的物理页求和：
 
 $$
 B_{\mathrm{physical\ checkpoint}}
@@ -473,11 +473,11 @@ B_{\mathrm{physical\ page},l}
 B_{\mathrm{logical}}.
 $$
 
-每层物理页还可能包含 allocator padding、page alignment 和统一 page-byte-size 带来的尾部空间。CoW 的峰值显存与总复制字节数应按完整 physical checkpoint 估算，而不是只按数学状态估算。固定 vLLM 快照中，KDA 的 conv state 使用配置的 cache dtype，而 recurrent state 使用 FP32。
+每层物理页还可能包含分配器填充、页对齐和统一页大小带来的尾部空间。写时复制的峰值显存与总复制字节数应按完整物理检查点估算，而不是只按数学状态估算。固定 vLLM 快照中，KDA 的卷积状态使用配置的缓存数据类型，而递推状态使用 FP32。
 
-## SGLang：从大 extend 中抽取 checkpoint
+## SGLang：从较长的扩展阶段中抽取检查点
 
-SGLang 在需要追踪 prefix state 时，会让 KDA kernel 返回中间 recurrent states：
+SGLang 需要追踪前缀状态时，会让 KDA 内核返回中间递归状态：
 
 ```python
 core_attn_out = kernel_dispatcher.extend(
@@ -496,15 +496,15 @@ if track_ssm:
 - [`HybridLinearAttnBackend`](https://github.com/sgl-project/sglang/blob/4f88206393b620f5a856c8719289cf845a72b4fb/python/sglang/srt/layers/attention/hybrid_linear_attn_backend.py)
 - [`FlashKDA wrapper`](https://github.com/sgl-project/sglang/blob/4f88206393b620f5a856c8719289cf845a72b4fb/python/sglang/srt/layers/attention/linear/kernels/kda_flashkda.py)
 
-checkpoint 同时包含两部分：
+检查点同时包含两部分：
 
 ```text
-conv checkpoint
+卷积检查点
   从 mixed_qkv 中选取边界前最近 kernel_size - 1 行
 
-recurrent checkpoint
-  若边界等于 extend 末尾，复制 final state
-  若边界位于 extend 中间，从 kernel 返回的 h 中抽取
+递推检查点
+  若边界等于扩展阶段末尾，复制最终状态
+  若边界位于扩展阶段中间，从计算内核返回的 h 中抽取
 ```
 
 但“从大 extend 抽中间状态”并不表示可以抽任意 token。固定实现先把目标长度向下对齐到 `mamba_cache_chunk_size`：
@@ -521,57 +521,57 @@ L_{\mathrm{prefix}}
 C_{\mathrm{kernel}}.
 $$
 
-- 目标边界与 KDA chunk 对齐时，直接复制 final recurrent state。
-- 目标边界位于 extend 中间时，从 `h` 中取最近的 chunk boundary state。
-- 源码仍有 `mamba_cache_chunk_size % page_size != 0` 的 TODO，因此 kernel chunk 与 page size 不能任意组合。
+- 目标边界与 KDA 分块对齐时，直接复制最终递推状态。
+- 目标边界位于扩展阶段中间时，从 `h` 中取最近的分块边界状态。
+- 源码仍有 `mamba_cache_chunk_size % page_size != 0` 的待办项，因此内核分块大小与页大小不能任意组合。
 
-如果配置了 FlashKDA，但 runtime 请求 `return_intermediate_states=True`，固定 SGLang wrapper 会回退到 Triton `chunk_kda`。FlashKDA 负责高性能 final-state prefill；中间 checkpoint tracking 依赖能够返回 `h` 的 Triton 路径。
+如果配置了 FlashKDA，但推理引擎请求 `return_intermediate_states=True`，固定 SGLang 包装层会回退到 Triton `chunk_kda`。FlashKDA 负责高性能的最终状态预填充；中间检查点追踪依赖能够返回 `h` 的 Triton 路径。
 
-所以 SGLang 不要求为了生成 1k checkpoint，就把 4k prefill 拆成四次模型 forward；但实际抽取的是合法的 chunk/page-aligned 边界，而不是任意 token。
+所以 SGLang 不要求为了生成 1k 检查点，就把 4k 预填充拆成四次模型前向计算；但实际抽取的是合法的分块和分页对齐边界，而不是任意 token。
 
-### checkpoint 怎样进入 UnifiedRadixCache
+### 检查点怎样进入 UnifiedRadixCache
 
-完成 forward 后，radix node 不直接保存整套 tensor，而是保存 pool slot：
+完成一次前向计算后，基数树节点不直接保存整套张量，而是保存状态池槽位：
 
 ```text
 UnifiedTreeNode
-  token key / page hashes
+  token 键 / 页面哈希
   Full component
     MLA/KV device indices
   Mamba component
     value       GPU Mamba slot
-    host_value  HiCache Host Mamba slot
+    host_value  HiCache 主机内存 Mamba 槽位
 ```
 
-`MambaComponent.prepare_for_caching_req` 使用 `req.mamba_last_track_seqlen` 作为可提交长度，并把 tracking slot 捐给 radix cache。请求命中时：
+`MambaComponent.prepare_for_caching_req` 使用 `req.mamba_last_track_seqlen` 作为可提交长度，并把追踪槽位转交给基数树缓存。请求命中时：
 
 ```text
 node.value 存在
-  → checkpoint 仍在 GPU，可 CoW 到 request slot
+  → 检查点仍在 GPU，可写时复制到请求槽位
 
 node.host_value 存在
-  → GPU state 已逐出，但 Host 副本仍可 load back
+  → GPU 状态已逐出，但主机副本仍可回载
 ```
 
-本地没有 HiCache controller 时，如果 Full/MLA prefix 比 KDA state 更长，`MambaComponent.finalize_match_result` 会产生 `mamba_branching_seqlen`。下一次 extend 可以继续按大预算执行，但 backend 会从中间 `h` 抽取这个分叉 checkpoint。
+本地没有 HiCache 控制器时，如果全局注意力或 MLA 前缀比 KDA 状态更长，`MambaComponent.finalize_match_result` 会产生 `mamba_branching_seqlen`。下一次扩展计算可以继续按较大预算执行，但后端会从中间 `h` 抽取这个分叉检查点。
 
 固定实现见 [`mamba_component.py`](https://github.com/sgl-project/sglang/blob/4f88206393b620f5a856c8719289cf845a72b4fb/python/sglang/srt/mem_cache/unified_cache_components/mamba_component.py)。
 
 ### HiCache 与 Mooncake 的数据面
 
-对 hybrid model，HiCache 会同时迁移 Full/MLA KV 和 KDA sidecar：
+对于混合模型，HiCache 会同时迁移全局注意力或 MLA KV，以及 KDA 辅助状态：
 
 ```text
-Full/MLA component
-  GPU token/KV indices → Host KV indices
+全局注意力或 MLA 部分
+  GPU token/KV 索引 → 主机 KV 索引
 
-KDA component
-  GPU Mamba slot → Host Mamba slot
+KDA 部分
+  GPU Mamba 槽位 → 主机 Mamba 槽位
 ```
 
-写入 Mooncake 时，SGLang 不上传一串历史 $\mathbf S_l(t)$，只上传 radix node 末尾的一个 `C(P_t)`。Mamba transfer 使用 `TRAILING_PAGES`，因为恢复目标 prefix 只需要末端 KDA checkpoint，而 Full/MLA 仍要求前缀 pages 连续存在。
+写入 Mooncake 时，SGLang 不上传一串历史 $\mathbf S_l(t)$，只上传基数树节点末尾的一个 `C(P_t)`。Mamba 传输使用 `TRAILING_PAGES`，因为恢复目标前缀只需要末端 KDA 检查点，而全局注意力或 MLA 仍要求前缀缓存页连续存在。
 
-Mooncake adapter 会将一个逻辑 KDA page 展开成：
+Mooncake 适配层会将一个逻辑 KDA 页展开成：
 
 ```text
 {base_key}_{rank}_temporal
@@ -580,62 +580,62 @@ Mooncake adapter 会将一个逻辑 KDA page 展开成：
 ...
 ```
 
-`batch_exists_v2` 只有在 temporal 和全部 conv components 都存在时，才将该逻辑 checkpoint 视为命中；任一 component 缺失都必须判 miss。固定实现见 [`mooncake_store.py`](https://github.com/sgl-project/sglang/blob/4f88206393b620f5a856c8719289cf845a72b4fb/python/sglang/srt/mem_cache/storage/mooncake_store/mooncake_store.py)。
+`batch_exists_v2` 只有在递推状态和全部卷积状态都存在时，才将该逻辑检查点视为命中；任一部分缺失都必须判定未命中。固定实现见 [`mooncake_store.py`](https://github.com/sgl-project/sglang/blob/4f88206393b620f5a856c8719289cf845a72b4fb/python/sglang/srt/mem_cache/storage/mooncake_store/mooncake_store.py)。
 
 恢复路径反向执行：
 
 ```text
 Mooncake exists
-  → 协调 Full/MLA 连续 pages 与 KDA trailing checkpoint
-  → batch_get_into Host buffers
+  → 协调 Full/MLA 连续缓存页与末端 KDA 检查点
+  → batch_get_into 主机缓冲区
   → radix node.host_value
-  → load_back / CoW 到请求 GPU slot
-  → 从 C(P_t) 继续 suffix
+  → 通过 load_back / CoW 恢复到请求的 GPU 槽位
+  → 从 C(P_t) 继续计算后缀
 ```
 
-### SGLang + HiCache 仍缺少 branching-state fill
+### SGLang + HiCache 仍缺少分支状态回填
 
-数据面已经能完整读写 KDA checkpoint，但固定快照中的 HiCache 模式会暂时跳过 branching-state fill：
+数据面已经能完整读写 KDA 检查点，但固定快照中的 HiCache 模式会暂时跳过分支状态回填：
 
 ```text
 Mooncake 已有 MLA(P_1k) + C(P_1k)
   → 可以完整恢复并复用 P_1k
 
 Mooncake 只有 MLA(P_1k)，没有 C(P_1k)
-  → hybrid hit 必须缩短
-  → 当前 HiCache 路径不会仅凭 MLA-only hit 自动要求
-    KDA forward 在 P_1k 创建 checkpoint
+  → 混合命中长度必须缩短
+  → 当前 HiCache 路径不会仅凭 MLA 命中自动要求
+    KDA 前向计算在 P_1k 创建检查点
 ```
 
-问题不在 Mooncake 能否搬运 temporal/conv，而在于谁把 missing boundary 传给 scheduler/backend。
+问题不在 Mooncake 能否搬运递推与卷积状态，而在于谁把缺失边界传给调度器和后端。
 
-## vLLM：step-end state 与 scheduler split
+## vLLM：步末状态与调度拆分
 
-vLLM 的 KDA prefill 路径会调用：
+vLLM 的 KDA 预填充路径会调用：
 
 ```text
 chunk_kda_with_fused_gate(..., output_final_state=True)
   → last_recurrent_state
-  → write back to current state slot
+  → 写回当前状态槽位
 ```
 
 固定源码入口见 [`kimi_gdn_linear_attn.py`](https://github.com/vllm-project/vllm/blob/1a659a0c370942bae3c8567902e38bddbbae95f3/vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py)。
 
-一次大 prefill 自然只产生该 scheduler step 末尾的 checkpoint。vLLM 的 Kimi 路径不像 SGLang 那样暴露 forward 内多个 chunk 的 `h`，因此缺失边界主要依靠 scheduler 让 forward 恰好停在那里。
+一次较长的预填充自然只产生该调度步末尾的检查点。vLLM 的 Kimi 路径不像 SGLang 那样暴露前向计算中多个分块的 `h`，因此缺失边界主要依靠调度器让前向计算恰好停在那里。
 
-Kimi Linear 使用 `mamba_cache_mode=align`。逻辑 block table 仍覆盖完整序列，但绝大多数位置可以是 null placeholder；运行中的请求只需维护少量 rolling state slots。
+Kimi Linear 使用 `mamba_cache_mode=align`。逻辑块表仍覆盖完整序列，但绝大多数位置可以是空占位符；运行中的请求只需维护少量滚动状态槽位。
 
 ```text
-step n
-  previous state --copy--> current working state
-  current working state --KDA forward--> C(P_end_n)
+第 n 个调度步
+  前一状态 --复制--> 当前工作状态
+  当前工作状态 --KDA 前向计算--> C(P_end_n)
 
-step n+1
-  C(P_end_n) --copy--> next working state
-  更早的 working slot 可被释放
+第 n+1 个调度步
+  C(P_end_n) --复制--> 下一个工作状态
+  更早的工作槽位可以释放
 ```
 
-当 step-end state 被赋予 prefix hash 后，它同时成为其他请求可命中的 checkpoint。KDA lookup 从目标 prefix 右侧向左寻找最近的 state block，不需要从 0 到该边界的所有历史 KDA state blocks。
+当步末状态被赋予前缀哈希后，它同时成为其它请求可以命中的检查点。KDA 查找会从目标前缀右侧向左寻找最近的状态块，不需要保留从 0 到该边界的所有历史 KDA 状态块。
 
 ### 第一次分叉请求为什么仍需重算
 
@@ -647,66 +647,66 @@ req2 = P_1k + A_1k
 req3 = P_1k + B_1k
 ```
 
-req1 的大 prefill 可能留下：
+req1 的大段预填充可能留下：
 
 ```text
-MLA pages: P_1k、P_2k、P_3k、P_4k
-KDA state: 只有 C(P_4k)
+MLA 缓存页：P_1k、P_2k、P_3k、P_4k
+KDA 状态：只有 C(P_4k)
 ```
 
-req2 只共享前 1k，不能使用已经混入后续 token 的 `C(P_4k)`。在不挂 connector 的本地路径中，coordinator 会得到：
+req2 只共享前 1k，不能使用已经混入后续 token 的 `C(P_4k)`。在不挂连接器的本地路径中，协调器会得到：
 
 ```text
-MLA hit = 1k
-KDA hit = 0
-final hybrid hit = 0
-missing shared-prefix boundary = 1k
+MLA 命中长度 = 1k
+KDA 命中长度 = 0
+最终混合命中长度 = 0
+缺失的共享前缀边界 = 1k
 ```
 
-scheduler 将 req2 的首次 prefill 截到 1k。forward 结束后生成并注册 `C(P_1k)`，下一 step 再继续 req2 的 suffix。req3 到来时，MLA 与 KDA 就能在 1k 同时命中。
+调度器将 req2 的首次预填充截到 1k。前向计算结束后生成并注册 `C(P_1k)`，下一步再继续处理 req2 的剩余部分。req3 到来时，MLA 与 KDA 就能同时命中 1k 前缀。
 
-这里重算的是完整模型 forward，而不是只运行 KDA layers。第一次分叉请求付出一次补算成本，收益由后续共享同一 prefix 的请求获得。
+这里重算的是完整模型的前向过程，而不只是 KDA 层。第一次分叉请求需要付出一次补算成本，之后共享同一前缀的请求才能获得收益。
 
-### connector 路径中的 boundary 丢失
+### 连接器路径丢失了检查点边界
 
-在本文固定的 vLLM 快照中，同样的本地命中分歧在是否挂接 connector 时会走不同路径：
+在本文固定的 vLLM 快照中，同样的本地命中分歧在是否挂接连接器时会走不同路径：
 
 ```text
-local MLA hit = 1k
-local KDA hit = 0
+本地 MLA 命中长度 = 1k
+本地 KDA 命中长度 = 0
 
-无 connector
-  → ordinary hybrid fixed point
-  → final local hit = 0
+未启用连接器
+  → 按常规方式求混合命中不动点
+  → 最终本地命中长度 = 0
   → shared_prefix_boundary = 1k
-  → scheduler 可以停在 1k 补 C(P_1k)
+  → Scheduler 可以在 1k 处暂停并补算 C(P_1k)
 
-有 connector + Mamba/KDA
+启用连接器并使用 Mamba/KDA
   → shared_prefix_boundary = 0
   → num_new_local_computed_tokens = max(per_group_hits) = 1k
-  → 本地缺失 checkpoint 的 junction 信息不再向后传播
+  → 本地缺失检查点的分叉边界不再向后传播
 ```
 
 固定逻辑见 [`scheduler.py`](https://github.com/vllm-project/vllm/blob/1a659a0c370942bae3c8567902e38bddbbae95f3/vllm/v1/core/sched/scheduler.py)。
 
-这里的代码真实语义是采用 `max(per_group_hits)`，并不是显式选择 Full Attention group；只是在本文 `MLA hit = 1k, KDA hit = 0` 的例子中，最大值恰好等于 MLA/FA hit。
+这里的代码真实语义是采用 `max(per_group_hits)`，并不是显式选择 Full Attention 分组；只是在本文 `MLA hit = 1k, KDA hit = 0` 的例子中，最大值恰好等于 MLA/FA 命中长度。
 
-这条特殊路径原本面向 P/D connector：Full Attention 已有的本地 blocks 可以避免重复传输，而 Mamba state 由对应 worker 另行传递。把同一假设直接用于共享 Store prefix lookup 时，不能自动表达“MLA 已命中到 1k、KDA checkpoint 尚缺失”的补点需求。
+这条特殊路径原本面向 P/D 连接器：全局注意力已有的本地块可以避免重复传输，而 Mamba 状态由对应工作进程另行传递。把同一假设直接用于共享存储的前缀查找时，不能自动表达“MLA 已命中到 1k、KDA 检查点尚缺失”的补点需求。
 
 ## MooncakeStoreConnector：可以存什么，缺的又是什么
 
-vLLM 的共享 Store 路径按 cache group 建立 `ChunkedTokenDatabase`：
+vLLM 的共享 Store 路径按缓存分组建立 `ChunkedTokenDatabase`：
 
 ```text
 PoolKey
   = cache_prefix
   + model basename
   + tp / pcp / dcp / pp rank
-  + cache group id
+  + 缓存分组 ID
   + chained prefix hash
 
 value
-  = 该 cache-group physical block 对应的一组 memory segments
+  = 该缓存分组物理块对应的一组内存段
 ```
 
 固定实现见：
@@ -716,37 +716,37 @@ value
 - [`scheduler.py`](https://github.com/vllm-project/vllm/blob/1a659a0c370942bae3c8567902e38bddbbae95f3/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/scheduler.py)
 - [`coordinator.py`](https://github.com/vllm-project/vllm/blob/1a659a0c370942bae3c8567902e38bddbbae95f3/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/coordinator.py)
 
-需要区分 GPU layout 与 Mooncake object layout：
+需要区分 GPU 内存布局与 Mooncake 对象布局：
 
 ```text
-vLLM GPU layout
-  每个 KDA layer 各有 raw state page
+vLLM GPU 布局
+  每个 KDA 层各有原始状态页
 
-Mooncake Store value
-  一个 group/chunk key
-  → 一个或多个底层 storage slices
-  → 可由 scatter-gather 地址和 size 组成
+Mooncake Store 中的值
+  一个分组或分块键
+  → 一个或多个底层存储切片
+  → 可由分散聚集地址和长度组成
 ```
 
-也就是说，不应简单理解成“每个 KDA layer 必然是一个独立 Mooncake object”。worker 会对底层 storage 去重，计算每个 physical block 在各 storage 中的地址与字节跨度，再把多个 slices 组成同一个 Store value。
+也就是说，不应简单理解成“每个 KDA 层必然对应一个独立的 Mooncake 对象”。工作进程会对底层存储去重，计算每个物理块在各存储中的地址与字节跨度，再把多个切片组成同一个 Store 值。
 
-MLA group 和 KDA group 可以对同一 prefix hash 分别保存：
+MLA 缓存组和 KDA 缓存组可以针对同一个前缀哈希分别保存：
 
 ```text
-prefix hash @ vLLM cache group=MLA
-  → MLA page value
+前缀哈希 @ vLLM 缓存分组=MLA
+  → MLA 缓存页
 
-same prefix hash @ vLLM cache group=KDA
-  → KDA state value
+相同前缀哈希 @ vLLM 缓存分组=KDA
+  → KDA 状态
 ```
 
-如果 Store 中同时存在 `MLA(P_1k)` 和完整 `C(P_1k)`，external coordinator 的数据模型可以表达完整 1k hit，并将两个 cache groups 装入各自 GPU blocks；但固定快照缺少 Kimi KDA + MooncakeStoreConnector 的专项完整调用链证据，因此这里属于“接口形状允许”，而不是已确认闭环。
+如果 Store 中同时存在 `MLA(P_1k)` 和完整 `C(P_1k)`，外部协调器的数据模型可以表达完整的 1k 命中，并将两个缓存分组装入各自的 GPU 块；但固定快照缺少 Kimi KDA + MooncakeStoreConnector 的专项完整调用链证据，因此这里只能判断为“接口形状允许”，不能视为已经闭环。
 
-### 本地 fine-grained checkpoint 不等于远端 fine-grained object
+### 本地细粒度检查点不等于远端细粒度对象
 
-本地 prefix cache 可以在 `prefix_match_unit` 边界注册 partial checkpoint，但固定 MooncakeStoreConnector 的外部查询和写入仍按同一个 resolved scheduler block 对齐。下文将这个 lookup/store 共用的对齐单位记作 $A_{\mathrm{store}}$。
+本地前缀缓存可以在 `prefix_match_unit` 边界注册未满整块的检查点，但固定 MooncakeStoreConnector 的外部查询和写入仍按同一个调度块对齐。下文将查询与写入共用的对齐单位记作 $A_{\mathrm{store}}$。
 
-Scheduler 查询前会做：
+调度器查询前会做：
 
 $$
 L_{\mathrm{lookup}}
@@ -770,27 +770,27 @@ L_{\mathrm{store}}
 A_{\mathrm{store}}.
 $$
 
-在固定快照中，scheduler 的 `_block_size`、worker 使用的 block size 和 coordinator 的 `lcm_block_size` 来自同一个 resolved scheduler block size；分开写两个公式只是为了区分 lookup 与 store 阶段。
+在固定快照中，调度器的 `_block_size`、工作进程使用的块大小和协调器的 `lcm_block_size` 来自同一个调度块大小；分开写两个公式只是为了区分查询与写入阶段。
 
 固定实现还要求：
 
 ```text
-每个 cache-group block size % hash block size == 0
+每个缓存分组的块大小 % 哈希块大小 == 0
 A_store % hash block size == 0
-A_store % 每个 cache-group block size == 0
+A_store % 每个缓存分组的块大小 == 0
 ```
 
 <AlignmentDiagram
-  eyebrow="local vs remote alignment"
-  title="6976 可以是本地 checkpoint，却不一定是远端 object boundary"
-  caption="示意参数：local prefix_match_unit = 64，Mooncake A_store = 4096。虚线标出已经物化的本地 C(P6976)。"
+  eyebrow="本地与远端的对齐差异"
+  title="6976 可以是本地检查点，却不一定是远端对象边界"
+  caption="示意参数：本地 prefix_match_unit = 64，Mooncake A_store = 4096。虚线标出已经物化的本地 C(P6976)。"
   start={4096}
   end={8192}
   unit="tokens"
   highlight={{
     value: 6976,
     label: 'C(P6976)',
-    detail: 'local checkpoint',
+    detail: '本地检查点',
   }}
   tracks={[
     {
@@ -831,71 +831,71 @@ A_store % 每个 cache-group block size == 0
       interval: 4096,
       intervalLabel: 'A_store = 4096',
       markers: [
-        { value: 4096, label: 'remote 4096' },
-        { value: 8192, label: 'remote 8192' },
+        { value: 4096, label: '远端 4096' },
+        { value: 8192, label: '远端 8192' },
       ],
     },
   ]}
 />
 
-因此，一个本地 `Hash(P6976) → C(P6976)` 条目，只有在 6976 同时满足外部 Store 对齐约束时，才可能成为远端 object boundary。`prefix_match_unit=64` 提供本地可寻址能力，不自动把 Mooncake 的传输和持久化粒度也降到 64。
+因此，一个本地 `Hash(P6976) → C(P6976)` 条目，只有在 6976 同时满足外部 Store 对齐约束时，才可能成为远端对象边界。`prefix_match_unit=64` 提供本地可寻址能力，但不会自动把 Mooncake 的传输和持久化粒度也降到 64。
 
-### 远端 partial-group missing boundary
+### 远端部分分组缺少命中边界
 
 固定快照中的 `MooncakeStoreCoordinator` 对外主要返回：
 
 ```text
-final reconciled hit length
-per-group load mask
+协调后的最终命中长度
+各分组的加载掩码
 ```
 
 它不会同时返回：
 
 ```text
-remote MLA-only longest hit
-best remote KDA checkpoint
-missing KDA boundary
+远端 MLA 的最长命中长度
+远端最佳 KDA 检查点
+缺失的 KDA 边界
 ```
 
 因此：
 
 ```text
 Store 已有 MLA(P_1k) + C(P_1k)
-  → 数据模型可以表达完整 1k hit
+  → 数据模型可以表达完整的 1k 命中
 
 Store 只有 MLA(P_1k)
-  → final hybrid hit 被协调回更短边界
-  → scheduler 不知道远端 MLA 曾命中到 1k
-  → 不会仅凭这次 lookup 自动停在 1k 合成 C(P_1k)
+  → 最终混合命中长度被协调到更短的边界
+  → Scheduler 不知道远端 MLA 曾命中到 1k
+  → 不会仅凭这次查询自动在 1k 处暂停并生成 C(P_1k)
 ```
 
-更严谨地说：截至本文固定 commit，external lookup 接口没有显式返回 remote missing KDA boundary；本文也未找到利用该 remote partial-group hit 自动触发 checkpoint synthesis 的完整调用链。
+更严谨地说：截至本文固定的提交，外部查询接口没有显式返回“远端缺失的 KDA 边界”；本文也没有找到利用远端部分分组命中自动触发检查点补算的完整调用链。
 
-要补齐这条链，需要 local + external lookup 保留 per-group hit，或直接返回 `missing_branching_boundary`，随后让 scheduler、partial-tail registration 和 Store save mask 共享同一个边界。
+要补齐这条链，需要本地与外部查询保留每个分组的命中结果，或直接返回 `missing_branching_boundary`，随后让调度器、尾部检查点注册和 Store 保存掩码共享同一个边界。
 
-### 远端 namespace 必须编码模型身份与 cache ABI
+### 远端命名空间必须编码模型身份与缓存 ABI
 
-固定 vLLM key 中的 `model_name` 只取模型路径的 basename，`cache_prefix` 默认又是空字符串。由此可以推断：如果不同部署共享同一个 Mooncake 集群，同时拥有相同模型 basename 和 token prefix，但权重 revision、量化格式、adapter 或 cache layout 不同，仅靠现有默认 namespace 不足以保证安全隔离。
+固定 vLLM 键中的 `model_name` 只取模型路径的末级名称，`cache_prefix` 默认又是空字符串。由此可以推断：如果不同部署共享同一个 Mooncake 集群，同时拥有相同模型名和 token 前缀，但权重版本、量化格式、适配器或缓存布局不同，仅靠现有默认命名空间不足以保证安全隔离。
 
-生产环境中的 cache namespace 至少应编码：
+生产环境中的缓存命名空间至少应编码：
 
 ```text
-model repository + exact revision / weight digest
-tokenizer revision 与 chat-template identity
-quantization format
-KDA state dtype 与 layout version
-adapter / LoRA identity
-TP / PP / PCP / DCP topology
-engine 与 cache ABI version
+模型仓库 + 精确版本 / 权重摘要
+分词器版本与对话模板标识
+量化格式
+KDA 状态数据类型与布局版本
+适配器 / LoRA 标识
+TP / PP / PCP / DCP 拓扑
+推理引擎与缓存 ABI 版本
 ```
 
-最简单的做法是为每一套不可互换的部署设置唯一 `cache_prefix`。prefix hash 只证明 token 序列相同，不证明由这些 token 计算出的模型状态可互换。
+最简单的做法是为每一套不可互换的部署设置唯一 `cache_prefix`。前缀哈希只能证明 token 序列相同，不能证明由这些 token 计算出的模型状态可以互换。
 
 ## SGLang HiCache：本地与 Mooncake 命中长度怎样合并
 
-这一节描述的是 SGLang 的 GPU → Host → Mooncake 分层语义，不应机械套用到 vLLM MooncakeStoreConnector。
+这一节描述的是 SGLang 从 GPU 到主机内存再到 Mooncake 的分层语义，不应机械套用到 vLLM MooncakeStoreConnector。
 
-首先由 UnifiedRadixCache 求出 GPU 和 Host 上所有必要 components 一致支持的本地锚点。若 `L_host` 表示 Host 在 GPU 命中之后额外覆盖的 token 数，则：
+首先由 UnifiedRadixCache 找出 GPU 与主机内存中所有必要组成部分共同支持的本地锚点。若 `L_host` 表示主机内存在 GPU 命中之后额外覆盖的 token 数，则：
 
 $$
 L_{\mathrm{local}}
@@ -903,7 +903,7 @@ L_{\mathrm{local}}
 L_{\mathrm{device}}+L_{\mathrm{host}}.
 $$
 
-Mooncake 只需要查询 `L_local` 之后的 suffix。由于 KDA checkpoint 是稀疏边界集合，而不是向下闭合的逐 token cache，不能把每个 group 的“最长长度”简单取最小值。
+Mooncake 只需要查询 `L_local` 之后的后缀。由于 KDA 检查点是稀疏边界集合，而不是向下闭合的逐 token 缓存，不能把每个分组的“最长长度”简单取最小值。
 
 定义远端可恢复边界集合：
 
@@ -916,7 +916,7 @@ L\in[L_{\mathrm{local}},L_{\mathrm{common}}]
 \begin{aligned}
 &\mathrm{MLA/KV}[L_{\mathrm{local}}:L)\text{ 连续完整},\\
 &C(P_L)\text{ 完整},\\
-&\text{其他 sidecar 与所有必要 ranks 完整}
+&\text{其它辅助状态与所有必要 ranks 完整}
 \end{aligned}
 \right\}.
 $$
@@ -934,14 +934,14 @@ $$
 例如：
 
 ```text
-MLA/KV 连续存在到 7500
-KDA checkpoint 只存在于 4096 和 8192
+MLA/KV 缓存页连续存在到 7500
+KDA 检查点只存在于 4096 和 8192
 本地锚点为 0
 ```
 
 不能取 `min(7500, 8192)=7500`，因为 `C(P7500)` 不存在。真正可恢复的边界只能是 4096。
 
-实际传输还可能因为 timeout、best-effort、Host pool 不足或 rank 间不一致而变短。数据插入 Host Radix 后，权威结果应再次执行全 component match：
+实际传输还可能因为超时、尽力而为策略、主机内存池不足或 rank 间不一致而变短。数据插入主机基数树后，权威结果应再次执行所有组成部分的完整匹配：
 
 $$
 L_{\mathrm{final}}
@@ -952,11 +952,11 @@ L_{\mathrm{final}}
 \right).
 $$
 
-KDA state slot 数不是 token 数，不能把 `mamba_host_hit_length=1` 当作“多命中一个 token”相加；它只是该 token 边界有效性的必要条件。
+KDA 状态槽位数不是 token 数，不能把 `mamba_host_hit_length=1` 当作“多命中一个 token”相加；它只是该 token 边界有效性的必要条件。
 
-### 生成请求通常还要重算最后一个 prompt token
+### 生成请求通常还要重算提示词的最后一个 token
 
-即使完整 prompt 的 cache 都存在，标准自回归生成仍需要最后一个 prompt 位置的输出 logits。若没有另外缓存 last hidden state 或 logits，语义上至少需要：
+即使完整提示词的缓存都存在，标准自回归生成仍需要最后一个提示词位置的输出 logits。若没有另外缓存最后一层隐藏状态或 logits，语义上至少需要：
 
 $$
 L_{\mathrm{hit}}
@@ -964,20 +964,20 @@ L_{\mathrm{hit}}
 L_{\mathrm{prompt}}-1.
 $$
 
-固定 vLLM 的本地 `KVCacheManager` 会把最大 cache hit 设成 `request.num_tokens - 1`。MooncakeStoreScheduler 在全命中时还会将结果向下对齐到 scheduler block boundary。换句话说，语义上至少重算最后一个 token；受 allocator 和 connector 对齐约束影响，实际实现可能重算最后一个 block，而不只是一个 token。
+固定 vLLM 的本地 `KVCacheManager` 会把最大缓存命中设为 `request.num_tokens - 1`。MooncakeStoreScheduler 在全命中时还会将结果向下对齐到调度块边界。换句话说，语义上至少重算最后一个 token；受分配器和连接器的对齐约束影响，实际实现可能重算最后一个块，而不只是一个 token。
 
-## Attention pages 与 KDA checkpoint 应怎样组织
+## 注意力缓存页与 KDA 检查点应怎样组织
 
-Attention KV page 和 KDA checkpoint 应视为两种不同资源，而不是每个 KV page 都附带一份完整 KDA state：
+注意力 KV 缓存页和 KDA 检查点应视为两种不同资源，而不是让每个 KV 缓存页都附带一份完整 KDA 状态：
 
 ```text
-Attention KV Page Pool
-  page 0
-  page 1
-  page 2
+注意力 KV 缓存页池
+  第 0 页
+  第 1 页
+  第 2 页
   ...
 
-KDA Checkpoint Pool
+KDA 检查点池
   C(P_L1)
   C(P_L2)
   ...
@@ -987,16 +987,16 @@ KDA Checkpoint Pool
 
 ```text
 P_KV
-  Attention/MLA 的物理 page 大小
+  注意力/MLA 的物理页大小
 
 G_match
-  prefix rolling-hash / lookup 粒度
+  前缀滚动哈希与查找粒度
 
 𝒞_KDA
-  已实际物化、注册且仍驻留的 checkpoint 集合
+  已实际物化、注册且仍驻留的检查点集合
 ```
 
-最终可跳过 forward 的长度是最近一个完整边界：
+最终可以跳过前向计算的长度，是最近一个完整边界：
 
 $$
 L_{\mathrm{hit}}
@@ -1010,261 +1010,261 @@ C(P_L)\text{ 完整}
 \right\}.
 $$
 
-如果 Attention KV 已存在到 6976，但只有 `C(P4096)`，那么仍需从 4096 replay 到请求末尾。常规 runtime 通常会在 lookup 阶段就把 KV hit 截到 KDA boundary，避免无效加载更长 KV。
+如果注意力 KV 已存在到 6976，但只有 `C(P4096)`，那么仍需从 4096 重算到请求末尾。常规推理引擎通常会在查找阶段就把 KV 命中截到 KDA 边界，避免无效加载更长的 KV。
 
-不存在一个跨 SGLang、vLLM 和 Mooncake 通用的“每 N token 自动创建 KDA checkpoint”旋钮。checkpoint 密度应该根据 `B_logical`、完整物理 checkpoint 大小、state-pool 容量、公共前缀分布、平均 replay 成本和实际命中收益来决定；system prompt、chat turn、tool result、RAG 公共文档和请求 tail 等高价值边界可以作为额外候选，但仍需由 engine 真正物化状态。
+不存在一个跨 SGLang、vLLM 和 Mooncake 通用的“每 N 个 token 自动创建 KDA 检查点”旋钮。检查点密度应该根据 `B_logical`、完整物理检查点大小、状态池容量、公共前缀分布、平均重算成本和实际命中收益来决定。系统提示词、对话轮次、工具结果、RAG 公共文档和请求尾部等高价值边界可以作为额外候选，但仍需由推理引擎真正物化状态。
 
-## Mooncake Store 的 object、Upsert 与 group 语义
+## Mooncake Store 的对象、Upsert 与分组语义
 
-固定快照中的 Mooncake Store 是 object-oriented cache。它看到的是：
+固定快照中的 Mooncake Store 是面向对象的缓存。它看到的是：
 
 ```text
-object key → one or more memory slices
+对象键 → 一个或多个内存切片
 ```
 
-`PutStart` / `PutEnd` 保证 reader 不会看到部分写入的 object。对于 content-addressed prefix cache，已经发布的 prefix-hash key 应当被当作 immutable object：新的 prefix 或新状态使用新 key，而不是覆盖旧 checkpoint。
+`PutStart` / `PutEnd` 保证读取方不会看到只写了一部分的对象。对于按内容寻址的前缀缓存，已经发布的前缀哈希键应当被视为不可变对象：新的前缀或新状态使用新键，而不是覆盖旧检查点。
 
-Mooncake 同时提供显式 `Upsert` 生命周期，可以更新已有 key，甚至在布局不变时复用 allocation；因此“不可变”是 prefix-cache 协议应该坚持的不变量，而不是 Store 完全没有更新 API。对已经发布的 prefix-hash key 使用原地 Upsert，会破坏 hash → checkpoint 的稳定映射，不应作为普通缓存更新方式。
+Mooncake 同时提供显式的 `Upsert` 生命周期，可以更新已有键，甚至在布局不变时复用分配空间。因此，“不可变”是前缀缓存协议应该坚持的不变量，并不意味着 Store 完全没有更新接口。对已经发布的前缀哈希键原地执行 Upsert，会破坏哈希到检查点的稳定映射，不应作为普通缓存更新方式。
 
 固定设计文档见 [`mooncake-store.md`](https://github.com/kvcache-ai/Mooncake/blob/12df58c7de65f88f37f5da99ab95ff3418a9ebef/docs/source/design/mooncake-store.md)。
 
 这里还要区分两个不同的 “group”：
 
 ```text
-vLLM cache group id
-  cache layout / PoolKey namespace
-  区分 MLA、KDA、SWA 等 cache groups
+vLLM 缓存分组编号
+  缓存布局 / PoolKey 命名空间
+  区分 MLA、KDA、SWA 等缓存分组
 
 Mooncake ReplicateConfig.group_ids
-  Mooncake native object lifecycle group
-  用于 metadata routing、lease refresh 与 best-effort eviction
+  Mooncake 原生对象生命周期分组
+  用于元数据路由、租约续期和尽力而为的淘汰
 ```
 
-Mooncake native group 可以包含不同大小、不同 token span 的 objects，但不是事务：
+Mooncake 原生分组可以包含不同大小、覆盖不同 token 范围的对象，但它不是事务：
 
 ```text
-不要求 expected member count
+不要求预先声明成员数量
 不保证所有成员原子创建或同时可见
 不保证所有成员全有全无地淘汰
-已有 object 的 group membership 不可变
+已有对象的分组归属不可变
 ```
 
-因此，一个完整 hybrid prefix 是否可恢复，仍要由上层 coordinator 逐项验证。
+因此，一个完整的混合前缀是否可恢复，仍要由上层协调器逐项验证。
 
 ### 固定快照中的两种映射
 
 ```text
 SGLang
   检测 ReplicateConfig.group_ids 能力
-  → 可为一个 logical HiCache page 的 component objects
-    使用 sglang-hicache:<logical-key> 作为 Mooncake native group
+  → 可为一个逻辑 HiCache 页的组成对象
+    使用 sglang-hicache:<logical-key> 作为 Mooncake 原生分组
 
 vLLM
-  PoolKey 中的 @group:N 是 cache-group namespace
+  PoolKey 中的 @group:N 是缓存分组命名空间
   → 固定快照创建的 ReplicateConfig 只设置 preferred_segment
-  → 没有把 @group:N 当成 Mooncake native group_ids
+  → 没有把 @group:N 当成 Mooncake 原生 group_ids
 ```
 
-SGLang 可以把一个逻辑 KDA checkpoint 展开为 temporal 与若干 conv objects；vLLM 则按 cache group/chunk key 组织一个或多个底层 storage slices。
+SGLang 可以把一个逻辑 KDA 检查点展开为递推状态与若干卷积状态对象；vLLM 则按缓存分组和分块键组织一个或多个底层存储切片。
 
-同一个 Mooncake 集群也不意味着 SGLang 与 vLLM 可以直接互读。两者的 key namespace、rank 编码、layer 顺序、dtype、shape、byte layout 和 checkpoint policy 都不同。跨引擎复用需要额外定义稳定的公共 ABI。
+同一个 Mooncake 集群也不意味着 SGLang 与 vLLM 可以直接互读。两者的键命名空间、rank 编码、层顺序、数据类型、形状、字节布局和检查点策略都不同。跨引擎复用需要额外定义稳定的公共 ABI。
 
-### 推荐的 Store schema，而不是当前实现描述
+### 推荐的 Store 数据组织方式，而不是当前实现描述
 
-若要在 Mooncake 之上实现更强的逻辑原子性，可以由上层增加 manifest 协议：
+若要在 Mooncake 之上实现更强的逻辑原子性，可以由上层增加清单协议：
 
 ```text
-Attention KV objects
-  独立 content-addressed pages
+注意力 KV 对象
+  独立的内容寻址缓存页
 
-KDA checkpoint objects
-  temporal / conv 或 raw-state slices
-  按 boundary、rank、model namespace 组织
+KDA 检查点对象
+  递推状态、卷积状态或原始状态切片
+  按边界、rank 和模型命名空间组织
 
-Prefix manifest
-  prefix length
-  KV page references
-  KDA component references
-  dtype / layout / topology metadata
-  committed flag
+前缀清单
+  前缀长度
+  KV 缓存页引用
+  KDA 组成部分引用
+  数据类型、布局和拓扑元数据
+  提交标记
 ```
 
 写入顺序：
 
 ```text
-1. 写所有 component objects
+1. 写入所有组成对象
 2. 验证写入成功
-3. 最后写 manifest / commit object
+3. 最后写入清单或提交对象
 ```
 
-失效时反过来先让 manifest 不可见，再异步回收 components。这个 manifest 方案是推荐设计，不代表固定快照中的 SGLang 或 vLLM 已经采用。
+失效时反过来先让清单不可见，再异步回收各组成对象。这个清单方案是推荐设计，不代表固定快照中的 SGLang 或 vLLM 已经采用。
 
 ## 一次完整请求的控制流
 
 <FlowDiagram
-  eyebrow="request lifecycle"
-  title="一个 hybrid prefix 从本地 lookup 到再次写回 Store"
-  caption="每一步都必须维持相同的 token boundary、prefix identity、position 和 cache ABI。"
+  eyebrow="请求生命周期"
+  title="一个混合前缀从本地查询到再次写回 Store"
+  caption="每一步都必须维持相同的 token 边界、前缀标识、位置信息和缓存 ABI。"
   steps={[
     {
-      label: 'Local lookup',
-      meta: 'GPU + Host',
-      detail: '分别查询连续 MLA/KV pages 与边界 checkpoint。',
+      label: '本地查询',
+      meta: 'GPU + 主机内存',
+      detail: '分别查询连续的 MLA/KV 缓存页和边界检查点。',
       items: ['MLA/KV', 'C(P_t)'],
       tone: 'blue',
     },
     {
-      label: 'Hybrid convergence',
+      label: '混合结果收敛',
       meta: 'L_local',
-      detail: '求所有必要 components 共同支持的本地锚点；必要时产生 missing boundary。',
-      items: ['per-group hit', 'shared boundary'],
+      detail: '求所有必要组成部分共同支持的本地锚点；必要时产生缺失边界。',
+      items: ['分组命中', '共享边界'],
       tone: 'mauve',
     },
     {
-      label: 'Mooncake lookup',
-      meta: 'external suffix',
-      detail: '按 Store 对齐查询连续 pages、trailing checkpoint 与所有 ranks。',
-      items: ['A_store', 'namespace'],
+      label: 'Mooncake 查询',
+      meta: '外部后缀',
+      detail: '按 Store 对齐查询连续缓存页、末端检查点与所有 rank。',
+      items: ['A_store', '命名空间'],
       tone: 'amber',
     },
     {
-      label: 'Restore + CoW',
-      meta: 'request-private',
-      detail: '加载 cache，并复制或回填到请求自己的可写状态。',
-      items: ['load-back', 'copy-on-write'],
+      label: '恢复与 CoW',
+      meta: '请求私有状态',
+      detail: '加载缓存，并复制或回填到当前请求的可写状态。',
+      items: ['回载', '写时复制'],
       tone: 'green',
     },
     {
-      label: 'Replay + publish',
-      meta: 'model forward',
-      detail: '重算未命中的 suffix，在合法边界注册 checkpoint 并写回 Store。',
-      items: ['replay suffix', 'register', 'store'],
+      label: '重算与发布',
+      meta: '模型前向计算',
+      detail: '重算未命中的后缀，在合法边界注册检查点并写回 Store。',
+      items: ['重算后缀', '注册', '写入'],
       tone: 'teal',
     },
   ]}
 />
 
-这条链上的 token length、prefix hash、position、MLA cache 和 `C(P_t)` 必须始终一致。任何一环只知道“KV 命中了多少”，却不知道“哪个 KDA checkpoint 与之对应”，都无法安全跳过模型 forward。
+这条链上的 token 长度、前缀哈希、位置信息、MLA 缓存和 `C(P_t)` 必须始终一致。任何一环如果只知道“KV 命中了多少”，却不知道“哪个 KDA 检查点与之对应”，都无法安全跳过模型前向计算。
 
 ## 能力边界
 
 ```text
 能力                         SGLang 本地   SGLang + HiCache/Mooncake
-KDA prefix correctness       已支持        完整 checkpoint 数据面已支持
-大 forward 抽中间 state     chunk 对齐支持 tracking 需 Triton/fallback
-完整 checkpoint 远端读写    不适用        temporal/conv put/get 已实现
-缺失分叉 state 自动补算      已支持        HiCache 模式暂时跳过
+KDA 前缀正确性               已支持        完整检查点数据面已支持
+从大批前向计算提取中间状态   分块对齐后支持  追踪需使用 Triton 或回退路径
+完整检查点远端读写           不适用        temporal/conv 的 put/get 已实现
+自动补算缺失的分叉状态       已支持        HiCache 模式暂时跳过
 
 能力                         vLLM 本地     vLLM + MooncakeStoreConnector
-KDA raw state page           已支持        数据结构可承载
-细粒度 partial checkpoint   已支持        远端仍受 scheduler/LCM 对齐
-partial hit 后 CoW           已支持        connector/load path 证据有限
-缺失分叉 checkpoint 自动补  已支持        connector 路径未传播 boundary
-完整 checkpoint 远端读写    不适用        接口形状允许，完整调用链证据有限
-远端 MLA-only 自动补 KDA     不适用        missing boundary 尚未返回
+KDA 原始状态页               已支持        数据结构可承载
+细粒度部分检查点             已支持        远端仍受 Scheduler/LCM 对齐限制
+部分命中后的 CoW             已支持        连接器回载链路的证据有限
+自动补全缺失的分叉检查点     已支持        连接器路径没有传递分叉边界
+完整检查点远端读写           不适用        数据结构支持，但完整调用链证据有限
+远端仅命中 MLA 时补算 KDA    不适用        尚未返回缺失边界
 ```
 
 以下不变量适合作为实现与回归验证的检查清单：
 
 ```text
-local branch fill
+本地分支补全
   req1=4k，req2/req3 分别共享 1k
 
-remote complete hit
+远端完整命中
   Store 同时存在 MLA(P_1k) 与 C(P_1k)
-  replay logits 与无缓存 baseline 一致
+  重算得到的 logits 与无缓存基线一致
 
-remote partial-group hit
+远端部分分组命中
   Store 只有 MLA(P_1k)
   req2 只付一次补算并上传 C(P_1k)
   req3 在另一实例完整命中
 
-external alignment
+外部对齐
   本地存在 Hash(P6976) → C(P6976)
-  Store scheduler/LCM block = 4096
+  Store 的 Scheduler/LCM 块大小 = 4096
   远端只暴露合法的对齐边界
 
-namespace isolation
-  相同 token prefix 与模型 basename
-  不同 revision / quantization / adapter
-  必须不能 cross-hit
+命名空间隔离
+  token 前缀和模型 basename 相同
+  模型 revision、量化配置或 adapter 不同
+  缓存结果必须相互隔离
 
-FlashKDA tracking
+FlashKDA 状态追踪
   return_intermediate_states=True
-  必须回退 Triton，并生成正确的 chunk-aligned checkpoint
+  必须使用 Triton 回退路径，并生成与分块边界对齐的检查点
 
-object integrity
-  temporal/conv 或 raw-state 任一必要部分缺失都必须判 miss
+对象完整性
+  temporal/conv 或原始状态的任一必要部分缺失都必须视为未命中
 
-copy-on-write
-  shared checkpoint 在 owner-continue 与 new-request-hit 后均保持不可变
+写时复制
+  共享检查点在原请求继续执行和新请求命中后都必须保持不可变
 
-full prompt hit
-  最后一个 prompt token / block 的 logits 路径保持正确
+完整提示词命中
+  最后一个提示词 token 或 block 的 logits 计算路径必须保持正确
 ```
 
-## 配置时怎样理解相关旋钮
+## 相关配置项如何影响检查点追踪
 
 ### SGLang
 
 ```text
 --mamba-radix-cache-strategy extra_buffer
-  使用额外 tracking slot 保存 prefix checkpoint
+  使用专用追踪槽位保存前缀检查点
 
 --page-size
-  radix / HiCache page 粒度，也参与可追踪边界对齐
+  RadixCache 与 HiCache 的页面粒度，也参与可追踪边界对齐
 
 --mamba-track-interval
-  状态追踪/保留策略的一部分，不等同于强制 prefill forward 大小
+  状态追踪和保留策略的一部分，不等同于强制设置 prefill 前向计算大小
 
 --chunked-prefill-size
-  scheduler prefill budget，可以大于 checkpoint 粒度
+  Scheduler 的 prefill token 预算，可以大于检查点粒度
 
 --enable-hierarchical-cache
 --hicache-storage-backend mooncake
-  启用 GPU → Host → Mooncake 链路
+  启用 GPU → 主机内存 → Mooncake 链路
 ```
 
 ### vLLM
 
 ```text
 enable_prefix_caching
-  启用 hybrid prefix cache
+  启用混合前缀缓存
 
 mamba_cache_mode=align
   Kimi Linear 的实际状态物化模式
 
 enable_chunked_prefill
-  允许 scheduler 在必要边界结束 step
+  允许 Scheduler 在必要边界结束当前调度步
 
 max_num_batched_tokens
   可以保持较大，不要求机械按某个 interval 切分
 
 prefix_match_unit
-  调整本地可寻址 hash 粒度，不自动创建 state
-  也不自动改变 Mooncake scheduler/LCM 对齐
+  调整本地可寻址的哈希粒度，但不会自动创建状态
+  也不会自动改变 Mooncake 的 Scheduler/LCM 对齐
 
 VLLM_PREFIX_CACHE_RETENTION_INTERVAL
-  调整已经创建的 checkpoint 保留密度，不补历史 state
+  调整已创建检查点的保留密度，但不会补建历史状态
 
 kv_connector_extra_config.cache_prefix
-  应编码不可互换部署的模型 revision、layout 与 adapter identity
+  应包含模型 revision、缓存布局和 adapter 标识，以隔离不可互换的部署
 ```
 
-验证实现时，不要一开始就把 prefill budget 降到 1k，否则无法区分“按需补点生效”和“所有请求本来就被机械切成 1k”。对于 Mooncake，也不能只检查 object key 是否出现；还应验证 component 完整性、hybrid hit length、missing-boundary 传播、远端对齐、namespace isolation、CoW、最后一个 token/block 和 replay logits。
+验证实现时，不要一开始就把预填充预算降到 1k，否则无法区分“按需补点生效”和“所有请求本来就被机械切成 1k”。对于 Mooncake，也不能只检查对象键是否出现；还应验证组成部分是否完整、混合缓存命中长度、缺失边界传播、远端对齐、命名空间隔离、写时复制、最后一个 token 或块，以及重算后的 logits。
 
 ## 最终判断
 
 回到 req1/req2 示例，可以分三层判断：
 
-> req1 的 4k prefill 如果只留下 `C(P_4k)`，req2 第一次共享 1k 时确实必须重新计算这 1k；`C(P_4k)` 无法回滚，MLA pages 也不能替代 KDA checkpoint。
+> req1 的 4k 预填充如果只留下 `C(P_4k)`，req2 第一次共享 1k 时确实必须重新计算这 1k；`C(P_4k)` 无法回滚，MLA 缓存页也不能替代 KDA 检查点。
 
-> SGLang 本地可以让 req2 的大 extend 跨过 1k，再从 kernel 返回的 chunk-aligned 中间 state 抽出并插入 `C(P_1k)`；需要 intermediate states 时，FlashKDA 会回退到 Triton。vLLM 不挂 connector 的本地路径则把 req2 动态截到 1k，利用 step end 补出并注册 `C(P_1k)`。两边都不要求把所有请求的 prefill budget 固定成 1k。
+> SGLang 本地可以让 req2 的较长扩展计算跨过 1k，再从计算内核返回的分块对齐中间状态中抽出并插入 `C(P_1k)`；需要中间状态时，FlashKDA 会回退到 Triton。vLLM 不挂连接器的本地路径则把 req2 动态截到 1k，利用调度步结束补出并注册 `C(P_1k)`。两边都不要求把所有请求的预填充预算固定成 1k。
 
 再加上外部缓存限定：
 
-> SGLang + HiCache 已把 temporal/conv checkpoint 接到 Mooncake 的显式读写链路，但 HiCache 模式仍暂时跳过 branching-state fill。vLLM 在本文固定快照中已支持本地 physical block 内的 fine-grained partial checkpoint 与 Copy-on-Write；然而 connector + Mamba/KDA 的本地路径会清零 `shared_prefix_boundary` 并采用 `max(per_group_hits)`，MooncakeStoreConnector 的远端 store/lookup 还受同一个 resolved scheduler/LCM block 对齐，`MooncakeStoreCoordinator` 也不单独返回 MLA-only 更长命中对应的 missing KDA boundary。
+> SGLang + HiCache 已把递推与卷积检查点接到 Mooncake 的显式读写链路，但 HiCache 模式仍暂时跳过分支状态回填。vLLM 在本文固定快照中已支持本地物理块内的细粒度尾部检查点与写时复制；然而连接器与 Mamba/KDA 的本地路径会清零 `shared_prefix_boundary` 并采用 `max(per_group_hits)`，MooncakeStoreConnector 的远端写入和查询还受同一个调度块对齐，`MooncakeStoreCoordinator` 也不单独返回 MLA 单组更长命中所对应的缺失 KDA 边界。
 
-因此，SGLang 可以确认已经存在且完整的 `C(P_t)` 能通过其 HiCache/Mooncake 数据面读写；vLLM 的 raw-page/cache-group 数据模型和通用 Mooncake 传输路径可以表示完整 checkpoint，但在固定快照中，这一结论仍属于“接口形状允许”，不能替代一条已经确认闭环的 Kimi KDA 专项调用链。
+因此，可以确认 SGLang 已经存在且完整的 `C(P_t)` 能通过 HiCache/Mooncake 数据面读写；vLLM 的原始状态页和缓存分组数据模型，以及通用 Mooncake 传输路径，可以表示完整检查点。但在固定快照中，这一结论仍属于“接口形状允许”，不能替代一条已经确认闭环的 Kimi KDA 专项调用链。
 
-优化目标不是机械地每隔 1k 切一次 forward，而是在出现可复用分叉时只补算一次，并把同一个边界持续传递到本地 radix/scheduler、Host staging、Mooncake key/value、lookup、namespace 与 retention policy。还要始终区分 physical state block、prefix match unit、scheduler/LCM block 与实际 checkpoint 集合：细粒度可寻址不等于细粒度状态自动生成，更不等于远端对象也具备相同粒度；checkpoint 一旦发布就应保持不可变，后续扩展通过 CoW 产生新的 working state 或新 checkpoint。
+优化目标不是机械地每隔 1k 切一次前向计算，而是在出现可复用分叉时只补算一次，并把同一个边界持续传递到本地基数树和调度器、主机暂存区、Mooncake 键值、查询、命名空间与保留策略。还要始终区分物理状态块、前缀匹配粒度、调度对齐块与实际检查点集合：细粒度可寻址不等于细粒度状态自动生成，更不等于远端对象也具备相同粒度。检查点一旦发布就应保持不可变，后续扩展通过写时复制产生新的工作状态或检查点。

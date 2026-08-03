@@ -13,11 +13,11 @@ series: 'SGLang Runtime Notes'
 featured: true
 ---
 
-HiCache 读路径回答的是：**请求来了以后，SGLang 怎么判断一段 prefix 能不能复用，以及这段 KV 要不要从 Host 或 Storage 拉回来。**
+HiCache 读路径回答的是：**请求到来以后，SGLang 如何判断一段前缀能否复用，以及是否要把这段 KV 从主机内存或存储层拉回来。**
 
-这条链路不能简化成“storage 有 key 就命中”。真正参与推理的是 GPU KV slots，Storage 命中只说明数据可能可以被搬回 Host，再进一步 load back 到 GPU。
+这条链路不能简化成“存储层有键就算命中”。真正参与推理的是 GPU KV 槽位；存储层命中只说明数据可能可以先搬回主机内存，再进一步回载到 GPU。
 
-读完这篇，应该能把一次 remote hit 拆成三个问题：L3 有没有 page、Host 是否被填充、GPU 是否真正 commit。普通源码笔记容易停在 `batch_get` 返回成功；这里更关心 scheduler 为什么不能为了远端 cache 无限等待。
+读完这篇，应该能把一次远端命中拆成三个问题：L3 中是否有对应缓存页、主机内存是否已经填充、GPU 槽位是否真正提交。普通源码笔记容易停在 `batch_get` 返回成功；这里更关心调度器为什么不能为了远端缓存无限等待。
 
 ## 源码版本与范围
 
@@ -32,47 +32,47 @@ python/sglang/srt/mem_cache/storage/mooncake_store/mooncake_store.py
 关键调用链：
 
 ```text
-prefix match
+前缀匹配
   -> prefetch_from_storage(...)
   -> HiCacheStorage.batch_exists / batch_exists_v2
-  -> Host page allocation
+  -> 分配主机内存页
   -> HiCacheStorage.batch_get_v1/v2
-  -> Storage backend fills Host KV pages
+  -> 存储后端填充主机 KV 缓存页
   -> load_back(...)
-  -> GPU KV slots become reusable
+  -> GPU KV 槽位可复用
 ```
 
-本文只分析 read path 的状态和边界，不覆盖 write-back 策略、attention kernel 执行，也不提供远端命中收益的 benchmark。
+本文只分析读路径的状态和边界，不覆盖回写策略与注意力内核执行，也不提供远端命中收益的基准测试。
 
 <FlowDiagram
-  title="Read path overview: 从 prefix match 到 GPU commit"
-  caption="读路径不是一次 lookup，而是先判断 prefix 所在层级，再决定是否值得把远端 page 拉回 runtime。"
+  title="读路径总览：从前缀匹配到 GPU 槽位提交"
+  caption="读路径不是一次简单查询，而是先判断前缀所在层级，再决定是否值得把远端缓存页拉回运行时。"
   steps={[
     {
-      label: 'Prefix match',
-      meta: 'radix tree',
-      detail: '先找到已有 prefix，并区分 GPU、Host、Storage candidate。',
+      label: '前缀匹配',
+      meta: '基数树',
+      detail: '先找到已有前缀，并区分 GPU、主机内存和存储层候选。',
       tone: 'teal',
-      items: ['node.value', 'node.host_value', 'hash keys'],
+      items: ['node.value', 'node.host_value', '哈希键'],
     },
     {
-      label: 'Storage probe',
+      label: '探测存储层',
       meta: 'batch_exists',
-      detail: '按 page key 查询连续可用边界，hybrid cache 还要合并 side pools。',
+      detail: '按页键查询连续可用边界，混合缓存还要合并辅助内存池。',
       tone: 'blue',
-      items: ['page aligned', 'v1 / v2', 'usable prefix'],
+      items: ['页对齐', 'v1 / v2', '可用前缀'],
     },
     {
-      label: 'Prefetch to Host',
+      label: '预取到主机内存',
       meta: 'batch_get',
-      detail: 'backend 把命中的 page 写回 Host KV pool，而不是直接写 GPU。',
+      detail: '后端把命中的页写入主机 KV 池，而不是直接写入 GPU。',
       tone: 'mauve',
-      items: ['Host allocation', 'Storage->Host', 'ongoing_prefetch'],
+      items: ['主机内存分配', '存储层 -> 主机内存', 'ongoing_prefetch'],
     },
     {
-      label: 'Load back',
-      meta: 'commit device slots',
-      detail: '调度器仍要检查 quota、threshold 和 lock，成功后才能复用。',
+      label: '回载',
+      meta: '提交设备槽位',
+      detail: '调度器仍要检查配额、阈值和锁，成功后才能复用。',
       tone: 'green',
       items: ['mem_quota', 'load_back_threshold', 'node.value'],
     },
@@ -81,58 +81,58 @@ prefix match
 
 ## 读路径的三种命中
 
-一次 prefix match 以后，HiCache 要区分三类命中：
+一次前缀匹配以后，HiCache 要区分三类命中：
 
 ```text
-GPU hit:
-  node.value 存在，可直接用于 attention
+GPU 命中:
+  node.value 存在，可直接用于注意力计算
 
-Host hit:
-  node.host_value 存在，需要 H->D load back
+主机内存命中:
+  node.host_value 存在，需要通过 H->D 回载
 
-Storage hit:
-  L3 backend 存在对应 page，需要 Storage->H prefetch
+存储层命中:
+  L3 后端存在对应页，需要预取到主机内存
 ```
 
 <LayerDiagram
-  title="一次 prefix match 之后，命中位置决定后续成本"
-  caption="Storage hit 只是最远的一层命中；真正跳过 prefill 之前，还要先回 Host，再回 GPU。"
+  title="一次前缀匹配之后，命中位置决定后续成本"
+  caption="存储层命中只是最远的一层命中；真正跳过预填充之前，数据还要先回到主机内存，再回到 GPU。"
   layers={[
     {
-      label: 'GPU hit',
-      detail: 'node.value exists',
+      label: 'GPU 命中',
+      detail: 'node.value 已存在',
       tone: 'teal',
-      items: ['device slots ready', 'attention can reuse directly'],
+      items: ['设备槽位就绪', '注意力计算可直接复用'],
     },
     {
-      label: 'Host hit',
-      detail: 'node.host_value exists',
+      label: '主机内存命中',
+      detail: 'node.host_value 已存在',
       tone: 'blue',
-      items: ['needs load_back', 'H->D copy', 'mem_quota check'],
+      items: ['需要回载', 'H->D 复制', '检查 mem_quota'],
     },
     {
-      label: 'Storage hit',
-      detail: 'page exists in L3 backend',
+      label: '存储层命中',
+      detail: 'L3 后端中存在对应页',
       tone: 'mauve',
-      items: ['batch_exists', 'prefetch', 'Storage->Host', 'page alignment'],
+      items: ['batch_exists', '预取', '存储层 -> 主机内存', '页对齐'],
     },
   ]}
 />
 
-这三者的成本完全不同。GPU hit 几乎是本地索引复用；Host hit 需要设备传输；Storage hit 还要经过 backend 查询、远端数据搬运、Host buffer 分配和后续 load back。
+这三种命中的成本完全不同。GPU 命中几乎只是本地索引复用；主机内存命中需要设备传输；存储层命中还要经过后端查询、远端数据搬运、主机缓冲区分配和后续回载。
 
 ## prefetch_from_storage 做什么
 
-`prefetch_from_storage(...)` 的目标是把 L3 中可能存在的 prefix page 提前读到 Host pool。
+`prefetch_from_storage(...)` 的目标是把 L3 中可能存在的前缀页提前读入主机内存池。
 
 核心流程：
 
 ```text
 prefetch_from_storage(req_id, last_host_node, new_input_tokens, ...)
-  -> 把 new_input_tokens 对齐到 page
-  -> 检查 prefetch_threshold 和 rate limit
-  -> 为 KV 分配 Host indices
-  -> 为 side pools 构造 PoolTransfer
+  -> 把 new_input_tokens 对齐到页面边界
+  -> 检查 prefetch_threshold 和速率限制
+  -> 为 KV 分配主机内存索引
+  -> 为辅助内存池构造 PoolTransfer
   -> cache_controller.prefetch(...)
   -> HiCacheStorage.batch_get_v1/v2(...)
   -> 记录 ongoing_prefetch
@@ -140,29 +140,29 @@ prefetch_from_storage(req_id, last_host_node, new_input_tokens, ...)
 
 这里有几个边界很重要。
 
-第一，prefetch key 必须 page aligned。Storage backend 按 page 查询，不能对任意 token offset 做通用命中。
+第一，预取键必须按页对齐。存储后端按页查询，不能对任意 token 偏移执行通用命中。
 
-第二，prefetch 需要 Host 空间。如果 Host pool 不够，HiCache 会尝试 evict Host；如果仍然不够，会缩短 prefetch length 或直接放弃。
+第二，预取需要主机内存空间。如果主机内存池不足，HiCache 会先尝试淘汰已有内容；如果仍然无法分配，就缩短预取长度或直接放弃。
 
-第三，prefetch 成功只是进入 Host，不是进入 GPU。它还不能直接被 attention kernel 使用。
+第三，预取成功只表示数据进入了主机内存，并未进入 GPU，因此还不能直接供注意力内核使用。
 
 ## batch_exists 决定可用前缀边界
 
-Storage backend 通常先查存在性，再决定能 prefetch 多少页。
+存储后端通常先查询存在性，再决定能够预取多少页。
 
 普通 KV 路径中：
 
 ```text
-batch_exists(keys) -> 连续存在的 page 数量
+batch_exists(keys) -> 连续存在的页数
 ```
 
-hybrid cache 路径中：
+混合缓存路径中：
 
 ```text
 batch_exists_v2(keys, pool_transfers) -> PoolTransferResult
 ```
 
-v2 的返回结果更关键。它需要合并 KV 和 side pools 的命中边界：
+v2 的返回结果更关键，因为它需要合并 KV 与辅助内存池的命中边界：
 
 ```text
 kv_hit_pages = 10
@@ -171,13 +171,13 @@ swa_hit_pages = 9
 final usable pages = 8
 ```
 
-如果只看 KV page 存在，就可能把缺少 side state 的 prefix 当成可复用，后续模型状态会不完整。
+如果只看 KV 页是否存在，就可能把缺少辅助状态的前缀当成可复用，导致后续模型状态不完整。
 
-## Storage->Host 不等于 Host->GPU
+## 外部存储到主机内存，不等于主机内存到 GPU
 
-Storage prefetch 的结果是 Host pool 中出现一段 `host_indices`。之后如果调度器决定使用这段 prefix，还需要走 `load_back(...)`。
+从存储层预取的结果，是主机内存池中出现一段 `host_indices`。之后如果调度器决定使用这段前缀，还需要执行 `load_back(...)`。
 
-`load_back(best_match_node, mem_quota, req)` 的目标是把 Host KV page 搬回 GPU KV pool。
+`load_back(best_match_node, mem_quota, req)` 的目标是把主机 KV 页搬回 GPU KV 池。
 
 核心流程：
 
@@ -196,43 +196,43 @@ load_back(best_match_node)
 
 注意 `load_back_threshold`。如果要搬回 GPU 的 token 太少，HiCache 可能直接放弃，因为传输和调度成本不划算。
 
-## load back 为什么要 lock
+## 回载时为什么需要加锁
 
-load back 是异步路径。搬运期间同时存在几个风险：
+回载是一条异步路径。搬运期间同时存在几个风险：
 
-- Host buffer 被回收。
-- radix node 被 split 或删除。
+- 主机缓冲区被回收。
+- 基数树节点被拆分或删除。
 - GPU 空间被别的请求抢占。
-- side pool 与 KV pool 状态提交不一致。
+- 辅助内存池与 KV 池的状态提交不一致。
 
-因此 load back 会同时持有 Host 侧和 GPU 侧引用保护。成功后，它才把 `device_indices` commit 回 node；失败时释放引用，不把 node 标成 GPU 可用。
+因此，回载期间会同时持有主机侧和 GPU 侧引用。成功后才把 `device_indices` 提交回节点；失败时则释放引用，不把节点标记为 GPU 可用。
 
-这点很关键：**只有 commit device indices 之后，prefix 才真正回到 L1。**
+这点很关键：**只有设备索引提交以后，这段前缀才真正回到 L1。**
 
 ## 调度器为什么不能无条件等待
 
-远端 cache 命中不一定值得等。HiCache 读路径中有多种提前放弃条件：
+远端缓存命中不一定值得等待。HiCache 读路径中有多种提前放弃条件：
 
-- prefetch token 数低于阈值
-- prefetch 触发 rate limit
-- Host pool 无法分配足够空间
-- load back token 数低于阈值
-- load back 超过当前 GPU mem quota
-- side pool 不满足命中策略
-- storage backend batch get 失败
+- 预取的 token 数低于阈值
+- 预取触发限流
+- 主机内存池无法分配足够空间
+- 回载 token 数低于阈值
+- 回载量超过当前 GPU 内存配额
+- 辅助内存池不满足命中策略
+- 存储后端批量读取失败
 
-这些条件意味着 HiCache 是一个 performance-aware cache，而不是强一致的远端内存抽象。它的目标是提高吞吐和减少重复 prefill，但不能为了 cache 把调度器拖死。
+这些条件说明 HiCache 是一套考虑性能成本的缓存，而不是强一致的远端内存抽象。它的目标是提高吞吐、减少重复预填充，但不能为了等待缓存而阻塞调度器。
 
-## Mooncake backend 的读路径
+## Mooncake 后端的读取路径
 
-当 L3 backend 是 Mooncake，读路径会进入：
+当 L3 后端为 Mooncake 时，读取路径会进入：
 
 ```text
 MooncakeStore.batch_get_v1(keys, host_indices)
 MooncakeStore.batch_get_v2(transfers)
 ```
 
-v1 会把每个 logical page key 展开成 Mooncake object keys，再从 Host pool 取目标 buffer pointer：
+v1 会把每个逻辑页键展开成 Mooncake 对象键，再从主机内存池取得目标缓冲区指针：
 
 ```text
 key_strs, buffer_ptrs, buffer_sizes =
@@ -246,117 +246,117 @@ batch_get_into(key_strs, buffer_ptrs, buffer_sizes)
 batch_get_into_multi_buffers(key_strs, buffer_ptrs, buffer_sizes)
 ```
 
-返回结果是 object 级的。Mooncake backend 再把 object 级结果折回 page 级 bool：
+返回结果是对象级的。Mooncake 后端再把对象级结果聚合为页级布尔值：
 
 ```text
-MHA page:
-  K object success && V object success
+MHA 页：
+  K 对象成功 && V 对象成功
 
-MLA page:
-  K object success
+MLA 页：
+  K 对象成功
 ```
 
-这解释了为什么一个 page key 背后可能有多个 Mooncake object。HiCache 只想知道 page 是否可用；Mooncake Store 看到的是更细的 object。
+这解释了为什么一个页键背后可能有多个 Mooncake 对象。HiCache 只关心整页是否可用；Mooncake Store 看到的则是更细粒度的对象。
 
 ## 读路径完整链路
 
 完整读链可以这样画：
 
 ```text
-request tokens
-  -> radix prefix match
-  -> GPU hit 可直接使用
-  -> Host hit 触发 load_back
-  -> Storage candidate 触发 prefetch_from_storage
+请求 token
+  -> 基数树前缀匹配
+  -> GPU 命中可直接使用
+  -> 主机内存命中触发 load_back
+  -> 存储层候选命中触发 prefetch_from_storage
   -> HiCacheStorage.batch_exists / batch_get
-  -> Host pool 填充
+  -> 填充主机内存池
   -> load_back 到 GPU
-  -> attention kernel 使用 device KV slots
+  -> 注意力内核使用设备 KV 槽位
 ```
 
 <SequenceDiagram
-  title="remote KV read 要分成 Storage->Host 和 Host->GPU 两段"
-  caption="如果只验证 batch_get 成功，只能说明 L3 已经填充 Host；还不能说明这段 prefix 已经能被 attention 使用。"
-  actors={['Scheduler', 'HiCache', 'Storage backend', 'Host KV pool', 'GPU KV pool']}
+  title="远端 KV 读取要分成存储层到主机内存、主机内存到 GPU 两段"
+  caption="如果只验证 batch_get 成功，只能说明 L3 已经填充主机内存；还不能说明这段前缀已经可以用于注意力计算。"
+  actors={['调度器', 'HiCache', '存储后端', '主机 KV 池', 'GPU KV 池']}
   steps={[
     {
-      from: 'Scheduler',
+      from: '调度器',
       to: 'HiCache',
-      label: 'radix prefix match',
-      detail: '先判断 GPU/Host 已有前缀，再决定是否触发 storage prefetch',
+      label: '基数树前缀匹配',
+      detail: '先判断 GPU 和主机内存中的已有前缀，再决定是否从存储层预取',
       tone: 'teal',
     },
     {
       from: 'HiCache',
-      to: 'Storage backend',
+      to: '存储后端',
       label: 'batch_exists / batch_get',
-      detail: '按 page key 查询连续命中边界，并把 object 结果折回 page 结果',
+      detail: '按页键查询连续命中边界，并把对象结果聚合为页级结果',
       tone: 'blue',
     },
     {
-      from: 'Storage backend',
-      to: 'Host KV pool',
+      from: '存储后端',
+      to: '主机 KV 池',
       label: 'prefetch_from_storage',
-      detail: 'Mooncake backend 调 batch_get_into，把数据写入 Host pages',
+      detail: 'Mooncake 后端调用 batch_get_into，把数据写入主机缓存页',
       tone: 'mauve',
     },
     {
       from: 'HiCache',
-      to: 'GPU KV pool',
+      to: 'GPU KV 池',
       label: 'load_back(best_match_node)',
-      detail: '分配 device slots，提交 node.value 后，attention 才能复用',
+      detail: '分配设备槽位并提交 node.value 后，注意力计算才能复用',
       tone: 'green',
     },
   ]}
 />
 
-所以“remote KV cache hit”至少要问三个问题：
+所以，“远端 KV 缓存命中”至少要问三个问题：
 
-- L3 backend 里对应 page 是否存在？
-- 数据是否已经读回 Host pool？
-- 对应 Host page 是否已经 load back 到 GPU？
+- L3 后端中对应的缓存页是否存在？
+- 数据是否已经读回主机内存池？
+- 对应主机缓存页是否已经回载到 GPU？
 
-只有第三个问题为真，推理计算才能真正跳过这段 prefill。
+只有第三个问题为真，推理计算才能真正跳过这段预填充。
 
 ## 这条路径能证明什么
 
 <CompareCallout
-  title="Read-path evidence boundary"
-  caption="这篇文章能建立 read path 的状态转换模型，但不能把源码路径直接外推成性能或生产正确性结论。"
+  title="读路径能说明什么"
+  caption="这篇文章可以建立读路径的状态转换模型，但不能把源码路径直接外推为性能或生产正确性结论。"
   columns={[
     {
-      title: 'This article establishes',
+      title: '能够确认',
       tone: 'green',
       items: [
-        'SGLang HiCache read path 至少分成 prefix match、storage probe、Storage->Host prefetch 和 Host->GPU load_back。',
-        'Storage hit 只说明存在可尝试拉回的 page，不等价于 attention 已经能复用 GPU KV slots。',
-        'batch_exists_v2 和 side pools 会影响最终可用 prefix 边界。',
-        'threshold、quota 和 lock 是调度边界，不是可省略的接口细节。',
+        'SGLang HiCache 读路径至少分为前缀匹配、存储探测、预取到主机内存和回载到 GPU 四步。',
+        '存储层命中只说明存在可以尝试拉回的页，不等于注意力计算已经能复用 GPU KV 槽位。',
+        'batch_exists_v2 和辅助内存池会影响最终可用的前缀边界。',
+        '阈值、配额和锁都是调度边界，不是可以省略的接口细节。',
       ],
     },
     {
-      title: 'This article does not prove',
+      title: '不能单独证明',
       tone: 'amber',
       items: [
-        '不证明任意 workload 下 remote KV 一定降低延迟。',
-        '不证明某次 batch_get 成功后，后续请求一定会复用这段 prefix。',
-        '不覆盖完整分布式失效、lease 过期、replica placement 或 transport 重试语义。',
-        '不替代端到端日志、metrics、trace 和 benchmark 验证。',
+        '不证明远端 KV 在任意负载下一定降低延迟。',
+        '不证明某次 batch_get 成功后，后续请求一定会复用这段前缀。',
+        '不覆盖完整的分布式失效、租约过期、副本放置或传输重试语义。',
+        '不替代端到端日志、指标、追踪和基准测试验证。',
       ],
     },
   ]}
 />
 
-## 结论：storage hit 只是候选命中
+## 结论：存储层命中只是候选结果
 
-读 HiCache 读路径时，最重要的不是问“Storage backend 有没有这个 key”，而是问这段 prefix 是否已经穿过完整复用链路：
+阅读 HiCache 读取路径时，最重要的不是问“存储后端有没有这个键”，而是问这段前缀是否已经穿过完整复用链路：
 
 ```text
-page exists in Storage
-  -> bytes arrive in Host pool
-  -> Host pages map back to the expected logical page
-  -> load_back passes threshold / quota / lock checks
-  -> GPU slots are committed
+存储层中存在对应页
+  -> 数据进入主机内存池
+  -> 主机页映射回预期的逻辑页
+  -> load_back 通过阈值、配额和锁检查
+  -> GPU 槽位提交完成
 ```
 
-这也是 `batch_exists_v2`、`load_back_threshold` 和 page alignment 都不能跳过的原因。它们不是接口细节，而是在保护 scheduler：remote cache 可以提升吞吐，但不能把请求拖进一个不可控的等待路径。
+这也是 `batch_exists_v2`、`load_back_threshold` 和页对齐都不能跳过的原因。它们不是接口细节，而是在保护调度器：远端缓存可以提高吞吐，但不能把请求拖入不可控的等待路径。

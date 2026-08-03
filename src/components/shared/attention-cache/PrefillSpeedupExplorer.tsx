@@ -182,7 +182,7 @@ export function PrefillSpeedupExplorer() {
         className="mt-4 rounded-[8px] border border-[#df8e1d]/35 bg-[#df8e1d]/[0.07] px-4 py-3 text-sm leading-6 text-muted-foreground dark:border-[#f9e2af]/30 dark:bg-[#f9e2af]/[0.06]"
       >
         <strong className="font-semibold text-foreground">模型边界：</strong>{' '}
-        这里只把未命中 token 的计算量加权相加；没有计入 cache
+        这里只把未命中 token 的计算量加权相加；没有计入缓存
         查询、回载、传输、同步、内核效率、调度或 checkpoint
         重放。因此完整模块的理想加速比仍不能直接当作 TTFT 或吞吐提升。
       </motion.p>

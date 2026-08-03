@@ -7,7 +7,7 @@ import { createPageMetadata } from '@/lib/seo'
 export const runtime = process.env.NEXT_RUNTIME === 'edge' ? 'edge' : 'nodejs'
 
 export const metadata: Metadata = createPageMetadata({
-  title: 'Blogs',
+  title: 'Blog',
   description:
     'Chinese engineering articles on SGLang runtime, Mooncake and HiCache internals, KV cache systems, storage, performance, and runbooks.',
   path: '/blogs/',

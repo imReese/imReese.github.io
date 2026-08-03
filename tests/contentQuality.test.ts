@@ -79,6 +79,8 @@ test('Chinese UI copy avoids reviewed translationese', () => {
     '验证闭环',
     '真实数据面逐步建设',
     '数据物化',
+    '我近期在做的项目和源码整理',
+    '现网问题治理',
   ]) {
     assert.equal(
       sources.includes(phrase),
@@ -87,7 +89,7 @@ test('Chinese UI copy avoids reviewed translationese', () => {
     )
   }
 
-  assert.equal(projects.headline, '项目与源码研究')
+  assert.equal(projects.headline, '项目与源码笔记')
 })
 
 test('English UI copy avoids literal and RFC-style phrasing', () => {
@@ -107,6 +109,9 @@ test('English UI copy avoids literal and RFC-style phrasing', () => {
     'source studies',
     'problemLabel',
     'problem:',
+    'software-hardware optimization',
+    'production issue resolution',
+    'write/read cycle',
   ]) {
     assert.equal(
       sources.includes(phrase),
@@ -138,6 +143,52 @@ test('blog metadata uses readable Chinese for ordinary engineering terms', () =>
       copy.includes(phrase),
       false,
       `localize blog metadata: ${phrase}`,
+    )
+  }
+})
+
+test('blog prose avoids the reviewed mechanical translations', () => {
+  const prose = readdirSync('content/blogs')
+    .filter((file) => file.endsWith('.mdx'))
+    .map((file) => matter(readFileSync(`content/blogs/${file}`, 'utf8')).content)
+    .map((content) => content.replace(/^```[\s\S]*?^```/gm, ''))
+    .join('\n')
+
+  for (const phrase of [
+    'checkpoint state pool',
+    'scheduler split',
+    'load back',
+    'loading back',
+    'manifest edit',
+    'Runtime 实验',
+    '推理运行时开发',
+    '主从组件',
+  ]) {
+    assert.equal(
+      prose.includes(phrase),
+      false,
+      `remove mechanical translation from blog prose: ${phrase}`,
+    )
+  }
+})
+
+test('blog source avoids reviewed syntax-breaking code-switching', () => {
+  const source = readdirSync('content/blogs')
+    .filter((file) => file.endsWith('.mdx'))
+    .map((file) => readFileSync(`content/blogs/${file}`, 'utf8'))
+    .join('\n')
+
+  for (const phrase of [
+    '大 forward 抽中间 state',
+    'connector 路径未传播 boundary',
+    'partial hit 后 CoW',
+    'cache 查询',
+    'object replica 是否可读',
+  ]) {
+    assert.equal(
+      source.includes(phrase),
+      false,
+      `rewrite syntax-breaking code-switching: ${phrase}`,
     )
   }
 })

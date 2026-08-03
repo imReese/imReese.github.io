@@ -7,7 +7,7 @@ focusAreas:
   - Accelerator backends
 
 aboutParagraphs:
-  - I currently work on performance for LLM inference engines, with a focus on scheduling, KV cache management, cross-node data movement, and accelerator backends.
+  - I currently optimize LLM inference engines, focusing on scheduling, KV cache management, cross-node data movement, and accelerator backends.
   - Earlier in my career, I worked on high availability and cluster management for distributed storage, then on cloud workload analysis and CPU architecture.
   - This site collects my engineering projects, source-code notes, and lessons from debugging and validation work.
 
@@ -18,10 +18,10 @@ currentFocus:
     I currently focus on scheduling, KV cache lifecycle, data movement, and
     accelerator backend performance.
   bullets:
-    - Find throughput, latency, and memory bottlenecks in request scheduling and execution.
-    - Trace KV cache state through prefill, decode, cache loading, and data transfer.
-    - Test how Mooncake Transfer Engine integrates with inference backends.
-    - Work on SGLang request handling, scheduling, and cache behavior.
+    - I look for throughput, latency, and memory bottlenecks in request scheduling and execution.
+    - I trace KV cache state through prefill, decode, cache loading, and data transfer.
+    - I validate Mooncake Transfer Engine integration with inference backends.
+    - I work on SGLang request handling, scheduling, and cache behavior.
   links:
     - label: Projects
       href: /projects/
@@ -31,7 +31,7 @@ currentFocus:
 selectedWork:
   - eyebrow: Runtime prototype
     title: SGLang Rust Runtime
-    description: A Rust prototype for request lifecycle, scheduling, prefix caching, protocol handling, and PD transfer. It is built for architecture and integration experiments, not as a production replacement for SGLang.
+    description: A Rust prototype that models request handling, scheduling, prefix caching, protocol boundaries, and PD transfer. It is intended for architecture and integration experiments, not as a production replacement for SGLang.
     link:
       label: View project scope
       href: https://github.com/imReese/sglang-rs#current-scope
@@ -51,7 +51,7 @@ selectedWork:
 researchAreas:
   - title: Inference engines
     label: Scheduling and execution
-    description: Profile request scheduling, operators, kernels, and backend execution.
+    description: Analyze performance across request scheduling, operators, kernels, and backend execution.
     points:
       - Throughput and latency
       - Operator and kernel paths
@@ -103,7 +103,7 @@ experience:
     end: Present
     highlights:
       - Optimize LLM inference engine performance.
-      - Analyze KV cache state and Mooncake Transfer Engine data flow across prefill and decode workloads.
+      - Analyze how KV cache state and data move through prefill and decode.
       - Adapt and optimize inference paths for heterogeneous accelerators.
       - Investigate bottlenecks in kernels, operators, scheduling, memory, and data transfer.
   - company: Huawei Cloud
@@ -113,9 +113,9 @@ experience:
     start: '2023.07'
     end: '2024.07'
     highlights:
-      - Built performance tooling for cloud workloads and characterized instruction-flow and microarchitectural behavior.
+      - Built performance tooling for cloud workloads and analyzed instruction streams and microarchitectural behavior.
       - Used workload data and simulation to evaluate CPU architecture optimizations.
-      - Worked across hardware and operating-system teams to validate software-hardware optimization on Kunpeng platforms.
+      - Worked with hardware and operating-system teams to validate hardware-software co-optimization on Kunpeng platforms.
   - company: Huawei Data Storage
     team: Infrastructure Development Department
     title: Software Engineer, Distributed Storage
@@ -124,8 +124,8 @@ experience:
     end: '2023.07'
     highlights:
       - Developed high-availability and cluster-management components for distributed storage products.
-      - Improved control-plane scalability and initialization efficiency through asynchronous communication and module decoupling.
-      - Strengthened product reliability through automated testing, security hardening, and production issue resolution.
+      - Improved control-plane scalability and initialization efficiency through asynchronous communication and component decoupling.
+      - Improved product reliability through automated testing, security hardening, and production incident remediation.
 
 education:
   - school: Nanjing University

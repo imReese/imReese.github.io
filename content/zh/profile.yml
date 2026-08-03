@@ -57,9 +57,9 @@ researchAreas:
       - 算子与内核路径
       - 预填充与解码行为
     tags:
-      - LLM Serving
-      - Runtime
-      - Scheduling
+      - 大模型推理
+      - 推理引擎
+      - 调度
   - title: KV Cache
     label: 缓存管理
     description: 关注前缀复用、KV 页生命周期、内存驻留和跨层回载。
@@ -68,20 +68,20 @@ researchAreas:
       - KV 页生命周期
       - 缓存命中与驻留状态
     tags:
-      - Cache
+      - 缓存
       - KV Cache
-      - Memory
+      - 内存
   - title: Mooncake Transfer Engine
     label: 数据传输
     description: 分析 KV 数据的传输规划、内存注册、描述符和就绪状态。
     points:
       - KV 传输规划
-      - 描述符与校验和路径
+      - 描述符与校验和
       - KV 就绪判断
     tags:
       - Mooncake
-      - TransferEngine
-      - PD
+      - Transfer Engine
+      - PD 分离式推理
   - title: 异构加速
     label: 后端优化
     description: 适配并优化不同加速器上的推理路径，同时尽量隔离设备相关逻辑。
@@ -90,13 +90,13 @@ researchAreas:
       - 设备相关执行逻辑
       - 后端抽象
     tags:
-      - Accelerators
-      - Runtime
-      - Backend
+      - 异构加速
+      - 推理引擎
+      - 后端优化
 
 experience:
   - company: 百度
-    team: AI 计算团队
+    team: AI 计算部
     title: 推理引擎软件工程师
     logo: cpu, gpu, inference engine
     start: '2025.06.30'
@@ -113,7 +113,7 @@ experience:
     start: '2023.07'
     end: '2024.07'
     highlights:
-      - 面向云工作负载建设性能分析工具，刻画指令流和微架构行为。
+      - 为云工作负载开发性能分析工具，分析指令流和微架构行为。
       - 结合工作负载数据与仿真评估 CPU 体系结构优化方案。
       - 与芯片和操作系统团队协作，在鲲鹏平台验证软硬件协同优化。
   - company: 华为数据存储
@@ -124,8 +124,8 @@ experience:
     end: '2023.07'
     highlights:
       - 参与分布式存储产品的高可用与集群管理组件开发。
-      - 优化控制面通信和初始化流程，提升集群规模与资源初始化效率。
-      - 通过自动化测试、安全加固和现网问题治理提升产品可靠性。
+      - 优化控制面通信和初始化流程，提升集群可扩展性与资源初始化效率。
+      - 通过自动化测试、安全加固和线上问题修复提升产品可靠性。
 
 education:
   - school: 南京大学

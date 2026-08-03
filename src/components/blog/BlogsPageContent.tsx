@@ -10,7 +10,7 @@ import { useLanguage } from '@/components/shared/LanguageProvider'
 import { type BlogPageContent } from '@/config/content'
 import { type BlogType } from '@/lib/blogs'
 import { formatDate } from '@/lib/formatDate'
-import { getBlogMetaChips, matchesSeriesGroup } from '@/lib/blogPresentation'
+import { getBlogMetaChips, getFilteredBlogs } from '@/lib/blogPresentation'
 import { ChevronRight } from 'lucide-react'
 
 function BlogMeta({
@@ -538,25 +538,12 @@ function BlogsPageContentView({
   )
   const filteredBlogs = useMemo(
     () =>
-      blogs.filter((blog) => {
-        const matchesYear = selectedYear
-          ? blog.date.slice(0, 4) === selectedYear
-          : true
-        const matchesTopic = selectedTopic
-          ? (blog.topics ?? []).includes(selectedTopic)
-          : true
-
-        const matchesSeries = matchesSeriesGroup(blog, selectedSeries)
-        const belongsInDefaultArchive = hasActiveFilter ? true : !blog.featured
-
-        return (
-          matchesYear &&
-          matchesTopic &&
-          matchesSeries &&
-          belongsInDefaultArchive
-        )
+      getFilteredBlogs(blogs, {
+        year: selectedYear,
+        topic: selectedTopic,
+        series: selectedSeries,
       }),
-    [blogs, hasActiveFilter, selectedSeries, selectedTopic, selectedYear],
+    [blogs, selectedSeries, selectedTopic, selectedYear],
   )
 
   return (

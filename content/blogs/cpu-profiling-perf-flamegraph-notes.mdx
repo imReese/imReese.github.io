@@ -1,6 +1,6 @@
 ---
 title: 'CPU 性能分析笔记：如何用 perf 定位一次延迟抖动'
-description: '沿着一次服务 p99 抖动的排查过程，串起 on-CPU/off-CPU 分析、perf、火焰图、假设验证与基准测试。'
+description: '沿着一次服务 p99 抖动的排查过程，串起 CPU 执行与等待分析、perf、火焰图、假设验证和基准测试。'
 author: 'Reese'
 date: '2025-03-16'
 topics:
@@ -10,20 +10,20 @@ series: 'Open Source Engineering'
 featured: false
 ---
 
-CPU profiling 最怕变成看图猜谜。
+CPU 性能分析最怕变成看图猜谜。
 
-火焰图上哪个块最宽，就去改哪个函数；改完跑一个本地 benchmark，快了一点，就说优化完成。这条路很容易把时间花在不主导线上延迟的问题上。
+看到火焰图上哪个块最宽，就去改哪个函数；改完跑一次本地基准测试，快了一点，就说优化完成。这种做法很容易把时间花在不主导线上延迟的问题上。
 
-我更愿意把 profiling 放进一次完整排查里：
+我更愿意把性能分析放进一次完整排查里：
 
 ```text
-symptom
-  -> system counters
-  -> on-CPU / off-CPU 判断
-  -> profile under matching workload
-  -> hypothesis
-  -> one change
-  -> same workload verification
+问题现象
+  -> 系统指标
+  -> 判断是执行时间还是等待时间
+  -> 在相同负载下采样
+  -> 提出假设
+  -> 只改一个主要变量
+  -> 用相同负载验证
 ```
 
 这篇不写 perf 命令大全，只写一次延迟问题里我会怎样把证据串起来。
@@ -42,7 +42,7 @@ CPU usage: 45% - 65%
 
 第一反应不应该是打开火焰图。
 
-CPU 使用率不满，不代表没有 CPU 问题；但也可能根本不是 on-CPU 问题。线程可能在等锁、等 I/O、等网络、等 runtime pause、等调度。
+CPU 使用率不满，不代表没有 CPU 问题；但也可能根本不是执行阶段的问题。线程可能在等锁、等 I/O、等网络、等运行时停顿或等调度。
 
 我会先看系统层：
 
@@ -58,68 +58,68 @@ sar -n DEV 1
 这里先回答几个问题：
 
 - user/sys CPU 是否接近瓶颈。
-- voluntary / involuntary context switch 是否异常。
-- run queue 是否堆积。
-- disk await / util 是否升高。
-- network 是否丢包或打满。
+- 主动和被动上下文切换是否异常。
+- 运行队列是否堆积。
+- 磁盘等待时间和利用率是否升高。
+- 网络是否丢包或打满。
 - p99 抖动是否和某个资源曲线对齐。
 
-如果 CPU 不高但上下文切换、I/O await 或 lock wait 很高，普通 CPU 火焰图可能不是第一工具。
+如果 CPU 不高，但上下文切换、I/O 等待或锁等待很高，普通 CPU 火焰图可能不是首选工具。
 
 <FlowDiagram
-  title="profiling 不应该跳过资源判定"
+  title="性能分析不应该跳过资源判定"
   caption="先判断线程是在 CPU 上花时间，还是没在 CPU 上等东西。"
   steps={[
     {
-      label: 'symptom',
-      detail: 'p99 / timeout / throughput 变化',
+      label: '问题现象',
+      detail: 'p99、超时或吞吐变化',
       tone: 'teal',
-      items: ['latency', 'QPS', 'error'],
+      items: ['延迟', 'QPS', '错误率'],
     },
     {
-      label: 'counters',
+      label: '系统指标',
       detail: '先看系统资源和调度状态',
       tone: 'blue',
-      items: ['cpu', 'run queue', 'iowait', 'ctx switch'],
+      items: ['CPU', '运行队列', 'I/O 等待', '上下文切换'],
     },
     {
-      label: 'profile',
-      detail: '按 on-CPU 或 off-CPU 选择工具',
+      label: '采样分析',
+      detail: '按执行或等待状态选择工具',
       tone: 'amber',
-      items: ['perf', 'mutex profile', 'off-cpu'],
+      items: ['perf', '互斥锁分析', '等待分析'],
     },
     {
-      label: 'verify',
-      detail: '用同一 workload 验证改动',
+      label: '验证',
+      detail: '用同一负载验证改动',
       tone: 'green',
-      items: ['baseline', 'one change', 'compare'],
+      items: ['基线', '单一改动', '对比'],
     },
   ]}
 />
 
-## on-CPU 和 off-CPU 先分开
+## 先分清 CPU 执行时间和等待时间
 
-On-CPU profiling 看的是线程正在 CPU 上执行时，时间花在哪里。
+CPU 执行分析关注线程正在 CPU 上运行时，时间花在哪里。
 
-Off-CPU profiling 看的是线程没在 CPU 上运行时，卡在哪里。
+等待分析关注线程不在 CPU 上运行时，卡在哪里。
 
 两者回答的问题不同：
 
 ```text
-on-CPU:
-  CPU cycles are being spent in which call stacks?
+CPU 执行：
+  CPU 周期花在哪些调用栈上？
 
-off-CPU:
-  wall time is being lost waiting for what?
+等待：
+  墙上时钟时间消耗在等待什么？
 ```
 
-如果 CPU 已经打满，on-CPU 火焰图通常很有用。可能看到序列化、压缩、hash、内存分配、日志格式化、拷贝、正则、JSON 等热点。
+如果 CPU 已经打满，CPU 执行火焰图通常很有用，可能看到序列化、压缩、哈希、内存分配、日志格式化、拷贝、正则、JSON 等热点。
 
-如果 CPU 不满但延迟高，off-CPU 可能更有价值。可能是 mutex、condition variable、disk I/O、socket read/write、epoll wait、runtime safepoint 或调度等待。
+如果 CPU 不满但延迟很高，等待分析可能更有价值。原因可能是互斥锁、条件变量、磁盘 I/O、套接字读写、epoll 等待、运行时安全点或调度等待。
 
-只看 on-CPU，容易优化一个“线程真正在跑时最忙”的函数，却错过“线程大部分时间根本没在跑”的事实。
+只看 CPU 执行时间，容易优化一个“线程真正在跑时最忙”的函数，却错过“线程大部分时间根本没在跑”的事实。
 
-## perf 采样要贴着 workload
+## perf 采样要贴近真实负载
 
 Linux 上常见入口：
 
@@ -140,44 +140,44 @@ flamegraph.pl out.folded > cpu.svg
 
 第一，采样窗口要覆盖问题发生时段。没有流量时采样，看到的只是 idle、background thread 或 GC。
 
-第二，workload 要和线上症状接近。请求类型、payload size、并发、数据规模都要对齐。
+第二，负载要和线上症状接近。请求类型、请求体大小、并发和数据规模都要对齐。
 
 第三，采样频率不要盲目拉高。频率太高会影响被测进程，太低又看不清。`99Hz` 常作为起点，是为了避开某些周期性对齐。
 
-第四，符号要可读。C/C++/Rust 服务最好保留 frame pointer 或有可用 debug symbols。否则火焰图上全是地址和 `[unknown]`，解释力会大幅下降。
+第四，符号要可读。C/C++/Rust 服务最好保留帧指针或提供可用的调试符号，否则火焰图上全是地址和 `[unknown]`，解释力会大幅下降。
 
 ## 火焰图不是时间线
 
 火焰图横向宽度表示采样占比，不表示时间顺序。
 
 ```text
-wide frame:
-  many samples included this frame
+宽框：
+  很多采样都经过这个函数
 
-tall stack:
-  deep call path
+高栈：
+  调用路径很深
 
-top wide frame:
-  leaf work where CPU cycles are spent
+顶部宽框：
+  CPU 周期实际花费的叶子函数
 ```
 
 底部框架宽，不一定说明框架慢。它可能只是很多请求都经过那里。真正要看的是顶部宽块，以及它是否符合预期。
 
 比如：
 
-- 压缩函数宽：可能是业务主工作，不一定是浪费。
-- JSON parse 宽：如果高频路径反复解析同一字段，可能有优化空间。
-- malloc/free 宽：可能是对象生命周期或 buffer 复用问题。
-- logging 宽：高频格式化日志可能很不值。
+- 压缩函数宽：可能是必要计算，不一定是浪费。
+- JSON 解析很宽：如果高频路径反复解析同一字段，可能有优化空间。
+- malloc/free 很宽：可能是对象生命周期或缓冲区复用问题。
+- 日志处理很宽：高频格式化日志可能很不值。
 - memcpy 宽：要看是不是跨层重复复制。
 
 火焰图给的是证据，不是自动结论。
 
-## 我会把热点分成“主工作”和“浪费”
+## 我会先区分必要工作和额外开销
 
 看到热点后，我会先问它是不是系统应该做的工作。
 
-主工作：
+必要工作：
 
 - 加密。
 - 压缩。
@@ -185,17 +185,17 @@ top wide frame:
 - 正常序列化。
 - 必要校验。
 
-浪费：
+额外开销：
 
 - 同一请求重复解析。
 - 锁内做重活。
-- 每层都复制 buffer。
+- 每层都复制缓冲区。
 - 临时对象大量分配。
-- debug 日志在热路径格式化。
-- 低效 map/list 查找。
-- 明明可以 batch 却逐条调用。
+- 调试日志在热路径格式化。
+- 低效的映射或列表查找。
+- 明明可以批量处理却逐条调用。
 
-优化主工作通常要换算法、换实现或接受 trade-off。优化浪费则更像把不该出现的成本拿掉。
+优化主要工作通常要更换算法或实现，并接受相应取舍；优化浪费则更像把不该出现的成本拿掉。
 
 ## 一个假设只能配一个主要改动
 
@@ -204,70 +204,70 @@ top wide frame:
 我会把假设写具体：
 
 ```text
-Hypothesis:
-  p99 is affected by repeated JSON parsing in request admission.
+假设：
+  请求接入阶段反复解析 JSON，抬高了 p99。
 
-Evidence:
-  perf shows parse_request_fields accounts for 18% on-CPU samples
-  same stack appears in p99-heavy workload
+证据：
+  perf 显示 parse_request_fields 占 on-CPU 样本的 18%
+  p99 较高的负载中也出现了相同调用栈
 
-Change:
-  parse once at boundary, pass typed fields downstream
+改动：
+  在入口处只解析一次，并向下游传递类型化字段
 ```
 
-然后只做这一类改动。不要顺手改 batch size、日志级别、锁粒度和 buffer 池。否则验证阶段没法解释。
+然后只做这一类改动。不要顺手改批次大小、日志级别、锁粒度和缓冲池，否则验证阶段无法解释结果。
 
-## benchmark 要和 profile 场景对得上
+## 基准测试要和性能分析场景对得上
 
-profile 是在线上 workload 下采的，benchmark 却是本地单线程 mock，这样的验证很弱。
+性能数据来自线上负载，验证却只用本地单线程模拟，这样的证据很弱。
 
 我会尽量对齐：
 
 - 请求类型。
-- payload size。
+- 请求体大小。
 - 并发度。
 - 数据规模。
 - 编译参数。
-- CPU governor。
-- 容器 CPU limit。
+- CPU 调频策略。
+- 容器 CPU 限额。
 - 日志级别。
-- 下游 mock 行为。
+- 下游模拟行为。
 
-如果线上 p99 来自高并发下的锁竞争，本地单线程 benchmark 只会证明函数本身快，不会证明 tail latency 修好了。
+如果线上 p99 来自高并发下的锁竞争，本地单线程基准测试只会证明函数本身快，不会证明尾延迟已经改善。
 
 ## 结果记录要能被复盘
 
 一条性能优化记录至少应该留下：
 
 ```text
-symptom:
-  p99 180 ms under workload X
+现象：
+  负载 X 下的 p99 为 180 ms
 
-baseline:
-  QPS, avg, p95, p99, CPU, memory, context switch
+基线：
+  QPS、平均延迟、p95、p99、CPU、内存和上下文切换
 
-profile:
-  command, window, workload, top stacks
+采样：
+  命令、时间窗口、负载和主要调用栈
 
-hypothesis:
-  why this stack is waste or bottleneck
+假设：
+  为什么这段调用栈属于额外开销或瓶颈
 
-change:
-  one main variable
+改动：
+  只改变一个主要变量
 
-result:
-  same workload comparison
+结果：
+  使用同一负载进行对比
 
-risk:
-  semantic change, memory trade-off, complexity
+风险：
+  语义变化、内存取舍和复杂度
 ```
 
 没有这些，优化就会变成“我记得当时快了”。
 
-## profiling 的最终目标不是更好看的火焰图
+## 性能分析的最终目标不是画出更好看的火焰图
 
-CPU profiling 的目标不是把某个宽块变窄，而是解释一次性能症状。
+CPU 性能分析的目标不是把某个宽块变窄，而是解释一次性能症状。
 
-如果症状是 p99 抖，最后就要回到 p99；如果症状是 CPU 打满，最后就要回到 CPU utilization 和吞吐；如果症状是请求卡住，可能最后要证明 off-CPU wait 降了。
+如果症状是 p99 抖动，最后就要回到 p99；如果症状是 CPU 打满，最后就要回到 CPU 利用率和吞吐；如果症状是请求卡住，最后可能要证明等待时间已经下降。
 
-火焰图只是中间证据。真正的闭环是：同一个 workload 下，问题指标改善，而且你知道为什么。
+火焰图只是中间证据。真正的闭环是：同一个负载下，问题指标改善，而且你知道为什么。

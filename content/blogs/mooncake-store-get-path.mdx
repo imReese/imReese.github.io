@@ -13,94 +13,94 @@ series: 'Mooncake / HiCache Internals'
 featured: false
 ---
 
-Mooncake Store 的 Get 也不是“向 master 要 value”。master 只返回可读 replica 和 lease，数据由 client 自己搬。
+Mooncake Store 的 Get 不是“向 Master 要一个值”。Master 只返回可读副本和租约，数据由 Client 自己搬运。
 
 核心链路：
 
 ```text
 Client::Get / Client::BatchGet
   -> Query / GetReplicaList
-  -> master 返回 COMPLETE replica + lease
-  -> client 选择 preferred replica
-  -> local hot cache 或 TransferSubmitter
-  -> 数据写入 caller slices
+  -> Master 返回 COMPLETE 副本和租约
+  -> Client 选择优先副本
+  -> 本地热缓存或 TransferSubmitter
+  -> 数据写入调用方切片
 ```
 
 <SequenceDiagram
-  title="Mooncake Store Get：master 返回可读位置，client 自己搬数据"
-  caption="Get 的 payload 不经过 master。master 给的是 COMPLETE replica 和 lease；真正的数据由 local hot cache、memcpy 或 Transfer Engine 写入 caller slices。"
-  actors={['caller / HiCache', 'Store client', 'master', 'hot cache', 'Transfer Engine', 'caller slices']}
+  title="Mooncake Store Get：Master 返回可读位置，Client 自己搬数据"
+  caption="Get 的数据不经过 Master。Master 给出 COMPLETE 副本和租约；真正的数据由本地热缓存、内存复制或 Transfer Engine 写入调用方切片。"
+  actors={['调用方 / HiCache', 'Store Client', 'Master', '本地热缓存', 'Transfer Engine', '调用方切片']}
   steps={[
     {
-      from: 'caller / HiCache',
-      to: 'Store client',
-      label: 'Get / BatchGet(keys, dst slices)',
-      detail: '目标 buffer 通常是 Host KV page pointer',
+      from: '调用方 / HiCache',
+      to: 'Store Client',
+      label: 'Get / BatchGet（键、目标切片）',
+      detail: '目标缓冲区通常是主机 KV 缓存页指针',
       tone: 'teal',
     },
     {
-      from: 'Store client',
-      to: 'master',
+      from: 'Store Client',
+      to: 'Master',
       label: 'Query / GetReplicaList',
-      detail: '查 object metadata 和可读 replica',
+      detail: '查询对象元数据和可读副本',
       tone: 'blue',
     },
     {
-      from: 'master',
-      to: 'Store client',
-      label: 'COMPLETE replicas + lease',
-      detail: 'metadata 有时间边界，不能无限复用',
+      from: 'Master',
+      to: 'Store Client',
+      label: 'COMPLETE 副本 + 租约',
+      detail: '元数据有时间边界，不能无限复用',
       tone: 'green',
     },
     {
-      from: 'Store client',
-      to: 'hot cache',
-      label: 'try local hot cache',
+      from: 'Store Client',
+      to: '本地热缓存',
+      label: '尝试读取本地热缓存',
       detail: '命中则少一次远端读取',
       tone: 'amber',
     },
     {
-      from: 'Store client',
+      from: 'Store Client',
       to: 'Transfer Engine',
       label: 'READ Segment',
-      detail: '未命中本地缓存时从 replica 所在 Segment 读',
+      detail: '未命中本地缓存时，从副本所在的 Segment 读取',
       tone: 'mauve',
     },
     {
       from: 'Transfer Engine',
-      to: 'caller slices',
-      label: 'fill local buffer',
+      to: '调用方切片',
+      label: '填充本地缓冲区',
       detail: 'Mooncake 写到上层传入的目标地址',
       tone: 'green',
     },
   ]}
 />
 
-## Get 先查 metadata
+## Get 先查询元数据
 
-Get 的第一步是向 master 查询 object metadata。master 需要判断：
+Get 的第一步是向 Master 查询对象元数据。Master 需要判断：
 
-- object key 是否存在
-- 是否有 `COMPLETE` replica
-- replica 所在 Segment 是否仍然可用
-- lease 是否可以发放
-- tenant 和 group 语义是否影响本次查询
+- 对象键是否存在
+- 是否有处于 `COMPLETE` 状态的副本
+- 副本所在的 Segment 是否仍然可用
+- 是否可以发放租约
+- 租户和分组语义是否影响本次查询
 
-返回给 client 的不是 payload，而是 `QueryResult` 一类的 metadata：
+返回给 Client 的不是对象数据，而是 `QueryResult` 一类的元数据：
 
 ```text
-replica descriptors
-lease timeout
-object metadata
+副本描述
+租约有效期
+对象元数据
 ```
 
-client 拿到 metadata 以后，才进入数据面。
+Client 拿到元数据以后，才进入数据面。
 
-## 为什么只读 COMPLETE replica
+## 为什么只读取 COMPLETE 状态的副本
 
-Put 路径中，replica 会经历 `PROCESSING` 状态。Get 不能读它，因为数据面可能还没有写完。
+Put 路径中的副本会经历 `PROCESSING` 状态。Get 不能读取这种副本，因为数据可能还没有写完。
 
-正确读路径应该只把 `COMPLETE` replica 当候选：
+正确的读路径应该只把 `COMPLETE` 副本当作候选：
 
 ```text
 PROCESSING:
@@ -113,105 +113,105 @@ REMOVED / FAILED:
   不可读
 ```
 
-这就是 Store 保证读正确性的基本线。如果读到了 PROCESSING replica，就可能拿到半写入数据。
+这是 Store 保证读取正确性的底线。如果读到了 PROCESSING 副本，就可能拿到只写了一半的数据。
 
-## lease 限制 metadata 的有效期
+## 租约限制元数据的有效期
 
-client 拿到 replica 列表以后，不能无限期复用。原因是 master 侧状态可能变化：
+Client 拿到副本列表以后，不能无限期复用，因为 Master 侧的状态可能变化：
 
-- Segment 被 unmount
-- replica 被清理
-- object 被更新或删除
-- client 和 master 的 view 发生切换
+- Segment 被卸载
+- 副本被清理
+- 对象被更新或删除
+- Client 与 Master 看到的状态发生变化
 
-lease 给这次 metadata 使用一个时间边界。client 应该在 lease 有效期内使用 replica descriptor，过期后重新查询。
+租约为这次元数据使用划定了时间边界。Client 应该在租约有效期内使用副本描述符，过期后重新查询。
 
-因此 Get 的正确性不是“metadata 查到一次就永久有效”，而是：
+因此 Get 的正确性不是“元数据查到一次就永久有效”，而是：
 
 ```text
-metadata query success
-  + replica complete
-  + lease valid
-  + transfer success
+元数据查询成功
+  + 副本状态为 COMPLETE
+  + 租约有效
+  + 传输成功
 ```
 
-## preferred replica 与本地性
+## 首选副本与数据本地性
 
-client 拿到多个 replica 后，需要选择一个。选择时会考虑：
+Client 拿到多个副本后，需要从中选择一个。选择时会考虑：
 
-- 是否在同一 endpoint
+- 是否在同一节点
 - 是否能走本地 memcpy
-- 是否在 local hot cache
-- Segment protocol 是否适合当前 client
-- 是否配置 prefer same node
+- 是否已经进入本地热缓存
+- Segment 的协议是否适合当前 Client
+- 是否配置了优先选择同节点副本
 
-本地副本优先可以减少网络传输。对 KV Cache 这种大对象，本地性差异可能比 metadata 查询成本大很多。
+优先选择本地副本可以减少网络传输。对于 KV 缓存这类大对象，本地性带来的差异可能远大于元数据查询成本。
 
-## Local hot cache 是读加速，不是全局事实
+## 本地热缓存只负责加速读取，不代表全局状态
 
-Local hot cache 缓存的是本地热对象数据。它可以减少重复远端读取，但不能代替 master metadata。
+本地热缓存保存常用对象的数据，可以减少重复远端读取，但不能代替 Master 元数据。
 
 更准确地说：
 
 ```text
-master metadata:
-  决定哪些 replica 可读
+Master 元数据:
+  决定哪些副本可读
 
-local hot cache:
+本地热缓存:
   加速已经判定可读的数据访问
 ```
 
-hot cache 也需要处理写入 token/generation 这类问题，防止异步 put 把过期内容塞进 cache。它是本地优化层，不是分布式一致性的根。
+本地热缓存也要借助写入令牌或版本号，防止异步 Put 把过期内容写回缓存。它只是本地优化层，不是分布式一致性的依据。
 
 ## 数据面读取如何执行
 
-如果最终选择的是远端 memory replica，client 会把 replica 转成 Transfer Engine READ：
+如果最终选择的是远端内存副本，Client 会把副本描述转换成 Transfer Engine READ 请求：
 
 ```text
 TransferRequest
   opcode = READ
-  source = local destination ptr
-  target_id = remote segment id
-  target_offset = replica offset
-  length = slice size
+  source = 本地目标地址
+  target_id = 远端 Segment ID
+  target_offset = 副本偏移量
+  length = 切片大小
 ```
 
-这里 `source` 字段在 Transfer Engine 视角是本地 buffer 地址。READ 表示从远端 Segment 读到本地地址。
+这里的 `source` 字段在 Transfer Engine 看来是本地缓冲区地址。READ 表示从远端 Segment 读取到本地地址。
 
-如果是本地 replica，可能直接 memcpy。如果是文件或 offload replica，则走对应 backend。
+如果是本地副本，可能直接复制内存；如果是文件或卸载副本，则交给对应后端处理。
 
 ## BatchGet 与 HiCache
 
-HiCache prefetch Mooncake 时会批量读很多 page object。BatchGet 的价值和 BatchPut 类似：减少 per-object metadata 和 transfer overhead。
+HiCache 从 Mooncake 预取时，会批量读取许多缓存页对象。BatchGet 的价值和 BatchPut 类似：减少单个对象的元数据与传输开销。
 
-Mooncake Python zero-copy API 最后会暴露成：
+Mooncake 的 Python 零拷贝 API 最后会暴露为：
 
 ```text
 batch_get_into(keys, ptrs, sizes)
 batch_get_into_multi_buffers(keys, ptrs, sizes)
 ```
 
-SGLang backend 把 Host pool page 的目标 pointer 传给 Mooncake。Mooncake Store 把 object 数据直接写入这些 Host buffers。之后 HiCache 再把 Host page load back 到 GPU。
+SGLang 后端把主机内存池缓存页的目标指针传给 Mooncake。Mooncake Store 把对象数据直接写入这些主机缓冲区，随后 HiCache 再把主机缓存页回载到 GPU。
 
 ## 读取失败如何影响上层
 
 Get 失败可以发生在几层：
 
-- master 查不到 key
-- 没有 COMPLETE replica
-- lease 已过期
-- selected replica 对应 Segment 不可用
+- Master 查不到对象键
+- 没有 COMPLETE 副本
+- 租约已过期
+- 选中的副本所对应的 Segment 不可用
 - Transfer Engine READ 失败
-- batch 中某个 K/V object 失败
+- 批次中某个 K/V 对象读取失败
 
-对 SGLang HiCache 来说，这些失败最终应该折成 page 级结果。某个 page 的 K object 成功、V object 失败时，这个 logical page 不能算命中。
+对于 SGLang HiCache，这些失败最终应该聚合为页级结果。如果某个缓存页的 K 对象成功而 V 对象失败，这个逻辑页就不能算命中。
 
-因此 backend 需要把 object 级状态折回 page 级命中边界。
+因此，后端需要把对象级状态聚合为页级命中边界。
 
 ## 从 HiCache 视角看读取
 
-HiCache 读 Mooncake 时，目标不是把 object 放进 Python，而是把 remote KV page 直接填回 Host KV pool。`batch_get_into` 里的 pointer 指向 Host pool page；Mooncake Store 负责把 remote replica 的 bytes 写到这些地址；之后 HiCache 还要再做 Host->GPU load back。
+HiCache 读取 Mooncake 时，目标不是把对象放进 Python，而是把远端 KV 缓存页直接填回主机 KV 池。`batch_get_into` 中的指针指向主机内存池缓存页；Mooncake Store 负责把远端副本的字节写到这些地址；之后 HiCache 还要执行从主机内存到 GPU 的回载。
 
-因此一次 remote hit 至少跨过三道边界：master metadata 必须返回可读 replica，数据面必须把 object 读回 Host buffer，HiCache 必须把 Host page commit 回 GPU KV pool。前两步成功只能说明 Mooncake Store 工作正常，不能自动说明 attention kernel 已经能复用这段 KV。
+因此，一次远端命中至少跨过三道边界：Master 元数据必须返回可读副本，数据面必须把对象读回主机缓冲区，HiCache 必须把主机缓存页提交回 GPU KV 池。前两步成功只能说明 Mooncake Store 工作正常，不能自动说明注意力计算已经能够复用这段 KV。
 
-object 级和 page 级也要分清。Mooncake 只能告诉你某个 object get 成功；SGLang 要把 K/V object、split head object、side pool object 合并成一个 logical page 的结果。只要这组对象里有一个失败，这个 page 就应该当成未命中处理。
+对象级和页级结果也要分清。Mooncake 只能告诉你某个对象读取成功；SGLang 还要把 K/V 对象、拆分注意力头对象和辅助内存池对象合并成一个逻辑页的结果。只要这组对象中有一个失败，这一页就应该按未命中处理。

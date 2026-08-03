@@ -1,6 +1,6 @@
 ---
-title: '如何根据 config.json 估算大模型的 Attention 缓存'
-description: '从 config.json 中的 hidden_size、head_dim、KV Heads、sliding_window、kv_lora_rank、Indexer 和 KDA 状态出发，估算常见模型的 Attention 缓存大小。'
+title: '如何根据 config.json 估算大模型的注意力缓存'
+description: '从 config.json 中的 hidden_size、head_dim、KV 头数、sliding_window、kv_lora_rank、Indexer 和 KDA 状态出发，估算常见模型的注意力缓存大小。'
 author: 'Reese'
 date: '2026-06-22'
 topics:
@@ -18,9 +18,9 @@ series: 'LLM Serving Internals'
 featured: true
 ---
 
-大模型推理里经常出现一句话：KV Cache 大小等于“层数 × token 数 × KV Heads × Head Dim × 2”。
+大模型推理里经常出现一种简化说法：KV 缓存大小等于“层数 × token 数 × KV 头数 × 单头维度 × 2”。
 
-这只对保存逐 token Key/Value 的 MHA、GQA、MQA 成立。进入 MLA、DSA、KDA 和 DeepSeek V4 以后，缓存对象已经不一定是传统意义上的 K/V：
+这只对逐 token 保存键和值的 MHA、GQA、MQA 成立。进入 MLA、DSA、KDA 和 DeepSeek V4 以后，缓存内容已经不一定是传统的 K/V：
 
 ```text
 MHA / GQA / MQA
@@ -30,82 +30,82 @@ SWA
   仍保存 K 和 V，但只保留最近 W 个 token
 
 MLA
-  每个历史 token 保存压缩 latent + RoPE key
+  每个历史 token 保存低维表示 + RoPE 键
 
 DSA
-  MLA cache + 用于稀疏选择的 index key cache
+  MLA 缓存 + 用于稀疏选择的索引键缓存
 
 KDA
-  每层维护固定大小 recurrent matrix state
-  prefix reuse 时再额外保存 checkpoint
+  每层维护固定大小的递推矩阵状态
+  复用前缀时再额外保存检查点
 
 DeepSeek V4
-  sliding-window shared K=V
-  + 4x CSA compressed entries
-  + 128x HCA compressed entries
-  + CSA indexer cache
+  滑动窗口共享 K=V
+  + 4 倍压缩的 CSA 记录
+  + 128 倍压缩的 HCA 记录
+  + CSA 索引缓存
 ```
 
-所以更稳妥的做法不是背一个 KV Cache 公式，而是先回答：**每一层究竟持久化什么状态、状态按多少 token 产生一次、状态使用什么数据类型。**
+所以更稳妥的做法不是死记一个 KV 缓存公式，而是先回答：**每一层究竟持久化什么状态、状态按多少 token 产生一次、状态使用什么数据类型。**
 
 <MappingDiagram
-  title="不同 Attention 对历史状态的表示"
-  source={{ label: 'token history', detail: '同一段已处理前缀' }}
+  title="不同注意力机制如何表示历史状态"
+  source={{ label: 'token 历史', detail: '同一段已处理前缀' }}
   groups={[
     {
-      label: '逐 token cache',
-      items: ['MHA / GQA: K + V', 'MLA: latent + RoPE', 'DSA: MLA + index key'],
+      label: '逐 token 缓存',
+      items: ['MHA / GQA：K + V', 'MLA：低维表示 + RoPE', 'DSA：MLA + 索引键'],
     },
     {
-      label: '有界 cache',
-      items: ['SWA: 最近 W 个 token', 'DeepSeek V4: local window + compressed pools'],
+      label: '有界缓存',
+      items: ['SWA：最近 W 个 token', 'DeepSeek V4：局部窗口 + 压缩池'],
     },
     {
       label: '递归状态',
-      items: ['KDA recurrent matrix', 'ShortConv state', 'prefix checkpoints'],
+      items: ['KDA 递推矩阵', 'ShortConv 状态', '前缀检查点'],
     },
   ]}
 />
 
 ## 先从 config.json 判断缓存布局
 
-拿到一个陌生模型时，先不要直接套“层数 × token 数 × Head 数 × Head Dim × 2”。更可靠的顺序是：
+拿到一个陌生模型时，先不要直接套“层数 × token 数 × 头数 × 单头维度 × 2”。更可靠的顺序是：
 
 ```text
 config.json
-  → 判断层数和 Attention 类型
+  → 判断层数和注意力类型
   → 确定每个历史位置保存什么对象
   → 确定对象维度、产生频率和保留长度
-  → 确认 Cache dtype
-  → 再检查 modeling 代码和推理引擎的实际 layout
+  → 确认缓存数据类型
+  → 再检查模型代码和推理引擎的实际内存布局
 ```
 
-### 最常见的 Cache 相关字段
+### 最常见的缓存相关字段
 
-| 字段 | 主要含义 | 对 Cache 的作用 |
+| 字段 | 主要含义 | 对缓存的作用 |
 |---|---|---|
 | `architectures` / `model_type` | 选择具体模型实现 | 决定应该阅读哪份 `modeling_*.py` |
 | `num_hidden_layers` | Transformer 层数 | 同构模型通常作为层数乘数 |
-| `layer_types` / `attention_type` | 每层的 Attention 类型 | 混合模型必须按层型分别计算 |
-| `hidden_size` | residual stream 的宽度 | 是 Q/K/V 投影输入，不一定等于 Cache 宽度 |
-| `num_attention_heads` | Query Head 数 | MHA 中相关；GQA/MQA 不能拿它代替 KV Head 数 |
-| `num_key_value_heads` | KV Head 数 | 直接决定传统 MHA/GQA/MQA 的 Cache 宽度 |
-| `head_dim` | 单个 Head 的向量维度 | 与 KV Head 数一起决定每 token 的 K/V 元素数 |
-| `max_position_embeddings` | 模型支持的位置范围 | 不是当前请求已经分配的 Cache 长度 |
-| `sliding_window` | 局部 Attention 的窗口 | 将有效历史限制为 $\min(T,W)$ |
-| `q_lora_rank` | MLA Query 路径的低秩维度 | 通常不进入持久化 Cache |
-| `kv_lora_rank` | MLA 的 KV latent 维度 | 通常直接进入 MLA Cache |
-| `qk_rope_head_dim` | MLA 单独保存的 RoPE Key 维度 | 通常与 `kv_lora_rank` 一起缓存 |
-| `index_head_dim` | 稀疏 Index Key/Query 的维度 | 可能决定 Index Cache 每位置宽度 |
-| `index_topk` | 当前 Query 读取的历史位置数 | 影响稀疏读取，不等于持久化历史长度 |
-| `indexer_types` | Indexer 是独立还是共享 | 决定独立 Index Cache/选择器的数量 |
+| `layer_types` / `attention_type` | 每层的注意力类型 | 混合模型必须按层型分别计算 |
+| `hidden_size` | 残差流的宽度 | 是 Q/K/V 投影输入，不一定等于缓存宽度 |
+| `num_attention_heads` | 查询头数 | MHA 中相关；GQA/MQA 不能拿它代替 KV 头数 |
+| `num_key_value_heads` | KV 头数 | 直接决定传统 MHA/GQA/MQA 的缓存宽度 |
+| `head_dim` | 单个头的向量维度 | 与 KV 头数一起决定每 token 的 K/V 元素数 |
+| `max_position_embeddings` | 模型支持的位置范围 | 不是当前请求已经分配的缓存长度 |
+| `sliding_window` | 局部注意力窗口 | 将有效历史限制为 $\min(T,W)$ |
+| `q_lora_rank` | MLA 查询路径的低秩维度 | 通常不进入持久化缓存 |
+| `kv_lora_rank` | MLA 的 KV 低维表示维度 | 通常直接进入 MLA 缓存 |
+| `qk_rope_head_dim` | MLA 单独保存的 RoPE 键维度 | 通常与 `kv_lora_rank` 一起缓存 |
+| `index_head_dim` | 稀疏索引键与查询的维度 | 可能决定索引缓存中每个位置的宽度 |
+| `index_topk` | 当前查询读取的历史位置数 | 影响稀疏读取，不等于持久化历史长度 |
+| `indexer_types` | Indexer 是独立还是共享 | 决定独立索引缓存或选择器的数量 |
 | `short_conv_kernel` | KDA 等层的短卷积核大小 | 通常需要保留 `kernel_size - 1` 个卷积状态 |
-| `torch_dtype` / `dtype` | 模型默认计算或权重类型 | 不一定等于 runtime 的 KV Cache dtype |
-| `use_cache` | 是否返回或复用历史状态 | 不是 Cache 容量参数 |
+| `torch_dtype` / `dtype` | 模型默认计算或权重类型 | 不一定等于推理引擎的 KV 缓存类型 |
+| `use_cache` | 是否返回或复用历史状态 | 不是缓存容量参数 |
 
-### `hidden_size`、Head 数与 `head_dim`
+### `hidden_size`、头数与 `head_dim`
 
-Token embedding 和每层 residual stream 的状态通常具有形状：
+token 嵌入和每层残差流的状态通常具有如下形状：
 
 $$
 h_t\in\mathbb R^{d_{\text{model}}},
@@ -113,7 +113,7 @@ $$
 
 其中 $d_{\text{model}}$ 对应 `hidden_size`。
 
-Attention 会把它投影成 Q、K、V。假设配置为：
+注意力层会把它投影成 Q、K、V。假设配置为：
 
 ```json
 {
@@ -127,13 +127,13 @@ Attention 会把它投影成 Q、K、V。假设配置为：
 逻辑形状大致是：
 
 ```text
-hidden state: [T, 4096]
+隐藏状态：[T, 4096]
 Query:        [T, 32, 128]
 Key:          [T,  8, 128]
 Value:        [T,  8, 128]
 ```
 
-这是 GQA：32 个 Query Heads 共享 8 组 KV Heads。每层、每 token 的 Cache 元素数是：
+这是 GQA：32 个查询头共享 8 组 KV 头。每层、每 token 的缓存元素数是：
 
 $$
 H_{kv}(D_k+D_v)
@@ -160,9 +160,9 @@ d_{\text{head}}
 {\text{num\_attention\_heads}},
 $$
 
-但这不是现代模型的强制约束。配置若显式提供 `head_dim`、`qk_nope_head_dim`、`qk_rope_head_dim` 或 `v_head_dim`，应优先使用显式值；仍不确定时再查看投影矩阵和 Attention forward 的 Tensor shape。
+但这不是现代模型的强制约束。配置若显式提供 `head_dim`、`qk_nope_head_dim`、`qk_rope_head_dim` 或 `v_head_dim`，应优先使用显式值；仍不确定时再查看投影矩阵和注意力层前向计算中的张量形状。
 
-### MLA 中不要把 `q_lora_rank` 算进 KV Cache
+### MLA 中不要把 `q_lora_rank` 算进 KV 缓存
 
 例如：
 
@@ -176,13 +176,13 @@ $$
 }
 ```
 
-`q_lora_rank=1536` 是 Query 路径的中间低秩表示，通常不会跨 decode step 持久化。
+`q_lora_rank=1536` 是查询路径的中间低秩表示，通常不会跨解码步持久化。
 
-优化后的 MLA runtime 通常保存：
+优化后的 MLA 推理实现通常保存：
 
 ```text
-512-d KV latent
-+ 64-d RoPE key
+512 维 KV 低维表示
++ 64 维 RoPE 键
 ```
 
 所以每 token、每层缓存的是：
@@ -191,7 +191,7 @@ $$
 512+64=576
 $$
 
-个元素，而不是所有 Attention Heads 展开后的完整 K/V。
+个元素，而不是所有注意力头展开后的完整 K/V。
 
 ### `max_position_embeddings`、`sliding_window` 与 `index_topk`
 
@@ -202,10 +202,10 @@ max_position_embeddings
   模型支持的位置范围上限
 
 sliding_window
-  某类 Attention 层实际保留的局部历史长度
+  某类注意力层实际保留的局部历史长度
 
 index_topk
-  当前稀疏 Attention 从完整历史中读取多少位置
+  当前稀疏注意力从完整历史中读取多少位置
 ```
 
 因此：
@@ -228,26 +228,26 @@ $$
 
 ### config.json 给出的是架构意图，不一定是最终物理布局
 
-同一份 MLA 配置可能被两种 runtime 以不同方式实现：
+同一份 MLA 配置可能被两种推理引擎以不同方式实现：
 
 ```text
 优化路径
-  保存 latent cache
+  保存低维缓存
 
 通用路径
   先展开完整 K/V
-  再保存标准 KV Cache
+  再保存标准 KV 缓存
 ```
 
 因此完整阅读顺序是：
 
 ```text
 config.json
-→ modeling_*.py / Attention forward
-→ cache update 调用
-→ runtime Cache Tensor shape
+→ modeling_*.py 中的 Attention 前向计算
+→ 缓存更新调用
+→ 运行时缓存张量形状
 → kv_cache_dtype 与量化 scale
-→ page/block allocator、分片、复制和 offload
+→ 分页/分块分配器、分片、复制和 offload
 ```
 
 后面的 MHA、SWA、MLA、DSA、KDA、GLM-5.2 与 DeepSeek V4 章节，都是这套读取方法的具体案例。
@@ -262,7 +262,7 @@ config.json
 - $S$：每个缓存元素占用的字节数；
 - $E_l$：第 $l$ 层每个缓存位置保存的元素数；
 - $T_l$：第 $l$ 层实际保留的缓存位置数；
-- $R_l$：第 $l$ 层与序列长度无关的 recurrent state 元素数。
+- $R_l$：第 $l$ 层与序列长度无关的递推状态元素数。
 
 总缓存可以写成：
 
@@ -278,15 +278,15 @@ M_{\text{scale}}
 M_{\text{metadata}}.
 $$
 
-第一项是随着 token 数增长的 cache，例如 MHA K/V、MLA latent、DSA index key 和 DeepSeek V4 compressed entries。
+第一项是随 token 数增长的缓存，例如 MHA K/V、MLA 低维表示、DSA 索引键和 DeepSeek V4 压缩记录。
 
-第二项是固定状态，例如 KDA recurrent matrix 和 ShortConv window。
+第二项是固定状态，例如 KDA 递推矩阵和 ShortConv 窗口。
 
-最后两项来自量化 scale、block table、page metadata、引用计数、对齐和分配碎片。
+最后两项来自量化尺度、块表、页元数据、引用计数、对齐和分配碎片。
 
 这个公式的价值在于：它没有假设所有层都使用同一种 Attention，也没有假设每层一定保存两份 K/V。
 
-## 数据类型决定的是 cache，不只是权重
+## 数据类型不只决定权重，也决定缓存大小
 
 理论元素占用如下：
 
@@ -302,27 +302,27 @@ $$
 
 ```text
 weights = FP8
-KV cache = BF16
+KV 缓存 = BF16
 ```
 
 以及：
 
 ```text
 weights = BF16
-KV cache = FP8 + FP32 scale
+KV 缓存 = FP8 + FP32 scale
 ```
 
 都很常见。计算部署显存时要同时确认：
 
 ```text
 model weight dtype
-runtime kv_cache_dtype
+运行时的 kv_cache_dtype
 quantization group size
 scale dtype
-which cache tensors are quantized
+哪些缓存张量被量化
 ```
 
-## MHA：每个 Query Head 都保存自己的 K/V
+## MHA：每个查询头都保存自己的 K/V
 
 MHA 中：
 
@@ -330,7 +330,7 @@ $$
 H_{kv}=H_q.
 $$
 
-如果 Key 和 Value 的 head dimension 都是 $D_h$：
+如果键和值的单头维度都是 $D_h$：
 
 $$
 M_{\text{MHA}}
@@ -355,7 +355,7 @@ layers              = 32
 query heads         = 32
 kv heads            = 32
 head dim            = 128
-cache dtype         = BF16
+缓存数据类型        = BF16
 ```
 
 每层、每 token 保存：
@@ -389,7 +389,7 @@ $$
 M_{\text{MHA}}\propto T\times L\times D_{\text{model}}.
 $$
 
-## GQA 与 MQA：真正要看的是 KV Head 数
+## GQA 与 MQA：真正要看的是 KV 头数
 
 GQA 让多个 Query Heads 共享一组 KV Heads：
 
@@ -449,7 +449,7 @@ query heads         = 32
 kv heads            = 8
 head dim            = 128
 sliding window      = 4096
-cache dtype         = BF16
+缓存数据类型        = BF16
 ```
 
 每 token、全部 32 层：
@@ -485,7 +485,7 @@ $$
 
 如果模型是 Full Attention 与 SWA 混合层，必须分层相加，不能把总层数统一乘同一个窗口。
 
-## MLA：缓存的是 latent，而不是展开后的所有 Head
+## MLA：缓存的是低维表示，而不是展开后的所有注意力头
 
 MLA 将每个 token 的 K/V 历史压缩为：
 
@@ -499,7 +499,7 @@ $$
 k_t^R\in\mathbb R^{d_r}.
 $$
 
-优化后的 latent cache 为：
+优化后的 latent 缓存为：
 
 $$
 M_{\text{MLA}}
@@ -514,9 +514,9 @@ compression dimension d_c  -> kv_lora_rank
 RoPE key dimension d_r     -> qk_rope_head_dim
 ```
 
-`q_lora_rank` 属于当前 Query 的计算路径，不是跨 decode step 保存的 KV Cache。
+`q_lora_rank` 属于当前查询向量的计算路径，不是需要跨解码步骤保存的 KV 缓存。
 
-### DeepSeek V3：512 维 latent + 64 维 RoPE
+### DeepSeek V3：512 维低维表示 + 64 维 RoPE
 
 DeepSeek V3 的相关参数为：
 
@@ -527,7 +527,7 @@ kv_lora_rank           = 512
 qk_nope_head_dim       = 128
 qk_rope_head_dim       = 64
 v_head_dim             = 128
-cache dtype            = BF16（本节假设）
+缓存数据类型           = BF16（本节假设）
 ```
 
 每层、每 token 保存：
@@ -558,7 +558,7 @@ $$
 
 FP8 一列没有加入 scale 和对齐成本。
 
-### 为什么不能直接用 128 个 Attention Heads 计算
+### 为什么不能直接按 128 个注意力头计算
 
 如果把 DeepSeek V3 展开成传统 K/V，每层、每 token 的元素数将近似为：
 
@@ -568,7 +568,7 @@ $$
 40960.
 $$
 
-优化 latent cache 只有：
+优化后的 latent 缓存只有：
 
 $$
 512+64=576.
@@ -580,15 +580,15 @@ $$
 \frac{576}{40960}\approx1.41\%.
 $$
 
-但只有推理引擎真正保存 latent cache 时，这个压缩才会兑现。通用实现如果先恢复完整 K/V，再把展开后的 Tensor 放进标准 KV Cache，实际显存会重新接近传统 Attention。
+但只有推理引擎真正保存 latent 缓存时，这个压缩才会兑现。通用实现如果先恢复完整 K/V，再把展开后的张量放进标准 KV Cache，实际显存会重新接近传统 Attention。
 
 ## DSA：Top-k 减少计算，不会自动删除历史缓存
 
 DeepSeek Sparse Attention 可以理解为：
 
 ```text
-MLA history cache
-  + lightweight index key cache
+MLA 历史缓存
+  + 轻量级 Indexer key 缓存
   + top-k gather / sparse attention workspace
 ```
 
@@ -604,13 +604,13 @@ $$
 
 其中：
 
-- $L_I$：拥有独立 Indexer cache 的层数；
-- $d_I$：每个历史 token 的 index key 维度；
-- $S_I$：index key 的数据类型字节数。
+- $L_I$：拥有独立 Indexer 缓存的层数；
+- $d_I$：每个历史 token 的索引键维度；
+- $S_I$：索引键的数据类型字节数。
 
 `index_topk=2048` 影响的是每次主 Attention 实际 gather 多少个位置，不代表持久化缓存只保留 2048 个 token。下一条 Query 可能选中任何历史位置，因此完整 MLA history 和 index history 通常仍随 $T$ 线性增长。
 
-### DeepSeek V3.2：MLA + 每层 Index Key
+### DeepSeek V3.2：MLA + 每层索引键
 
 用下面的公开参数做 BF16 上界估算：
 
@@ -620,8 +620,8 @@ kv_lora_rank           = 512
 qk_rope_head_dim       = 64
 index_head_dim         = 128
 index_topk             = 2048
-MLA cache dtype        = BF16
-index cache dtype      = BF16
+MLA 缓存数据类型       = BF16
+索引缓存数据类型       = BF16
 ```
 
 每 token、全部层：
@@ -641,7 +641,7 @@ $$
 | 128K | 10.48 GiB |
 | 1M | 83.88 GiB |
 
-如果 Index Key 使用 FP8，数据主体会再减少约 0.95 GiB（128K）或 7.63 GiB（1M），但还要加入量化 scale。
+如果索引键使用 FP8，数据主体会再减少约 0.95 GiB（128K）或 7.63 GiB（1M），但还要计入量化因子。
 
 ## GLM-5.2：IndexShare 共享的是稀疏选择，不是 MLA 主缓存
 
@@ -655,7 +655,7 @@ index_head_dim            = 128
 index_n_heads             = 32
 index_topk                = 2048
 max_position_embeddings   = 1,048,576
-cache/model dtype         = BF16（公开配置）
+缓存/模型数据类型         = BF16（公开配置）
 indexer_types             = 21 full + 57 shared
 ```
 
@@ -688,9 +688,9 @@ $$
 | 128K | 10.97 GiB |
 | 1M | 87.75 GiB |
 
-### IndexShare 对 Index Cache 的影响
+### IndexShare 对索引缓存的影响
 
-如果 78 层各自保存 128 维 BF16 Index Key：
+如果 78 层各自保存 128 维 BF16 索引键：
 
 $$
 M_{I,\text{independent}}
@@ -731,7 +731,7 @@ $$
 - 它也允许共享 Indexer 对应的 index history；
 - 但每个 Transformer 层自己的 MLA latent 并没有因此共享，所以 87.75 GiB 的主缓存仍然占大头。
 
-实际 vLLM、SGLang 或专用内核可能使用 FP8 cache、Context Parallel、offload 或不同的 index cache layout，因此 93 GiB 应理解为单序列、单副本、BF16 主 Tensor 估算，而不是某个生产部署的固定显存数字。
+实际的 vLLM、SGLang 或专用内核可能使用 FP8 缓存、上下文并行、卸载或不同的索引缓存布局，因此 93 GiB 只是一份单序列、单副本的 BF16 主张量估算，并不代表某个生产环境的固定显存占用。
 
 <LayerDiagram
   title="GLM-5.2 的 IndexShare 不等于 KV Share"
@@ -740,26 +740,26 @@ $$
       label: 'Layer 2: full indexer',
       detail: '生成 top-k，并拥有这一组 index history',
       tone: 'teal',
-      items: ['MLA cache L2', 'index key group A', 'top-k A'],
+      items: ['第 2 层 MLA 缓存', 'A 组索引键', 'A 组 top-k'],
     },
     {
       label: 'Layers 3-5: shared',
       detail: '复用 top-k A，但各层仍读取自己的 MLA history',
       tone: 'blue',
-      items: ['MLA cache L3', 'MLA cache L4', 'MLA cache L5'],
+      items: ['第 3 层 MLA 缓存', '第 4 层 MLA 缓存', '第 5 层 MLA 缓存'],
     },
     {
       label: 'Layer 6: next full indexer',
       detail: '建立下一组共享选择',
       tone: 'mauve',
-      items: ['MLA cache L6', 'index key group B', 'top-k B'],
+      items: ['第 6 层 MLA 缓存', 'B 组索引键', 'B 组 top-k'],
     },
   ]}
 />
 
 ## KDA：在线状态不随上下文长度线性增长
 
-Kimi Delta Attention 为每层、每个 Head 维护 recurrent matrix：
+Kimi Delta Attention 为每层、每个 Head 维护递推状态矩阵：
 
 $$
 S_t\in\mathbb R^{d_k\times d_v}.
@@ -773,14 +773,14 @@ M_{\text{KDA-live}}
 BL_{\text{KDA}}H_{\text{KDA}}d_kd_vS_{\text{state}}.
 $$
 
-这个公式没有 $T$，因此 live recurrent state 对历史长度是 $O(1)$。
+这个公式没有 $T$，因此活跃递推状态相对于历史长度是 $O(1)$。
 
 不过 KDA 还可能需要：
 
 - Q/K/V ShortConv 的最近 `kernel_size - 1` 个输入；
-- normalization 或 gate state；
-- prefill chunk 内的临时 WY/UT workspace；
-- prefix caching 使用的历史 checkpoint。
+- 归一化状态或门控状态；
+- 分块预填充过程中的临时 WY/UT 工作区；
+- 前缀缓存需要保留的历史检查点。
 
 ### Kimi Linear 48B-A3B：20 层 KDA + 7 层 MLA
 
@@ -810,7 +810,7 @@ $$
 
 20 层合计：
 
-| State dtype | 20 层 recurrent state |
+| 状态数据类型 | 20 层递推状态 |
 |---|---:|
 | BF16 | 20 MiB |
 | FP32 | 40 MiB |
@@ -841,7 +841,7 @@ $$
 
 Kimi Linear 不是“整个模型都变成常数缓存”。准确说法是：20 个 KDA 层变成固定状态，只有 7 个全局 MLA 层继续按 token 线性增长。
 
-### Prefix Cache 会重新引入 checkpoint 数量
+### 前缀缓存会重新引入检查点数量
 
 在线请求只需要最新的 $S_t$。但为了在任意前缀边界恢复，系统要保存：
 
@@ -857,7 +857,7 @@ N_{\text{checkpoint}}
 \left\lceil\frac{T}{C}\right\rceil.
 $$
 
-持久化 checkpoint 大小为：
+持久化检查点的大小为：
 
 $$
 M_{\text{checkpoint}}
@@ -869,39 +869,39 @@ $$
 因此要区分：
 
 ```text
-live recurrent state
+活跃递推状态
   一条运行中请求只有最新状态
 
-prefix checkpoint store
+前缀检查点存储
   为多个可复用边界保存多份完整状态
 ```
 
-KDA 的 live state 是 $O(1)$，不代表支持细粒度 prefix reuse 的持久化存储也是 $O(1)$。
+KDA 的活跃状态是 $O(1)$，不代表支持细粒度前缀复用的持久化存储也是 $O(1)$。
 
-## DeepSeek V4：它已经不是 MLA Cache
+## DeepSeek V4：它已经不再使用 MLA 缓存布局
 
 DeepSeek V4 用新的 hybrid attention 替代 V3 的 MLA。根据 [DeepSeek V4 论文](https://huggingface.co/papers/2606.19348)、[Transformers 架构文档](https://huggingface.co/docs/transformers/model_doc/deepseek_v4)和公开配置，每个 Attention 层可能属于：
 
 ```text
 SWA
-  只保留最近 128 个 raw entries
+  只保留最近 128 条原始记录
 
 CSA: Compressed Sparse Attention
-  每 4 个 token 产生一个 compressed entry
-  Lightning Indexer 从 compressed history 选择 top-k
-  同时保留 128-token local branch
+  每 4 个 token 产生一条压缩记录
+  Lightning Indexer 从压缩历史中选择 top-k
+  同时保留 128-token 的局部分支
 
 HCA: Heavily Compressed Attention
-  每 128 个 token 产生一个 compressed entry
-  对全部 compressed entries 做 dense attention
-  同时保留 128-token local branch
+  每 128 个 token 产生一条压缩记录
+  对全部压缩记录执行稠密注意力计算
+  同时保留 128-token 的局部分支
 ```
 
 它还有一个容易算错的关键点：
 
-> DeepSeek V4 使用 shared K=V MQA。`kv_proj` 只生成一条共享向量，同一个 Tensor 同时作为 Key 和 Value 使用，因此不能再机械地乘传统 K/V 的 2。
+> DeepSeek V4 使用共享 K=V 的 MQA。`kv_proj` 只生成一条共享向量，同一个张量同时作为键和值使用，因此不能再机械地乘传统 K/V 的 2。
 
-### 一个 compressed entry 占多少字节
+### 一条压缩记录占多少字节
 
 DeepSeek V4-Pro 的公开参数包括：
 
@@ -918,12 +918,12 @@ CSA index dim          = 128
 CSA index top-k        = 1024
 ```
 
-论文与参考实现使用混合精度 KV storage：
+论文与参考实现使用混合精度 KV 存储：
 
 - 64 维 RoPE 部分使用 BF16；
 - 其余 448 维使用 FP8；
-- CSA Indexer key 使用 FP4；
-- scale 和 compressor state 另算。
+- CSA 索引键使用 FP4；
+- scale 和压缩器状态另算。
 
 因为 K=V 共享，一条 compressed KV entry 的数据主体为：
 
@@ -935,7 +935,7 @@ E_{\text{V4-entry}}
 576\text{ bytes}.
 $$
 
-一条 128 维 FP4 Index Key 的数据主体为：
+一条 128 维 FP4 索引键的数据主体为：
 
 $$
 128\times0.5=64\text{ bytes}.
@@ -948,10 +948,10 @@ $$
 ```text
 CSA layers        = 30   compression ratio 4
 HCA layers        = 31   compression ratio 128
-local window      = all 61 layers, 128 tokens
+本地窗口          = 全部 61 层，每层 128 个 token
 ```
 
-忽略 compressor overlap buffer、gate state、scale、MTP cache 和分配元数据，主持久化 Tensor 可以近似为：
+暂不考虑压缩器重叠缓冲区、门控状态、量化因子、MTP 缓存和分配元数据，主持久化张量可以近似为：
 
 $$
 \begin{aligned}
@@ -966,35 +966,35 @@ $$
 
 四项分别是：
 
-1. 所有层的 local SWA shared K=V；
+1. 所有层的本地 SWA 共享 K=V；
 2. 30 层 CSA compressed K=V；
 3. 31 层 HCA compressed K=V；
-4. 30 层 CSA FP4 Index Key。
+4. 30 层 CSA FP4 索引键。
 
-### 1M context 的分项计算
+### 100 万 token 上下文的分项计算
 
 当 $T=1,048,576$：
 
-| Cache object | 估算大小 |
+| 缓存对象 | 估算大小 |
 |---|---:|
-| 61 层 128-token local window | 0.004 GiB |
-| 30 层 4x CSA pool | 4.219 GiB |
-| 31 层 128x HCA pool | 0.136 GiB |
-| 30 层 FP4 CSA index pool | 0.469 GiB |
+| 61 层、每层 128-token 本地窗口 | 0.004 GiB |
+| 30 层 4x CSA 池 | 4.219 GiB |
+| 31 层 128x HCA 池 | 0.136 GiB |
+| 30 层 FP4 CSA 索引池 | 0.469 GiB |
 | **主 Tensor 合计** | **约 4.83 GiB** |
 
 128K 时同一公式约为 0.61 GiB。
 
-这个结果是**主持久化 Tensor 的下界估算**，不是某个 runtime 的 cache-pool reservation。实际还要加入：
+这个结果是**主持久化张量的下界估算**，不是某个推理引擎的缓存池预留量。实际还要加入：
 
 - FP8/FP4 scale；
-- CSA overlapping compressor buffer；
-- HCA compressor buffer；
-- compressor gate/score state；
+- CSA 重叠压缩缓冲区；
+- HCA 压缩缓冲区；
+- 压缩器的 gate/score 状态；
 - entry count 和索引；
-- page alignment；
+- 页对齐；
 - MTP 层状态；
-- runtime 为 CUDA Graph 或最大 batch 预留的空间。
+- 推理引擎为 CUDA Graph 或最大批次预留的空间。
 
 DeepSeek 官方报告给出的整体结果是：在 1M context 下，V4-Pro 的 KV Cache 约为 V3.2 的 10%，单 token 推理 FLOPs 约为 V3.2 的 27%。这里的 4.83 GiB 估算解释了压缩来自哪里，但不应替代官方生产布局测量。
 
@@ -1017,28 +1017,28 @@ $$
 3.37\text{ GiB}.
 $$
 
-V4 的重点不是“把 MLA 再压小一点”，而是把一个统一的线性 history cache 拆成多种产生速率和生命周期不同的对象。
+V4 的重点不是“把 MLA 再压小一点”，而是把一个统一的线性增长历史缓存拆成多种生成频率和生命周期不同的对象。
 
 <LayerDiagram
   title="DeepSeek V4 的异构 Cache"
   layers={[
     {
-      label: 'local SWA',
-      detail: '所有相关层只保留最近 128 个 shared K=V entries',
+      label: '本地 SWA',
+      detail: '所有相关层只保留最近 128 条共享 K=V 记录',
       tone: 'teal',
-      items: ['raw token rate', 'bounded lifetime', 'BF16 RoPE + FP8 content'],
+      items: ['按 token 生成', '固定保留窗口', 'BF16 RoPE + FP8 内容'],
     },
     {
-      label: 'CSA pool',
-      detail: '每 4 token 产生一条 compressed entry',
+      label: 'CSA 池',
+      detail: '每 4 个 token 产生一条压缩记录',
       tone: 'blue',
-      items: ['top-k 1024 (Pro)', 'FP4 index key', 'long-range sparse read'],
+      items: ['top-k 1024（Pro）', 'FP4 索引键', '长距离稀疏读取'],
     },
     {
-      label: 'HCA pool',
-      detail: '每 128 token 产生一条 compressed entry',
+      label: 'HCA 池',
+      detail: '每 128 个 token 产生一条压缩记录',
       tone: 'mauve',
-      items: ['no indexer', 'dense over coarse history', 'very low production rate'],
+      items: ['无需 Indexer', '对粗粒度历史执行稠密注意力', '生成频率很低'],
     },
   ]}
 />
@@ -1048,12 +1048,12 @@ V4 的重点不是“把 MLA 再压小一点”，而是把一个统一的线性
 下面统一假设：
 
 ```text
-batch size = 1
-single logical cache replica
-无 Tensor/Context Parallel 分片
-无 prefix sharing
-无 block rounding
-无 allocator reservation
+批大小 = 1
+单个逻辑缓存副本
+无张量并行或上下文并行分片
+无前缀共享
+无块大小取整
+无分配器预留
 ```
 
 | 模型 / 架构 | 主要缓存表示 | 数据类型假设 | 128K | 1M |
@@ -1073,14 +1073,14 @@ single logical cache replica
 | MHA / GQA / MLA | $O(T)$ |
 | DSA | 持久化 history 通常仍是 $O(T)$ |
 | SWA | $O(\min(T,W))$ |
-| 纯 KDA live state | $O(1)$ |
+| 纯 KDA 活跃状态 | $O(1)$ |
 | KDA + Full Attention Hybrid | $O(TL_{\text{full}})+O(L_{\text{KDA}})$ |
 | DeepSeek V4 CSA/HCA | $O(T/4)+O(T/128)+O(W)$ |
-| KDA Prefix Checkpoints | $O(N_{\text{checkpoint}})$ |
+| KDA 前缀检查点 | $O(N_{\text{checkpoint}})$ |
 
-## Paged KV Cache 要按实际分配位置取整
+## 分页 KV 缓存要按实际分配位置取整
 
-理论公式使用真实 token 数 $T$。vLLM、SGLang 等推理引擎通常按固定 Page 或 Block 分配。
+理论公式使用真实 token 数 $T$。vLLM、SGLang 等推理引擎通常按固定页或块分配空间。
 
 设 block size 为 $P$：
 
@@ -1128,9 +1128,9 @@ $$
 
 而不是先把所有请求 token 数加起来再取整。
 
-对于 DeepSeek V4、KDA 等 hybrid model，不同 cache group 可能还有不同 physical block size、match granularity 和 checkpoint boundary，不能把它们强行塞进同一组传统 KV blocks。
+对于 DeepSeek V4、KDA 等混合模型，不同缓存组还可能采用不同的物理块大小、匹配粒度和检查点边界，不能把它们强行塞进同一组传统 KV 块。
 
-## Tensor Parallel 下不能总是简单除以 TP
+## 张量并行下不能总是简单除以 TP
 
 如果 KV Heads 能在 $TP$ 张卡间均匀切分：
 
@@ -1144,11 +1144,11 @@ $$
 
 - MQA 只有一个 KV Head；
 - KV Head 数小于 TP size；
-- RoPE cache 在 rank 间复制；
+- RoPE 缓存在各 rank 间复制；
 - MLA latent 选择 replicated 而不是 sharded；
-- KDA recurrent state 按 Head、hidden dimension 或 CP group 采用不同布局；
-- DSA Indexer cache 与主 MLA cache 的并行策略不同；
-- DeepSeek V4 的 local、CSA、HCA、Indexer pools 分别采用不同 placement。
+- KDA 递推状态按 Head、隐藏维度或 CP 分组采用不同布局；
+- DSA Indexer 缓存与主 MLA 缓存的并行策略不同；
+- DeepSeek V4 的本地缓存、CSA、HCA 和 Indexer 池分别采用不同的放置策略。
 
 所以集群总 Cache、单 GPU Cache 和逻辑序列 Cache 是三个不同数字。
 
@@ -1199,7 +1199,7 @@ def mla_cache_bytes(
     rope_key_dim: int,
     dtype_bytes: float,
 ) -> float:
-    """优化 latent-cache 路径下的 MLA。"""
+    """优化 latent 缓存路径下的 MLA。"""
     return (
         batch_size
         * tokens
@@ -1236,7 +1236,7 @@ def kda_state_bytes(
     value_dim: int,
     state_dtype_bytes: float,
 ) -> float:
-    """KDA 在线 recurrent matrix state。"""
+    """KDA 在线递推矩阵状态。"""
     return (
         batch_size
         * layers
@@ -1337,7 +1337,7 @@ dsv4 = deepseek_v4_cache_bytes(
 print(f"DeepSeek V4-Pro 1M lower bound: {gib(dsv4):.2f} GiB")
 ```
 
-## 真正决定 Cache 大小的是 layout，不是模型名
+## 真正决定缓存大小的是内存布局，不是模型名
 
 计算一个新模型时，可以按下面的顺序阅读配置和实现：
 
@@ -1345,23 +1345,23 @@ print(f"DeepSeek V4-Pro 1M lower bound: {gib(dsv4):.2f} GiB")
 1. layer_types
    每层是 full、sliding、MLA、DSA、KDA、CSA 还是 HCA？
 
-2. persistent objects
-   保存 K/V、latent、RoPE key、index key、compressed entry 还是 recurrent state？
+2. 持久化对象
+   保存的是 K/V、latent、RoPE key、Indexer key、压缩记录还是递推状态？
 
-3. production rate
-   每 token 一条、每 4 token 一条、每 128 token 一条，还是只有最新状态？
+3. 生成频率
+   每个 token 一条、每 4 个 token 一条、每 128 个 token 一条，还是只保留最新状态？
 
-4. retention length
-   全历史、window、top-k gather、还是 checkpoint set？
+4. 保留范围
+   完整历史、滑动窗口、top-k 聚合，还是一组检查点？
 
-5. dtype by object
-   BF16、FP8、FP4，以及 scale 粒度分别是什么？
+5. 各对象的数据类型
+   BF16、FP8、FP4，以及 scale 的粒度分别是什么？
 
-6. runtime layout
-   latent 是否展开、K/V 是否共享、哪些对象分片、复制或 offload？
+6. 运行时布局
+   latent 是否展开、K/V 是否共享、哪些对象需要分片、复制或 offload？
 
-7. allocator
-   block size、page rounding、prefix sharing、COW 和预留池有多大？
+7. 内存分配器
+   块大小、页面取整、前缀共享、CoW 和预留池分别如何设置？
 ```
 
 最容易犯的错误也正好对应这些步骤：
@@ -1369,7 +1369,7 @@ print(f"DeepSeek V4-Pro 1M lower bound: {gib(dsv4):.2f} GiB")
 - 用 Query Head 数代替 KV Head 数；
 - 把 `q_lora_rank` 算进 MLA Cache；
 - 认为 DSA 的 top-k 会让持久化历史只剩 top-k；
-- 认为 KDA 的 $O(1)$ live state 意味着 prefix checkpoint 也是 $O(1)$；
+- 认为 KDA 的 $O(1)$ 活跃状态意味着前缀检查点也是 $O(1)$；
 - 对 shared K=V 的 DeepSeek V4 仍然乘传统 K/V 的 2；
 - 从权重 FP8 推断 Cache 一定是 FP8；
 - 忽略推理引擎把 latent 展开成标准 K/V 的实现差异。
@@ -1388,4 +1388,4 @@ M_{\text{scale}}
 M_{\text{metadata}}.
 $$
 
-只要能从模型配置和 runtime 代码中确定每层的 $T_l$、$E_l$、$R_l$ 与实际 dtype，就能计算 MHA、SWA、MLA、DSA、KDA、DeepSeek V4，以及未来更复杂的 Hybrid Attention Cache。
+只要能从模型配置和推理引擎代码中确定每层的 $T_l$、$E_l$、$R_l$ 与实际数据类型，就能计算 MHA、SWA、MLA、DSA、KDA、DeepSeek V4，以及未来更复杂的混合注意力缓存。

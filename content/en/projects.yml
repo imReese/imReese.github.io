@@ -14,17 +14,17 @@ overview:
 
 items:
   - name: SGLang Rust Runtime
-    description: An independent Rust prototype for request handling, scheduling, caching, and PD transfer in SGLang. It is useful for architecture and integration experiments, but it does not yet provide complete model execution, accelerator support, or production deployment.
+    description: An independent Rust prototype based on SGLang's request handling, scheduling, caching, and PD transfer concepts. It is useful for architecture and integration experiments, but it does not yet provide complete model execution, accelerator support, or production deployment.
     href: https://github.com/imReese/sglang-rs
     label: github.com/imReese/sglang-rs
     status:
       label: Experimental
-      description: Request lifecycle and several integration paths are implemented and tested. Production model execution, complete accelerator coverage, and deployment support are still incomplete.
+      description: Request lifecycle and several integration paths are implemented and tested. Production model execution, support for accelerator backends, and deployment tooling are still incomplete.
     capabilities:
-      - Rust request lifecycle with prefill/decode scheduling, finite KV page allocation, and RadixCache-style prefix reuse.
-      - Tonic gRPC and OpenAI-compatible HTTP/router boundaries, plus a process-level CPU PD smoke path.
-      - CPU reference execution, dynamic CUDA/cuBLAS capability boundaries, and explicit failure for unavailable backends.
-      - PD transfer planning, readiness polling, descriptor checksums, and a managed Mooncake ABI/memory-registration boundary.
+      - A Rust implementation of request lifecycle, prefill/decode scheduling, bounded KV page allocation, and RadixCache-style prefix reuse.
+      - Tonic gRPC and an OpenAI-compatible HTTP interface, plus a process-level CPU PD smoke test.
+      - CPU reference execution with runtime detection of CUDA/cuBLAS support and clear errors when no backend is available.
+      - PD transfer plans, readiness polling, descriptor checks, and memory registration through the Mooncake ABI.
     evidenceLinks:
       - label: Current scope and limitations
         href: https://github.com/imReese/sglang-rs#current-scope
@@ -48,9 +48,9 @@ items:
       label: Core platform in development
       description: Data structures, reuse planning, engine integration, and baseline backends are implemented. RDMA, GPU Direct, distributed coordination, and performance work are not complete.
     capabilities:
-      - Versioned attention-state definitions and a Rust nxradixtree core for exact and prefix reuse planning.
+      - Uses versioned attention-state definitions and a Rust nxradixtree core to plan exact matches and prefix reuse.
       - A PyO3 bridge that connects the Rust planner to SGLang and vLLM.
-      - A baseline executor, backend registry, fallback handling, data handles, and an in-memory store.
+      - Includes a baseline executor, backend registry, fallback handling, data handles, and an in-memory store.
       - Go control-plane configuration and policy reloads that preserve the last valid configuration on failure.
     evidenceLinks:
       - label: Target architecture
@@ -68,75 +68,75 @@ items:
       - Rust
       - Python
       - KV cache
-      - LLM Serving
+      - LLM serving
 
 diagrams:
   runtime:
-    eyebrow: request flow
+    eyebrow: Request flow
     title: SGLang Rust Runtime — implemented request flow
     caption: This diagram shows the flow covered by the current code and tests. Production model execution and complete transport backends are not implemented yet.
     steps:
       - label: Protocol handling
         meta: HTTP / gRPC / router
-        detail: Validate text or tokenized requests and preserve PD bootstrap metadata.
+        detail: Validate text and token requests while preserving the bootstrap information required for PD.
         items:
-          - typed proto
-          - OpenAI path
+          - Typed protocol
+          - OpenAI-compatible API
       - label: Scheduler
         meta: waiting → prefill → decode
-        detail: Form batches, apply token budgets, and hold decode until transferred KV is ready.
+        detail: Form batches within token budgets and wait for transferred KV before decode.
         items:
-          - lifecycle
-          - readiness
+          - Request lifecycle
+          - Readiness checks
       - label: Cache and workers
         meta: RadixCache + KV pages
-        detail: Match reusable prefixes, allocate finite pages, and dispatch local or split workers.
+        detail: Match reusable prefixes, allocate pages from a bounded KV pool, and dispatch work.
         items:
-          - page geometry
-          - prefix reuse
+          - Page layout
+          - Prefix reuse
       - label: PD transfer
-        meta: fake / snapshot / Mooncake ABI
-        detail: Build and poll transfer plans; production Mooncake transport is not implemented yet.
+        meta: in-memory transport / snapshots / Mooncake ABI
+        detail: Build and monitor transfer plans; production Mooncake transport is not implemented yet.
         items:
-          - checksums
-          - managed regions
+          - Descriptor checks
+          - Registered memory
   platform:
-    eyebrow: module layout
+    eyebrow: Module layout
     title: NexusKV — implemented modules and planned work
     caption: Control, reuse planning, data movement, and engine integration live in separate components instead of one connector layer.
     groups:
       - label: Control plane
-        detail: Basic configuration and policy reloads are implemented.
+        detail: Configuration and policy reloads are implemented.
         items:
-          - Go config
-          - health / admin
-          - execution policy
+          - Go configuration
+          - Health and administration
+          - Execution policy
         signals:
-          - last-known-good reload
+          - Keeps the last valid configuration
       - label: State and index
-        detail: Implemented versioned contracts and Rust reuse planner.
+        detail: Versioned state formats and a Rust reuse planner are implemented.
         items:
-          - descriptors
+          - Descriptors
           - nxradixtree
-          - exact / prefix match
-      - label: Execution / data plane
+          - Exact and prefix matching
+      - label: Execution and data transfer
         detail: A baseline executor and in-memory backends exist; remote transport is still in development.
         items:
-          - backend catalog
-          - payload handles
-          - fallback
+          - Backend registry
+          - Data handles
+          - Fallback handling
         signals:
-          - TODO real remote transport
-      - label: Engine adapters
+          - Remote transport is not implemented
+      - label: Engine integration
         detail: Request lifecycle integration is implemented for SGLang and vLLM.
         items:
-          - prefill / extend
-          - request start
-          - planner bridge
+          - Prefill and extend phases
+          - Request start
+          - Planner integration
 
 workSections:
-  - title: Upstream source tracking
-    intro: These repositories track upstream code; the related notes cover the implementation and integration paths I study.
+  - title: Upstream projects I follow
+    intro: These repositories mirror upstream code; the related notes cover the implementation and integration paths I study.
     items:
       - name: SGLang
         description: Focuses on the scheduler, HiCache, PD transfer, and how they fit into the serving flow.
@@ -171,35 +171,35 @@ workSections:
           label: Upstream project
           href: https://github.com/mlc-ai/xgrammar
         tags:
-          - Structured Generation
-          - Runtime
-          - Parser
+          - Structured generation
+          - Inference runtime
+          - Grammar parser
   - title: Source notes
     intro: Articles that follow concrete code paths through inference, caching, and data transfer.
     items:
       - name: SGLang to Mooncake Store KV path
-        description: A walkthrough of one write/read cycle, from page keys and host KV pointers to Store objects and the shared Transfer Engine.
+        description: A walkthrough of one write-and-read cycle, from page keys and host KV pointers to Store objects and the shared Transfer Engine.
         href: /blogs/sglang-to-mooncake-store-kv-cache-path/
         tags:
           - SGLang
           - Mooncake
           - KV cache
       - name: HiCache read and write paths
-        description: A closer look at storage hits, host load-back, GPU reuse, backup, and batch persistence in HiCache.
+        description: A closer look at storage hits, loading data back into host memory, GPU reuse, backup, and batch persistence in HiCache.
         href: /blogs/sglang-hicache-read-path/
         evidenceLinks:
           - label: Write path
             href: /blogs/sglang-hicache-write-path/
         tags:
           - HiCache
-          - Read / Write
-          - Validation
-      - name: Mooncake KV resource model
-        description: An explanation of how runtime state, Store metadata, replica lifecycle, and Transfer Engine responsibilities fit together.
+          - Read and write paths
+          - Correctness checks
+      - name: How Mooncake manages KV cache
+        description: How runtime state, Store metadata, replica lifecycle, and Transfer Engine responsibilities fit together.
         href: /blogs/mooncake-kv-cache-system-resource/
         tags:
-          - Resource Model
+          - Cache architecture
           - Store
-          - Transfer
+          - Data transfer
 
 githubItems: []

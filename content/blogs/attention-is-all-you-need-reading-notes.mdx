@@ -1,6 +1,6 @@
 ---
-title: 'Transformer 笔记：Attention 为什么会变成系统问题'
-description: '从 QKV、掩码和 KV Cache 出发，理解 Transformer 的模型结构为什么会影响推理服务的内存与调度设计。'
+title: 'Transformer 笔记：注意力机制为什么会变成系统问题'
+description: '从 QKV、掩码和 KV 缓存出发，理解 Transformer 的模型结构为什么会影响推理服务的内存与调度设计。'
 author: 'Reese'
 date: '2025-02-23'
 topics:
@@ -20,7 +20,7 @@ Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V
 
 现在再读，我更关心它删掉了什么。
 
-Transformer 最狠的一刀不是“用了 attention”，而是把序列建模里那条按时间步传递的 recurrence 拿掉了。RNN 的状态像一根链条，`h_t` 要等 `h_{t-1}`。Transformer 改成：同一层里，每个 token 可以直接和其它 token 建立关系。
+Transformer 最关键的变化不只是“用了注意力机制”，而是去掉了序列建模中按时间步传递的递归关系。RNN 的状态像一根链条，`h_t` 要等 `h_{t-1}`。Transformer 改成：同一层里，每个 token 可以直接和其它 token 建立关系。
 
 这一步把问题从时间依赖链改成了矩阵计算，也把后来的系统问题埋下了。
 
@@ -29,22 +29,22 @@ Transformer 最狠的一刀不是“用了 attention”，而是把序列建模�
   caption="训练阶段赢在并行矩阵计算；推理阶段则开始背 KV 状态的账。"
   steps={[
     {
-      label: 'recurrence removed',
-      detail: '序列内部不再按 hidden state 串行推进',
+      label: '去掉递归依赖',
+      detail: '序列内部不再按隐藏状态串行推进',
       tone: 'teal',
     },
     {
-      label: 'relation matrix',
-      detail: 'token 关系变成 QK^T 和 softmax',
+      label: '关系矩阵',
+      detail: 'token 之间的关系变成 QK^T 和 softmax',
       tone: 'blue',
     },
     {
-      label: 'hardware fit',
+      label: '适合硬件并行',
       detail: '核心计算更贴近 GPU 上的大矩阵操作',
       tone: 'green',
     },
     {
-      label: 'state debt',
+      label: '状态成本',
       detail: '自回归推理必须保存每层历史 K/V',
       tone: 'amber',
     },
@@ -61,64 +61,64 @@ x1 -> h1 -> h2 -> h3 -> h4
 
 这条链的问题是，训练时序列内部不好并行，长距离依赖也要经过很多中间状态。
 
-Self-attention 换了一个问法：如果第 4 个 token 想知道第 1 个 token 是否重要，为什么一定要靠 `h2`、`h3` 一步步传？为什么不能直接算它们之间的关系？
+自注意力换了一个问法：如果第 4 个 token 想知道第 1 个 token 是否重要，为什么一定要靠 `h2`、`h3` 一步步传？为什么不能直接算它们之间的关系？
 
 ```text
-token i
-  -> scores all token j
-  -> collects weighted values
+第 i 个 token
+  -> 为所有第 j 个 token 计算分数
+  -> 按权重汇总信息
 ```
 
-这就是 attention 公式背后的工程形状。它把“序列中信息怎样流动”改成了“一个 token 如何在同一层里寻址其它 token”。
+这就是注意力公式背后的工程形状。它把“序列中信息怎样流动”改成了“一个 token 如何在同一层里寻址其它 token”。
 
 ## QKV 像一次寻址过程
 
 QKV 不只是三组投影。更贴近系统直觉的理解是：
 
 ```text
-Query: 当前 token 发出的查询
-Key:   每个历史 token 暴露的地址/标签
-Value: 命中以后读回来的内容
+Query：当前 token 发出的查询
+Key：  每个历史 token 暴露的地址或标签
+Value：匹配以后读回来的内容
 ```
 
-`QK^T` 像是在算 query 和所有 key 的匹配程度，softmax 得到读取权重，最后用这组权重去聚合 value。
+`QK^T` 像是在计算查询与所有键的匹配程度，softmax 得到读取权重，最后用这组权重汇总对应的值。
 
 这样看，Q 和 K 定义“怎么找”，V 定义“找到了拿什么回来”。这比“每个词看每个词”更准确，因为匹配空间和内容空间被拆开了。
 
-Multi-head attention 继续把这件事复制多份：不同 head 有不同的投影空间，可以学到不同的寻址方式。后来的 MQA/GQA 之所以有工程意义，也正是因为 K/V head 的数量会直接影响 KV Cache 大小。
+多头注意力把这件事复制多份：不同的头有不同投影空间，可以学到不同的寻址方式。后来的 MQA/GQA 之所以有工程意义，也正是因为 K/V 头数会直接影响 KV 缓存大小。
 
 ```text
-more KV heads
-  -> more K/V tensors per token
-  -> larger KV cache
-  -> more memory pressure during serving
+更多 KV 头
+  -> 每个 token 产生更多 K/V 张量
+  -> KV 缓存更大
+  -> 推理服务承受更高的内存压力
 ```
 
-这就是模型结构和 serving 系统开始接上的地方。
+这就是模型结构与推理系统相接的地方。
 
-## mask 和 position 是两个契约
+## 掩码和位置编码承担不同职责
 
-Self-attention 给 token 之间开了直接通道，但这条通道必须被约束。
+自注意力给 token 之间开了直接通道，但这条通道必须受到约束。
 
-第一个约束是 mask。
+第一个约束是掩码。
 
-机器翻译里的 decoder masked self-attention，和今天 decoder-only LLM 的 causal attention，本质上都在守同一个契约：生成当前位置时不能看未来。
+机器翻译中的解码器掩码自注意力，以及今天仅解码器大模型中的因果注意力，本质上都遵守同一条规则：生成当前位置时不能看未来。
 
 ```text
-token t can attend to:
-  token <= t
+第 t 个 token 可以关注：
+  位置不晚于 t 的 token
 
-token t cannot attend to:
-  token > t
+第 t 个 token 不能关注：
+  位置晚于 t 的 token
 ```
 
-这个契约会一路传到 KV Cache。缓存里的 K/V 代表“已经出现过的 token”。prefix reuse、cache hit、remote KV load back 都不能破坏这个顺序。
+这条规则会一路传到 KV 缓存。缓存里的 K/V 代表“已经出现过的 token”。前缀复用、缓存命中和远端 KV 回载都不能破坏这个顺序。
 
-第二个约束是 position。
+第二个约束是位置信息。
 
-去掉 recurrence 后，attention 本身不知道 token 先后。原论文用 sinusoidal positional encoding，今天常见 RoPE、ALiBi 等变体，但它们都在补同一件事：让模型知道 token 在序列里的相对或绝对位置。
+去掉递归关系后，注意力机制本身不知道 token 的先后。原论文使用正弦位置编码，今天常见 RoPE、ALiBi 等变体，但它们都在补同一件事：让模型知道 token 在序列中的相对或绝对位置。
 
-长上下文系统里，position 不是小细节。复用一段 KV，不只是问 token 内容是否相同，还要问这段 K/V 在当前上下文位置下是否仍然有效。
+在长上下文系统里，位置信息不是小细节。复用一段 KV，不只是问 token 内容是否相同，还要问这段 K/V 在当前上下文位置下是否仍然有效。
 
 ## 训练阶段省掉的链，推理阶段变成了缓存
 
@@ -129,64 +129,64 @@ token t cannot attend to:
 所以系统保存历史 token 的 K/V：
 
 ```text
-prefill:
-  prompt tokens
-  -> compute K/V for every layer
-  -> store KV cache
+预填充：
+  提示词 token
+  -> 计算每一层的 K/V
+  -> 保存 KV 缓存
 
-decode:
-  new token
-  -> compute current Q/K/V
-  -> Q attends to cached historical K/V
-  -> append new K/V
+解码：
+  新 token
+  -> 计算当前 Q/K/V
+  -> Q 读取缓存中的历史 K/V
+  -> 追加新的 K/V
 ```
 
-KV Cache 不是一个附加优化，而是 decoder-only LLM serving 的基本状态。
+KV 缓存不是一个附加优化，而是仅解码器大模型推理的基本状态。
 
-它的大小随 layer、sequence length、KV heads、head dimension 和 dtype 增长：
+它的大小随层数、序列长度、KV 头数、单头维度和数据类型增长：
 
 ```text
-KV cache size
-  ~= layers
-   * sequence length
-   * KV heads
-   * head dimension
+KV 缓存大小
+  ~= 层数
+   * 序列长度
+   * KV 头数
+   * 单头维度
    * 2
-   * dtype bytes
+   * 每个数据元素的字节数
 ```
 
-于是 attention 从论文里的计算结构，变成了 serving runtime 里最重要的内存压力之一。
+于是注意力机制从论文里的计算结构，变成了推理引擎中最主要的内存压力之一。
 
 ## FlashAttention 和 PagedAttention 不是同一种答案
 
-沿着 attention 往后看，经常会遇到两个名字：FlashAttention 和 PagedAttention。它们都围绕 attention，但解决的问题不一样。
+沿着注意力机制继续看，经常会遇到两个名字：FlashAttention 和 PagedAttention。它们都围绕注意力展开，但解决的问题不同。
 
-FlashAttention 更靠近计算过程。它关心 attention kernel 怎么减少 HBM 读写，怎么避免把完整 attention matrix 物化出来，怎么让 prefill / training 更高效。
+FlashAttention 更靠近计算过程。它关心注意力内核怎样减少 HBM 读写、怎样避免完整展开注意力矩阵，以及怎样提高预填充和训练效率。
 
-PagedAttention 更靠近推理状态管理。它关心 KV Cache 怎么按 block 管理，怎么避免连续显存预留，怎么支持共享前缀和 copy-on-write。
+PagedAttention 更靠近推理状态管理。它关心 KV 缓存怎样分块管理、怎样避免预留连续显存，以及怎样支持共享前缀和写时复制。
 
 ```text
-FlashAttention:
-  optimize attention computation
-  reduce memory traffic during score/value aggregation
+FlashAttention：
+  优化注意力计算
+  减少计算分数和汇总结果时的内存传输
 
-PagedAttention:
-  optimize KV cache placement
-  reduce fragmentation and over-reservation during serving
+PagedAttention：
+  优化 KV 缓存的存放方式
+  减少推理过程中的碎片和过量预留
 ```
 
-如果把两者都叫 attention 优化，很容易错过它们的层级差异。
+如果把两者都笼统地称为注意力优化，很容易错过它们的层级差异。
 
 <CompareCallout
-  title="同一个 attention，两个系统方向"
+  title="同一种注意力机制，两个系统方向"
   columns={[
     {
       title: '计算路径',
       tone: 'teal',
       items: [
-        'QK^T / softmax / AV 的 kernel 如何组织',
-        '是否减少 HBM traffic',
-        'prefill 和训练是否更快',
+        'QK^T / softmax / AV 的计算内核如何组织',
+        '是否减少 HBM 数据传输',
+        '预填充和训练是否更快',
       ],
     },
     {
@@ -195,7 +195,7 @@ PagedAttention:
       items: [
         '历史 K/V 如何保存',
         '不同请求如何共享或释放 KV',
-        'scheduler 是否知道 cache 成本',
+        '调度器是否了解缓存成本',
       ],
     },
   ]}
@@ -203,6 +203,6 @@ PagedAttention:
 
 ## 门打开以后
 
-`Attention Is All You Need` 不只是把 RNN 换成 attention。它把序列关系变成了可并行计算的矩阵，也让自回归推理不得不长期保存 K/V 状态。
+`Attention Is All You Need` 不只是用注意力机制替换 RNN。它把序列关系变成了可并行计算的矩阵，也让自回归推理不得不长期保存 K/V 状态。
 
-这就是为什么这篇论文会一路连到 KV Cache、PagedAttention、FlashAttention、prefix cache、HiCache 和 remote KV store。attention 成为主干以后，K/V 就不再只是中间张量，而是系统资源。
+这就是为什么这篇论文会一路连到 KV 缓存、PagedAttention、FlashAttention、前缀缓存、HiCache 和远端 KV 存储。注意力成为主干以后，K/V 就不再只是中间张量，而是系统资源。

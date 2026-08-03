@@ -1,9 +1,9 @@
 about:
-  headline: '从分布式存储、CPU 性能分析到大模型推理系统。'
+  headline: '我做过分布式存储和 CPU 性能分析，现在专注大模型推理。'
   timelineTitle: 工作经历
-  timelineIntro: 我的工作方向从分布式存储和 CPU 性能分析，逐步转向大模型推理系统。
+  timelineIntro: 我的工作经历从分布式存储、计算机体系结构一路延伸到大模型推理。
   capabilitiesTitle: 关注方向
-  capabilitiesIntro: 目前主要关注以下几个方向。
+  capabilitiesIntro: 目前主要关注调度、缓存、数据传输和异构后端。
 
 home:
   hero:
@@ -16,16 +16,16 @@ home:
     previous: 过往经历
   notes:
     title: 最近更新
-    intro: 大模型推理、分布式系统和工程实践，也会写一点工具使用和生活记录。
+    intro: 大模型推理、分布式系统、工程实践和工具使用笔记。
     allNotes: 全部文章
     empty: 还没有文章。
   selectedWork:
     title: 近期工程工作
-    intro: 三个近期项目，包含当前进展、实现范围和相关源码笔记。
+    intro: 最近参与的工程项目，以及持续整理的源码笔记。
 
 projectsPage:
   githubActivityTitle: GitHub 动态
-  githubActivityIntro: 自动同步近期 GitHub 活动，记录我在大模型推理系统、源码分析和个人项目上的进展。
+  githubActivityIntro: 这里展示我最近在 GitHub 上的提交和项目更新。
   githubProfileLink: 查看 GitHub 主页
 
 blogPage:
@@ -57,8 +57,8 @@ blogPage:
     recentIntro: '最近发布的文章。'
     notesTitle: 笔记与工具手册
     notesIntro: '命令、环境配置和经典论文的学习记录。'
-    archiveTitle: 更多文章
-    archiveIntro: '其余文章按发布时间整理在这里。'
+    archiveTitle: 全部文章
+    archiveIntro: '全部文章按发布时间整理在这里。'
     resultsTitle: 筛选结果
   seriesNav:
     title: 按系列阅读

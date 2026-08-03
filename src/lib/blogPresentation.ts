@@ -5,6 +5,12 @@ type BlogLike = {
   topics?: string[]
 }
 
+type BlogFilter = {
+  year: string | null
+  topic: string | null
+  series: string | null
+}
+
 type CategoryLabels = Record<string, string>
 type SeriesLabels = Record<string, string>
 type ReadingMap = {
@@ -93,4 +99,16 @@ export function matchesSeriesGroup(blog: BlogLike, series: string | null) {
     default:
       return false
   }
+}
+
+export function getFilteredBlogs<T extends BlogLike & { date: string }>(
+  blogs: T[],
+  { year, topic, series }: BlogFilter,
+) {
+  return blogs.filter((blog) => {
+    const matchesYear = year ? blog.date.slice(0, 4) === year : true
+    const matchesTopic = topic ? (blog.topics ?? []).includes(topic) : true
+
+    return matchesYear && matchesTopic && matchesSeriesGroup(blog, series)
+  })
 }

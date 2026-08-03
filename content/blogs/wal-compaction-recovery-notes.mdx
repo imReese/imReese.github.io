@@ -1,6 +1,6 @@
 ---
-title: 'WAL、Manifest 和 Compaction：崩溃后哪些写入算数'
-description: '沿着 WAL append、memtable flush、manifest edit、compaction install 和 recovery，说明存储系统如何确认崩溃前的写入历史。'
+title: 'WAL、版本清单和压缩：崩溃后哪些写入算数'
+description: '沿着 WAL 追加、内存表刷盘、版本清单更新、压缩结果安装和恢复流程，说明存储系统如何确认崩溃前的写入历史。'
 author: 'Reese'
 date: '2023-11-26'
 topics:
@@ -12,49 +12,49 @@ featured: false
 
 存储系统最麻烦的问题，不是正常路径写入成功，而是崩溃后怎么回答一句话：**哪些写入已经算数，哪些只是半成品。**
 
-几个崩溃点放在一起看，会比单独背 WAL、manifest、compaction 更有用：
+把几个崩溃点放在一起看，比孤立地记忆 WAL、版本清单和压缩更有用：
 
 ```text
-WAL record 写了一半
-WAL 写完但 memtable 还没更新
-memtable flush 生成了 SSTable，但 manifest 没记录
-manifest 记录了新文件，但旧文件还没删
-compaction 输出了一半
-delete tombstone 写入了，但低层旧值还在
+WAL 记录写了一半
+WAL 写完但内存表还没更新
+内存表刷盘生成了 SSTable，但版本清单尚未记录
+版本清单记录了新文件，但旧文件还没删除
+压缩输出了一半
+删除墓碑已经写入，但低层旧值仍然存在
 ```
 
 恢复逻辑的本质，就是在一堆文件和日志里重新确认正式历史。
 
 <SequenceDiagram
   title="恢复时真正关心的是提交边界"
-  actors={['Write Path', 'WAL', 'SSTable', 'Manifest', 'Recovery']}
+  actors={['写入路径', 'WAL', 'SSTable', '版本清单', '恢复流程']}
   steps={[
     {
-      from: 'Write Path',
+      from: '写入路径',
       to: 'WAL',
-      label: 'append record',
-      detail: '写入先进入可 replay 的事实来源',
+      label: '追加记录',
+      detail: '写入先进入可以重放的事实来源',
       tone: 'teal',
     },
     {
-      from: 'Write Path',
+      from: '写入路径',
       to: 'SSTable',
-      label: 'flush immutable memtable',
+      label: '将不可变内存表刷盘',
       detail: '内存状态变成不可变文件',
       tone: 'blue',
     },
     {
       from: 'SSTable',
-      to: 'Manifest',
-      label: 'install version edit',
+      to: '版本清单',
+      label: '安装版本更新',
       detail: '文件被记录后才属于当前版本',
       tone: 'green',
     },
     {
-      from: 'Recovery',
-      to: 'Manifest',
-      label: 'replay metadata history',
-      detail: '重启后确认 live files 和 WAL replay 边界',
+      from: '恢复流程',
+      to: '版本清单',
+      label: '重放元数据历史',
+      detail: '重启后确认有效文件和 WAL 重放边界',
       tone: 'amber',
     },
   ]}
@@ -62,15 +62,15 @@ delete tombstone 写入了，但低层旧值还在
 
 ## 写入成功的边界在 WAL 策略里
 
-WAL 的原则是 write-ahead：数据进入内存结构前，先把日志写下来。
+WAL 遵循预写原则：数据进入内存结构前，先把日志写下来。
 
 简化路径：
 
 ```text
-append WAL record
-  -> maybe fsync / group commit
-  -> update memtable
-  -> return success
+追加 WAL 记录
+  -> 根据策略执行 fsync 或分组提交
+  -> 更新内存表
+  -> 返回成功
 ```
 
 这里有一个必须说清楚的边界：系统什么时候对客户端返回成功？
@@ -87,51 +87,51 @@ write 3
 
 这不是免费优化。它改变的是延迟、吞吐和持久性窗口之间的取舍。
 
-## WAL record 要能识别半条记录
+## WAL 记录必须能识别未写完整的内容
 
 WAL 写了一半进程挂掉，是恢复里非常具体的问题。
 
-一个稳的 WAL 格式通常需要：
+一个可靠的 WAL 格式通常需要：
 
-- record length。
-- type / batch boundary。
-- checksum。
-- sequence number。
-- fragmentation handling。
+- 记录长度。
+- 类型与批次边界。
+- 校验和。
+- 序列号。
+- 分片记录处理。
 
-恢复时读到坏 checksum 或半条 record，不能把后面的随机字节解释成写入。它要能停在最后一条完整有效记录。
+恢复时读到错误校验和或不完整记录，不能把后面的随机字节解释成写入。恢复过程必须能停在最后一条完整有效记录。
 
 ```text
-valid record seq=101
-valid record seq=102
-partial record seq=103
-  -> ignore / truncate from here
+有效记录 seq=101
+有效记录 seq=102
+不完整记录 seq=103
+  -> 从这里忽略或截断
 ```
 
 所以 WAL 格式不是文件格式洁癖。它直接决定崩溃后能不能找到最后的可信边界。
 
-## flush 完成不等于文件进入历史
+## 刷盘完成不等于文件已经进入版本历史
 
-memtable flush 会生成 SSTable。但 SSTable 文件存在，不代表它已经属于数据库当前版本。
+内存表刷盘会生成 SSTable，但 SSTable 文件存在，不代表它已经属于数据库当前版本。
 
-常见边界是 manifest/version edit：
+常见的提交边界是版本清单更新：
 
 ```text
-write table file 000123.sst
-fsync table file / directory
-append manifest edit: add file 000123 at L0
-maybe recycle old WAL
+写入表文件 000123.sst
+对表文件和目录执行 fsync
+向版本清单追加更新：在 L0 加入文件 000123
+根据策略回收旧 WAL
 ```
 
-如果崩溃发生在 SSTable 写完、manifest edit 之前，恢复时这个文件通常只能当 orphan / pending output 处理，不能直接纳入 live set。
+如果崩溃发生在 SSTable 写完、版本清单更新之前，恢复时这个文件通常只能作为孤立文件或待确认输出处理，不能直接纳入有效文件集合。
 
-这条规则很关键：**文件存在不是事实，metadata 承认才是事实。**
+这条规则很关键：**文件存在不是事实，元数据承认才是事实。**
 
-## manifest 是数据文件的时间线
+## 版本清单记录数据文件的时间线
 
-LSM 里真正描述当前版本的，不是目录里有哪些 `.sst` 文件，而是 manifest replay 后得到的 Version。
+在 LSM 中，真正描述当前版本的不是目录里有哪些 `.sst` 文件，而是重放版本清单后得到的版本状态。
 
-compaction 会产生类似 edit：
+压缩会产生类似的更新：
 
 ```text
 delete file A from L1
@@ -140,15 +140,15 @@ add file C to L2
 add file D to L2
 ```
 
-只有这个 edit 成功安装以后，新文件才可见，旧文件才可以进入 obsolete cleanup。
+只有这个更新成功安装以后，新文件才可见，旧文件才可以进入废弃文件清理流程。
 
-如果 manifest 写成功后崩溃，旧文件可能还在目录里，但恢复时它们不再属于 live files。反过来，如果新文件写出来但 manifest 没写成功，恢复时不能把它们当 live files。
+如果版本清单写成功后崩溃，旧文件可能还在目录里，但恢复时它们不再属于有效文件。反过来，如果新文件已经写出，但版本清单没有写成功，恢复时不能把它们当作有效文件。
 
-这就是为什么恢复入口通常先读 `CURRENT`，找到 manifest，再 replay manifest edits，而不是直接扫描所有 SSTable 猜状态。
+这就是为什么恢复入口通常先读取 `CURRENT`，找到版本清单，再重放其中的更新，而不是直接扫描所有 SSTable 猜测状态。
 
-## compaction 的原子性靠“新文件 + manifest edit”
+## 压缩的原子性依靠“新文件 + 版本清单更新”
 
-Compaction 不会原地改旧文件。它会读旧文件，写新文件，然后安装 metadata edit。
+压缩不会原地修改旧文件。它会读取旧文件、写入新文件，然后安装元数据更新。
 
 ```text
 inputs:
@@ -167,15 +167,15 @@ install:
 
 第一，输出文件没写完。恢复时应该清理。
 
-第二，输出文件写完但 manifest 没安装。恢复时仍然不能使用这些新文件。
+第二，输出文件写完但版本清单更新尚未安装。恢复时仍然不能使用这些新文件。
 
-第三，manifest 已安装但旧文件没删。恢复时 live set 已经指向新版本，旧文件只是垃圾，后续 cleanup 可以删。
+第三，版本清单更新已经安装但旧文件尚未删除。恢复时有效文件集合已经指向新版本，旧文件只是待清理内容，后续可以删除。
 
 这个设计把危险的原地修改变成了可恢复的版本切换。
 
-## tombstone 不是删除完成
+## 墓碑标记不等于删除完成
 
-删除在 LSM 里通常写 tombstone：
+在 LSM 中，删除通常通过写入墓碑标记完成：
 
 ```text
 seq=200 key=a tombstone
@@ -183,19 +183,19 @@ seq=150 key=a value=v2
 seq=100 key=a value=v1
 ```
 
-读路径看到当前 snapshot 可见的 tombstone，就认为 key 不存在。但低层旧值仍然可能在磁盘上。
+读取路径看到当前快照可见的墓碑标记，就认为键不存在。但低层旧值仍然可能留在磁盘上。
 
-tombstone 什么时候能被清掉，取决于：
+墓碑标记什么时候能被清理，取决于：
 
 - 是否已经覆盖所有可能包含旧值的更低层。
-- 是否还有 snapshot 需要旧 sequence number。
-- 是否有 range tombstone 或 merge operand 之类复杂语义。
+- 是否还有快照需要旧序列号。
+- 是否有范围墓碑或合并操作数等复杂语义。
 
-如果 snapshot 长时间不释放，compaction 可能不能丢旧版本。于是删除很多数据后，空间仍然不降。
+如果快照长时间不释放，压缩可能无法丢弃旧版本。于是即使删除很多数据，空间占用仍然不会下降。
 
-## sequence number 是恢复和可见性的共同语言
+## 序列号是恢复与可见性的共同依据
 
-sequence number 把写入排成一条时间线。
+序列号把写入排成一条时间线。
 
 ```text
 seq=105 key=a value=v3
@@ -204,54 +204,54 @@ seq=98  key=a tombstone
 seq=70  key=a value=v1
 ```
 
-读取时要按 snapshot sequence 判断可见性。恢复时也要知道 WAL replay 从哪里开始、哪些 memtable 已经 flush、哪些 sequence 已进入 SSTable。
+读取时要按快照序列号判断可见性。恢复时也要知道 WAL 从哪里开始重放、哪些内存表已经刷盘、哪些序列号已经进入 SSTable。
 
 没有这条时间线，系统就很难同时处理：
 
 - 新写覆盖旧写。
-- snapshot read。
-- tombstone 清理。
-- WAL replay。
-- compaction 丢弃旧版本。
+- 快照读取。
+- 墓碑标记清理。
+- WAL 重放。
+- 压缩丢弃旧版本。
 
-这也是为什么 sequence number 通常会贯穿 WAL、memtable、SSTable 和 manifest 相关逻辑。
+这也是为什么序列号通常会贯穿 WAL、内存表、SSTable 和版本清单相关逻辑。
 
 ## 恢复入口不是“读所有文件”
 
 一个典型恢复流程更像：
 
 ```text
-read CURRENT
-  -> locate manifest
-  -> replay manifest edits
-  -> build live file set
-  -> identify WAL files needing replay
-  -> replay valid WAL records
-  -> rebuild memtables
-  -> cleanup obsolete / orphan files
+读取 CURRENT
+  -> 定位版本清单
+  -> 重放版本清单更新
+  -> 构建有效文件集合
+  -> 找出需要重放的 WAL 文件
+  -> 重放有效 WAL 记录
+  -> 重建内存表
+  -> 清理废弃文件和孤立文件
 ```
 
 这里每一步都在缩小不确定性：
 
-- manifest 告诉你哪些 SSTable 属于正式版本。
+- 版本清单告诉你哪些 SSTable 属于正式版本。
 - WAL 告诉你哪些写入还没进入 SSTable。
-- checksum / record boundary 告诉你日志读到哪里可信。
-- obsolete cleanup 处理崩溃留下的旧文件和半成品。
+- 校验和与记录边界告诉你日志读到哪里可信。
+- 废弃文件清理负责处理崩溃留下的旧文件和半成品。
 
-恢复越依赖明确 metadata，越不需要靠猜。
+恢复过程越依赖明确的元数据，就越不需要靠猜测。
 
-## Benchmark 不该只看正常运行
+## 基准测试不该只看正常运行
 
-存储系统 benchmark 经常只看吞吐、平均延迟、p99。但恢复成本也是可用性的一部分。
+存储系统的基准测试经常只看吞吐、平均延迟和 p99，但恢复成本也是可用性的一部分。
 
 我会额外测：
 
-- 写入高峰后重启要 replay 多久。
-- WAL 堆积很多时 open database 要多久。
-- manifest 很大时 replay 是否变慢。
-- compaction backlog 很高时重启是否有额外清理成本。
-- 大量 tombstone 后空间何时回收。
-- 崩溃注入后是否有 orphan 文件残留。
+- 写入高峰后重启需要重放多久。
+- WAL 堆积很多时打开数据库需要多久。
+- 版本清单很大时，重放是否变慢。
+- 压缩积压很高时，重启是否产生额外清理成本。
+- 大量墓碑标记产生后，空间何时回收。
+- 崩溃注入后是否有孤立文件残留。
 
 线上最怕的是：正常跑的时候指标漂亮，一重启恢复几十分钟。
 
@@ -260,27 +260,27 @@ read CURRENT
 读或验证一个存储引擎时，我更喜欢按崩溃点打断：
 
 ```text
-after WAL append, before memtable insert
-after memtable insert, before client return
-after SSTable file write, before manifest edit
-after manifest edit, before obsolete cleanup
-during compaction output
-after tombstone write, before compaction
+追加 WAL 之后、写入内存表之前
+写入内存表之后、向客户端返回之前
+写入 SSTable 文件之后、更新版本清单之前
+更新版本清单之后、清理废弃文件之前
+压缩输出过程中
+写入墓碑标记之后、压缩之前
 ```
 
 然后检查：
 
 - 重启后数据是否符合持久性承诺。
 - 半写 WAL 是否被截断。
-- orphan SSTable 是否被清理。
-- live file set 是否只来自 manifest。
-- old snapshot 语义是否保持。
+- 孤立 SSTable 是否被清理。
+- 有效文件集合是否只来自版本清单。
+- 旧快照语义是否保持。
 - 空间回收是否最终发生。
 
-如果这些点都能解释清楚，WAL、manifest、compaction 和 recovery 才真的连成了一个存储系统。
+如果这些点都能解释清楚，WAL、版本清单、压缩和恢复才真正连成了一个存储系统。
 
 ## 崩溃恢复是在确认历史，不是在修文件
 
-WAL 记录尚未稳定成 SSTable 的写入，manifest 记录哪些 SSTable 属于当前版本，compaction 用新文件和 metadata edit 替换旧历史，recovery 则在重启时重新走一遍这些证据。
+WAL 记录尚未稳定成 SSTable 的写入，版本清单记录哪些 SSTable 属于当前版本，压缩用新文件和元数据更新替换旧历史，恢复流程则在重启时重新核对这些证据。
 
 所以恢复不是“尽量把文件救回来”，而是确认哪些历史已经被系统正式承认。

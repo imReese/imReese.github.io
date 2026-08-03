@@ -1,9 +1,9 @@
 about:
-  headline: 'My work has moved from distributed storage and CPU performance to LLM serving systems.'
+  headline: 'From distributed storage and CPU performance analysis to LLM serving.'
   timelineTitle: Experience
-  timelineIntro: My work has progressed from distributed storage and CPU performance analysis to LLM serving systems.
+  timelineIntro: My work has taken me from distributed storage and computer architecture to LLM inference.
   capabilitiesTitle: Areas of focus
-  capabilitiesIntro: The areas I work on most often.
+  capabilitiesIntro: Scheduling, cache management, data movement, and accelerator backends.
 
 home:
   hero:
@@ -16,16 +16,16 @@ home:
     previous: Earlier experience
   notes:
     title: Recent posts
-    intro: LLM serving, distributed systems, engineering practice, and the occasional life note.
+    intro: Notes on LLM serving, distributed systems, engineering practice, and developer tools.
     allNotes: All articles
     empty: No articles yet.
   selectedWork:
     title: Recent projects
-    intro: Three projects with current status, implementation notes, and links.
+    intro: Recent engineering projects and ongoing source-code studies.
 
 projectsPage:
   githubActivityTitle: GitHub activity
-  githubActivityIntro: Automatically updated GitHub activity across inference systems, source analysis, and personal projects.
+  githubActivityIntro: Recent commits and project updates from GitHub.
   githubProfileLink: View GitHub profile
 
 blogPage:
@@ -33,36 +33,36 @@ blogPage:
   intro: Source notes on SGLang, KV cache management, Mooncake Store, Transfer Engine, and related performance work. Articles are currently written in Chinese.
   readBlog: Read article
   categories:
-    engineering-deep-dive: Source Analysis
-    debugging-validation: Debugging & Validation
-    engineering-notes: Engineering Notes
+    engineering-deep-dive: Source analysis
+    debugging-validation: Debugging and validation
+    engineering-notes: Engineering notes
     runbooks: Runbooks
-    reading-notes: Reading Notes
-    fallback: Engineering Notes
+    reading-notes: Reading notes
+    fallback: Engineering notes
   series:
     Mooncake / HiCache Internals: Mooncake and HiCache internals
-    SGLang Runtime Notes: SGLang Runtime
-    LLM Serving Internals: LLM Serving Internals
-    Storage Systems Notes: Storage Systems
-    Distributed Systems Notes: Distributed Systems
+    SGLang Runtime Notes: SGLang runtime
+    LLM Serving Internals: LLM serving internals
+    Storage Systems Notes: Storage systems
+    Distributed Systems Notes: Distributed systems
     Practical Runbooks: Runbooks
-    Open Source Engineering: Open Source Engineering
+    Open Source Engineering: Open source engineering
   article:
     backToBlogs: Back to articles
     descriptionLabel: Article summary
   sections:
     featuredTitle: Recommended reading
-    featuredIntro: 'A few of the more complete source analyses and systems notes.'
+    featuredIntro: 'A few in-depth source analyses and systems notes.'
     recentTitle: Recent articles
     recentIntro: Recently published articles.
     notesTitle: Notes and runbooks
     notesIntro: 'Commands, environment setup, and reading notes.'
-    archiveTitle: More articles
-    archiveIntro: The remaining articles, ordered by publication date.
+    archiveTitle: All articles
+    archiveIntro: Every article, newest first.
     resultsTitle: Filtered articles
   seriesNav:
     title: Browse by series
-    intro: Follow a systems thread, or use the runbooks for commands and day-to-day operations.
+    intro: Choose a topic to follow, or open a runbook when you need a command reference.
     items:
       - value: sglang-runtime
         label: SGLang Runtime
@@ -77,11 +77,11 @@ blogPage:
         description: Cache reuse, memory residency, and cross-node state.
         weight: primary
       - value: performance-engineering
-        label: Performance Engineering
+        label: Performance engineering
         description: Profiling, benchmarks, tail latency, and validation.
         weight: primary
       - value: distributed-storage
-        label: Distributed / Storage Systems
+        label: Distributed and storage systems
         description: Consensus, WAL, compaction, leases, and recovery.
         weight: primary
       - value: runbooks

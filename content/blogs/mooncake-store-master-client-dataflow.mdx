@@ -1,6 +1,6 @@
 ---
 title: 'Mooncake Store 对象模型：对象、切片、副本和 Segment'
-description: '梳理对象、切片、副本、Segment 以及主从组件之间的关系，作为理解 Mooncake Store 读写流程的入口。'
+description: '梳理对象、切片、副本、Segment，以及 Master 与 Client 的职责，作为理解 Mooncake Store 读写流程的入口。'
 author: 'Reese'
 date: '2026-05-26'
 topics:
@@ -13,7 +13,7 @@ series: 'Mooncake / HiCache Internals'
 featured: false
 ---
 
-Mooncake Store 不是“client 把 value 发给 server，server 存起来”的中心化 KV 服务。它更像一个对象元数据控制面，加上一组由 client/provider 执行的数据面。
+Mooncake Store 不是“Client 把值发给服务器，再由服务器保存”的中心化 KV 服务。它更像一个对象元数据控制面，再加上由 Client 和 Provider 执行的数据传输层。
 
 读源码前先建立对象模型，否则 Put/Get 很容易看散。
 
@@ -28,39 +28,39 @@ mooncake-store/src/master_service.cpp
 ```
 
 <LayerDiagram
-  title="Mooncake Store 的对象模型：控制面记录事实，数据面搬 bytes"
-  caption="object key 是上层名字；slice 是本地 buffer；replica 才是落到 Segment 上的可读副本。master 只维护这些关系，不参与大块数据传输。"
+  title="Mooncake Store 的对象模型：控制面记录事实，数据传输层搬运内容"
+  caption="对象键是上层名称，切片描述本地缓冲区，副本才是落在 Segment 上的可读数据。Master 只维护这些关系，不参与大块数据传输。"
   layers={[
     {
-      label: 'caller view',
-      detail: '上层看到 key 和本地 buffer',
+      label: '调用方视角',
+      detail: '上层看到对象键和本地缓冲区',
       tone: 'teal',
-      items: ['object key', 'Slice(ptr, size)', 'BatchPut / BatchGet'],
+      items: ['对象键', 'Slice(ptr, size)', 'BatchPut / BatchGet'],
     },
     {
-      label: 'master metadata',
+      label: 'Master 元数据',
       detail: '事实表和可见性',
       tone: 'blue',
-      items: ['object metadata', 'replica list', 'lease', 'allocation', 'quota'],
+      items: ['对象元数据', '副本列表', '租约', '空间分配', '配额'],
     },
     {
-      label: 'replica placement',
+      label: '副本位置',
       detail: '真正能读写的位置',
       tone: 'green',
-      items: ['Segment id', 'offset', 'length', 'PROCESSING', 'COMPLETE'],
+      items: ['Segment ID', '偏移量', '长度', 'PROCESSING', 'COMPLETE'],
     },
     {
-      label: 'client data plane',
-      detail: '把 metadata 翻译成传输任务',
+      label: 'Client 数据传输层',
+      detail: '把元数据翻译成传输任务',
       tone: 'mauve',
-      items: ['TransferSubmitter', 'local memcpy', 'Transfer Engine', 'hot cache'],
+      items: ['TransferSubmitter', '本地内存复制', 'Transfer Engine', '热缓存'],
     },
   ]}
 />
 
-## object 不是简单 value
+## 对象不只是一个值
 
-Store 对外是 object key，但内部不会假设 value 必须是一块连续内存。写入时，caller 传入的是 `Slice` 列表：
+Store 对外暴露对象键，但内部不会假设一个值必须位于连续内存。写入时，调用方传入的是 `Slice` 列表：
 
 ```text
 Slice
@@ -68,22 +68,22 @@ Slice
   size
 ```
 
-这对 KV Cache 很重要，因为上层数据经常已经按 K/V、layer、head、page 拆开。Store 不应该为了抽象好看强行拷成一块大 buffer。
+这对 KV 缓存很重要，因为上层数据往往已经按 K/V、层、注意力头和页拆开。Store 不应该为了让抽象看起来整齐，就强行把它们复制到一块连续的大缓冲区中。
 
 因此对象模型更接近：
 
 ```text
 ObjectKey
-  -> object metadata
-  -> slices
-  -> replicas
-       -> segment id/name
-       -> offset
-       -> length
-       -> status
+  -> 对象元数据
+  -> 切片
+  -> 副本
+       -> Segment ID/名称
+       -> 偏移量
+       -> 长度
+       -> 状态
 ```
 
-object key 是上层看到的名字；slice 是本次读写的本地 buffer 描述；replica 是 Store 内部真正能读写的数据副本。
+对象键是上层看到的名称；切片描述本次读写使用的本地缓冲区；副本则是 Store 内部真正可以读写的数据拷贝。
 
 ## Segment 是可寻址存储空间
 
@@ -99,11 +99,11 @@ Segment
   protocol
 ```
 
-Store 里的 replica 不直接写“某台机器某个变量”。它会落到某个 Segment 的某段 offset/length 上。Transfer Engine 之后才能把这段描述翻译成 READ/WRITE 请求。
+Store 里的副本不会直接指向“某台机器上的某个变量”，而是落在某个 Segment 的一段偏移和长度上。Transfer Engine 随后再把这段描述转换成 READ 或 WRITE 请求。
 
-这层间接性很重要。master 维护 Segment 和 replica metadata，client 根据 metadata 选择本地 memcpy、Transfer Engine、NoF 或 offload 路径。
+这层间接性很重要。Master 维护 Segment 和副本元数据，Client 根据元数据选择本地内存复制、Transfer Engine、NoF 或卸载路径。
 
-## replica 是可读性的核心
+## 副本状态决定数据是否可读
 
 Replica 有状态。关键状态包括：
 
@@ -115,38 +115,38 @@ REMOVED
 FAILED
 ```
 
-一次 Put 过程中，master 可以先分配 replica，但这不等于数据已经写完。只有进入 `COMPLETE` 的 replica 才能成为正常读路径候选。
+一次 Put 过程中，Master 可以先分配副本，但这不等于数据已经写完。只有进入 `COMPLETE` 状态的副本才能成为正常读路径的候选。
 
-因此 Store 的读正确性不是“key 存在”，而是：
+因此，Store 的读取正确性不能简化为“对象键存在”，而要同时满足：
 
 ```text
-key 存在
-  + metadata 有可用 replica
-  + replica 状态是 COMPLETE
-  + lease 仍在有效期内
-  + client 能从对应 Segment 成功读出数据
+对象键存在
+  + 元数据中有可用副本
+  + 副本状态是 COMPLETE
+  + 租约仍在有效期内
+  + Client 能从对应 Segment 成功读出数据
 ```
 
-这比普通 KV 服务复杂很多，但它允许大对象的数据面绕开 master。
+这比普通 KV 服务复杂得多，但它允许大对象的数据传输绕开 Master。
 
-## master 维护事实表
+## Master 维护权威元数据
 
-master 的核心职责是维护事实表，不是搬数据。
+Master 的核心职责是维护权威元数据，而不是搬运数据。
 
 它至少要回答：
 
-- 哪些 client 和 Segment 已经 mount。
-- 每个 object 有哪些 replica。
-- 哪些 replica 正在写入。
-- 哪些 replica 已经 complete。
-- 哪些 Segment 正在 draining 或 unmount。
-- tenant quota、allocation strategy、hot cache、lease 是否允许本次操作。
+- 哪些 Client 和 Segment 已经挂载。
+- 每个对象有哪些副本。
+- 哪些副本正在写入。
+- 哪些副本已经进入 `COMPLETE` 状态。
+- 哪些 Segment 正在排空或卸载。
+- 租户配额、分配策略、本地热缓存和租约是否允许本次操作。
 
-Put 时，master 负责分配 replica 并推进状态。Get 时，master 负责返回可读 replica 和 lease。真正的数据字节不经过 master。
+Put 时，Master 负责分配副本并推进状态；Get 时，Master 负责返回可读副本和租约。真正的数据内容不经过 Master。
 
-## client 组织数据面
+## Client 负责组织数据传输
 
-client 不是薄 RPC wrapper。它同时持有：
+Client 不是一层简单的 RPC 包装。它同时持有：
 
 ```text
 MasterClient
@@ -155,16 +155,16 @@ TransferEngine
 LocalHotCache
 ```
 
-client 先向 master 请求 metadata，再把 metadata 翻译成数据面动作。比如同 endpoint 可以走 memcpy，远端 memory replica 走 Transfer Engine，文件/offload 走对应路径。
+Client 先向 Master 请求元数据，再把元数据翻译成数据面动作。例如，同一个端点内可以直接复制内存，远端内存副本通过 Transfer Engine 传输，文件或卸载存储则走对应路径。
 
 这就是 Mooncake Store 的基本分层：
 
 ```text
-master:
-  管 metadata、状态、lease、allocation
+Master:
+  管理元数据、状态、租约和空间分配
 
-client:
-  调 master 拿事实
+Client:
+  向 Master 查询事实
   调 TransferSubmitter 搬数据
 
 Transfer Engine:
@@ -173,7 +173,7 @@ Transfer Engine:
 
 ## ReplicateConfig 决定副本策略
 
-`ReplicateConfig` 不是装饰参数。它会影响 Put 时 master 怎样放置 replica。
+`ReplicateConfig` 不是装饰参数。它会影响 Put 时 Master 如何放置副本。
 
 常见字段包括：
 
@@ -187,54 +187,54 @@ with_soft_pin
 with_hard_pin
 ```
 
-对 SGLang/Mooncake 接入来说，还要额外注意版本边界：SGLang 的 Mooncake backend 会探测安装的 Mooncake Python 包是否支持 `ReplicateConfig.group_ids`。如果支持，它可以把同一个 logical KV page 展开的 K object、V object 或 side pool object 绑定到同一个 group；如果不支持，就退回普通 object 级 `batch_put_from` 路径。
+对于 SGLang/Mooncake 集成，还要额外注意版本边界：SGLang 的 Mooncake 后端会探测已安装的 Mooncake Python 包是否支持 `ReplicateConfig.group_ids`。如果支持，它可以把同一个逻辑 KV 页展开出的 K 对象、V 对象和辅助内存池对象绑定到同一分组；如果不支持，就回退到普通的对象级 `batch_put_from` 路径。
 
-在本文参考的 Mooncake 稳定 tag `v0.3.11.post1` 里，`ReplicateConfig` 还没有 `group_ids` 字段。因此这里不能把 group semantics 当作这个稳定版本的 Store 基础字段；它更像是 SGLang adapter 为不同 Mooncake 包版本预留的兼容能力。
+在本文参考的 Mooncake 稳定标签 `v0.3.11.post1` 中，`ReplicateConfig` 还没有 `group_ids` 字段。因此，不能把分组语义当作该版本 Store 的基础能力；它更像是 SGLang 适配层为不同 Mooncake 包版本预留的兼容路径。
 
 ## 和 HiCache 的映射
 
-SGLang HiCache 接 Mooncake Store 时，不会把“一个请求”作为 object。它会把 prefix KV 按 page 拆开：
+SGLang HiCache 接入 Mooncake Store 时，不会把“一个请求”整体作为对象，而是把前缀 KV 按页拆开：
 
 ```text
-HiCache logical page key
-  -> Mooncake object key(s)
-  -> Store object metadata
-  -> replica(s)
-  -> Segment + offset + length
+HiCache 逻辑页键
+  -> Mooncake 对象键
+  -> Store 对象元数据
+  -> 副本
+  -> Segment + 偏移量 + 长度
 ```
 
 <MappingDiagram
-  title="HiCache logical page 到 Store object 的展开"
-  caption="Mooncake Store 不知道 request 和 radix tree。它只看到展开后的 object key，并为每个 object 维护副本状态。"
+  title="从 HiCache 逻辑页展开为 Store 对象"
+  caption="Mooncake Store 不知道请求和基数树。它只看到展开后的对象键，并为每个对象维护副本状态。"
   source={{
-    label: 'HiCache logical page',
-    detail: 'SGLang runtime 里的 page 级缓存单元',
+    label: 'HiCache 逻辑页',
+    detail: 'SGLang 推理引擎中的页级缓存单元',
     tone: 'teal',
   }}
   groups={[
     {
-      label: 'Mooncake object keys',
+      label: 'Mooncake 对象键',
       detail: 'Store 可寻址对象',
       tone: 'blue',
-      items: ['page hash', 'rank / TP suffix', 'page_k', 'page_v', 'side pool object'],
+      items: ['页哈希', 'rank / TP 后缀', 'page_k', 'page_v', '辅助池对象'],
     },
     {
-      label: 'Store replicas',
+      label: 'Store 副本',
       detail: '可见性和位置',
       tone: 'green',
-      items: ['COMPLETE replica', 'lease', 'Segment', 'offset / length'],
+      items: ['COMPLETE 副本', '租约', 'Segment', '偏移量 / 长度'],
     },
   ]}
 />
 
-MHA 通常一个 logical page 会展开成 K/V 两个 object；MLA 通常是一个 object；hybrid pool 还会继续展开 side state object。
+MHA 通常会把一个逻辑页展开为 K/V 两个对象，MLA 通常只需要一个对象，混合内存池还会继续展开辅助状态对象。
 
-所以 Store 看到的是一批 object，不知道它们属于哪个 request，也不知道 SGLang 的 radix tree 结构。这个边界必须守住。
+所以 Store 看到的是一批对象，并不知道它们属于哪个请求，也不了解 SGLang 的基数树结构。这个边界必须守住。
 
 ## 把对象模型串起来
 
-读 Mooncake Store 时，可以把它当成一条翻译链：上层给 object key 和本地 slice，master 把 key 翻成一组 replica 事实，client 再把 replica 翻成 Segment 上的 offset/length，最后由本地 memcpy、Transfer Engine 或其他 backend 真正搬数据。
+阅读 Mooncake Store 源码时，可以把它理解成一条翻译链：上层给出对象键和本地切片，Master 把键翻译成一组副本事实，Client 再把副本翻译成 Segment 上的偏移和长度，最后由本地内存复制、Transfer Engine 或其它后端真正搬运数据。
 
-这条链里最容易混的是 `Slice` 和 `replica`。`Slice` 描述 caller 当前这次读写用的本地 buffer；`replica` 描述 Store 内部已经分配或已经提交的一份对象副本。它们在 Put/Get 时会被配对，但不是同一个东西。
+这条链里最容易混淆的是 `Slice` 和副本。`Slice` 描述调用方本次读写使用的本地缓冲区；副本则描述 Store 内部已经分配或提交的一份对象数据。它们会在 Put 或 Get 时配对，但不是同一个概念。
 
-另一个关键点是状态。`PROCESSING` replica 说明 master 预留了位置，不说明数据已经完成；`COMPLETE` replica 才是读路径能选择的对象。只要记住这两个边界，后面的 PutStart、PutEnd、GetReplicaList 和 lease 就会自然很多。
+另一个关键点是状态。`PROCESSING` 副本说明 Master 已经预留位置，但不表示数据写入已经完成；只有 `COMPLETE` 副本才能被读取路径选择。只要记住这两个边界，后面的 PutStart、PutEnd、GetReplicaList 和租约就容易理解了。

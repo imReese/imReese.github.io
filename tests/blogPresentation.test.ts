@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict'
+import { readFileSync, readdirSync } from 'node:fs'
 import test from 'node:test'
+import matter from 'gray-matter'
 
 import {
   getBlogMetaChips,
+  getFilteredBlogs,
   matchesSeriesGroup,
 } from '../src/lib/blogPresentation.ts'
+import type { BlogType } from '../src/lib/blogs.ts'
 
 const readingMap = {
   topics: [
@@ -53,4 +57,30 @@ test('groups articles into system series without changing their URLs', () => {
   assert.equal(matchesSeriesGroup(blog, 'kv-cache-systems'), true)
   assert.equal(matchesSeriesGroup(blog, 'distributed-storage'), true)
   assert.equal(blog.slug, 'stable-slug')
+})
+
+test('keeps featured articles in the default archive', () => {
+  const blogs = readdirSync('content/blogs')
+    .filter((file) => file.endsWith('.mdx'))
+    .map(
+      (file) =>
+        ({
+          ...matter(readFileSync(`content/blogs/${file}`, 'utf8')).data,
+          slug: file.replace(/\.mdx$/, ''),
+        }) as BlogType,
+    )
+    .filter((blog) => blog.draft !== true)
+
+  const archive = getFilteredBlogs(blogs, {
+    year: null,
+    topic: null,
+    series: null,
+  })
+
+  assert.equal(blogs.length, 28)
+  assert.equal(archive.length, 28)
+  assert.deepEqual(
+    archive.filter((blog) => blog.featured).map((blog) => blog.slug),
+    blogs.filter((blog) => blog.featured).map((blog) => blog.slug),
+  )
 })

@@ -1,6 +1,6 @@
 ---
-title: 'SGLang HiCache 总览：把 GPU KV Cache 扩成三级缓存'
-description: '从 GPU KV 池、主机内存池、存储后端和 Radix 树节点的状态变化出发，理解 HiCache L1/L2/L3 的整体结构。'
+title: 'SGLang HiCache 总览：把 GPU KV 缓存扩成三级缓存'
+description: '从 GPU KV 池、主机内存池、存储后端和基数树节点的状态变化出发，理解 HiCache L1/L2/L3 的整体结构。'
 author: 'Reese'
 date: '2026-06-26'
 topics:
@@ -16,9 +16,9 @@ featured: false
 HiCache 要解决的问题不是“多加一个远端 KV 存储”，而是把 SGLang 运行时里的 KV Cache 变成三级资源：
 
 ```text
-L1: GPU KV pool
-L2: Host KV pool
-L3: Storage backend, such as Mooncake / 3FS / file / NIXL
+L1：GPU KV 池
+L2：主机 KV 池
+L3：存储后端，例如 Mooncake、3FS、文件系统或 NIXL
 ```
 
 本文基于 SGLang `v0.5.14`。读源码时建议先看这几个文件：
@@ -32,80 +32,80 @@ python/sglang/srt/mem_cache/storage/backend_factory.py
 ```
 
 <LayerDiagram
-  title="HiCache 把 prefix KV Cache 拆成 L1/L2/L3 三层资源"
-  caption="L1 能直接喂给 attention；L2 是结构化 Host KV memory；L3 通过 HiCacheStorage 接入 Mooncake、3FS、NIXL 或 file backend。"
+  title="HiCache 把前缀 KV 缓存拆成 L1/L2/L3 三层资源"
+  caption="L1 可直接供注意力计算使用；L2 是结构化的主机 KV 内存；L3 通过 HiCacheStorage 接入 Mooncake、3FS、NIXL 或文件后端。"
   layers={[
     {
-      label: 'L1: GPU KV pool',
-      detail: 'attention 直接使用',
+      label: 'L1：GPU KV 池',
+      detail: '注意力计算直接使用',
       tone: 'teal',
-      items: ['TokenToKVPool', 'node.value', 'device indices', 'evict / lock_ref'],
+      items: ['TokenToKVPool', 'node.value', '设备索引', '淘汰 / lock_ref'],
     },
     {
-      label: 'L2: Host KV pool',
-      detail: 'GPU 和 Storage 之间的结构化缓冲层',
+      label: 'L2：主机 KV 池',
+      detail: 'GPU 与存储后端之间的结构化缓冲层',
       tone: 'green',
-      items: ['host_value', 'page layout', 'host_ref_counter', 'D->H / H->D'],
+      items: ['host_value', '页布局', 'host_ref_counter', 'D->H / H->D'],
     },
     {
       label: 'L3: HiCacheStorage',
-      detail: '远端或本地持久化 backend',
+      detail: '远端或本地持久化后端',
       tone: 'blue',
       items: ['hash_value', 'batch_exists', 'batch_get', 'batch_set', 'PoolTransfer'],
     },
     {
-      label: 'backend implementations',
-      detail: '只接 L3，不接管 scheduler',
+      label: '存储后端实现',
+      detail: '只接入 L3，不接管调度器',
       tone: 'mauve',
       items: ['Mooncake Store', '3FS', 'NIXL', 'file'],
     },
   ]}
 />
 
-## L1 不是 request table，而是 KV pool
+## L1 不是请求表，而是 KV 池
 
-SGLang runtime 里和 KV cache 相关的结构至少有两类。
+SGLang 推理引擎中，和 KV 缓存相关的结构至少有两类。
 
-`ReqToTokenPool` 记录 request 到 token slots 的映射。它回答的是：某个请求的第几个 token 对应哪个 token index。
+`ReqToTokenPool` 记录请求到 token 槽位的映射。它回答的是：某个请求的第几个 token 对应哪个 token 索引。
 
-`TokenToKVPoolAllocator` 和具体 KV pool 记录真实 K/V tensor 的位置。它回答的是：token index 对应的 K/V 在 GPU memory 里的哪一段。
+`TokenToKVPoolAllocator` 和具体 KV 池记录真实 K/V 张量的位置。它回答的是：token 索引所对应的 K/V 位于 GPU 内存的哪一段。
 
-Radix cache 里的 prefix node 通常保存的是 GPU token indices，也就是 node 的 `value`。一次 prefix 命中，本质上是 radix tree 找到一段 token prefix，并返回可以直接喂给 attention backend 的 GPU KV slots。
+基数树缓存中的前缀节点通常保存 GPU token 索引，也就是节点的 `value`。一次前缀命中，本质上是基数树找到一段 token 前缀，并返回可以直接交给注意力后端的 GPU KV 槽位。
 
-HiCache 的第一步不是推翻这套机制，而是在它之上增加 Host 和 Storage 状态。
+HiCache 的第一步不是推翻这套机制，而是在它之上补充主机内存和存储层状态。
 
-## HiCache 给 radix node 增加位置语义
+## HiCache 为 Radix 树节点补充位置状态
 
-在普通 prefix cache 中，node 更像“prefix 到 GPU indices 的索引”。在 HiCache 中，node 还要记录这段 prefix 的 KV 是否有 Host 备份、是否已经写入 Storage。
+在普通前缀缓存中，节点更像“前缀到 GPU 索引的映射”。在 HiCache 中，节点还要记录这段前缀 KV 是否有主机内存备份，以及是否已经写入存储层。
 
 核心字段可以这样理解：
 
 ```text
-value             这段 prefix 在 GPU KV pool 里的 token indices
-host_value        这段 prefix 在 Host KV pool 里的 token indices
-hash_value        这段 prefix 对应的 storage page keys
-backuped          是否已经完成 D->H 备份
-backuped_storage  是否已经完成 H->Storage 备份
-lock_ref          GPU 侧引用保护，避免异步 load/evict 时节点被删
-host_ref_counter  Host 侧引用保护，避免 storage prefetch/write 时 host slot 被回收
+value             这段前缀在 GPU KV 池中的 token 索引
+host_value        这段前缀在主机 KV 池中的 token 索引
+hash_value        这段前缀对应的存储页键
+backuped          是否已经完成 GPU 到主机内存的备份
+backuped_storage  是否已经完成主机内存到存储层的备份
+lock_ref          GPU 侧引用保护，避免异步回载或驱逐时节点被删除
+host_ref_counter  主机侧引用保护，避免存储预取或写入时主机槽位被回收
 ```
 
 因此一次匹配不再只有“命中多少 token”，而是拆成：
 
 ```text
-device hit:  已经在 GPU，可直接复用
-host hit:    GPU 没有，但 Host 有机会 load back
-storage hit: Host 没有，但 L3 storage 可能可以 prefetch
-miss:        需要重新 prefill
+GPU 命中：     已经在 GPU，可直接复用
+主机内存命中：GPU 中没有，但可以从主机内存回载
+存储层命中：  主机内存中没有，但可以尝试从 L3 预取
+未命中：      需要重新做预填充
 ```
 
-这也是 HiCache 难读的原因：它把 prefix tree 从纯索引结构变成了 cache tier 状态机。
+这也是 HiCache 难读的原因：它把前缀树从纯索引结构变成了一套多级缓存状态机。
 
-## Host pool 是真正的 L2 KV memory
+## 主机内存池是真正的 L2 KV 存储
 
-Host pool 不是 Python 字典，也不是普通 bytes cache。它是和 GPU KV pool 类似的一块结构化内存，有自己的 page size、layout、allocator 和 buffer meta。
+主机内存池不是 Python 字典，也不是普通字节缓存。它和 GPU KV 池一样，是一块结构化内存，有自己的页大小、布局、分配器和缓冲区元数据。
 
-常见 layout 包括：
+常见布局包括：
 
 ```text
 layer_first
@@ -114,17 +114,17 @@ page_first_direct
 page_head
 ```
 
-这些 layout 决定 Host KV 在内存里如何排列，也决定 storage backend 能否 zero-copy 地按 page 写入。比如 Mooncake backend 会调用 host pool 的 `get_page_buffer_meta()`，拿到每个 page 对应的 pointer 和 size，再交给 Mooncake Store 的 zero-copy batch API。
+这些布局决定主机 KV 在内存中如何排列，也决定存储后端能否按页零拷贝写入。例如，Mooncake 后端会调用主机内存池的 `get_page_buffer_meta()`，取得每个缓存页对应的指针和长度，再交给 Mooncake Store 的零拷贝批量接口。
 
-所以 Host pool 是 L2，不是临时中转变量。它承担三件事：
+所以主机内存池是正式的 L2，而不是临时中转变量。它承担三项职责：
 
-- 接收 GPU KV 的 D->H backup。
-- 作为 H->D load back 的来源。
-- 作为 L3 storage get/set 的 zero-copy buffer。
+- 接收 GPU KV 的 D->H 备份。
+- 作为从主机内存回载到设备的来源。
+- 作为 L3 存储读写使用的零拷贝缓冲区。
 
 ## HiCacheStorage 是 L3 的统一接口
 
-SGLang 没有在 radix cache 里直接调用 Mooncake API。它通过 `HiCacheStorage` 抽象 L3 backend。
+SGLang 没有在基数树缓存中直接调用 Mooncake API，而是通过 `HiCacheStorage` 抽象 L3 存储后端。
 
 `HiCacheStorage` 在 `v0.5.14` 里有两组接口：
 
@@ -140,9 +140,9 @@ v2:
   batch_set_v2(transfers)
 ```
 
-v1 面向普通 KV pool：一组 page keys 对应一组 Host KV page indices。
+v1 面向普通 KV 池：一组页键对应一组主机 KV 页索引。
 
-v2 面向 hybrid cache：除了 KV 以外，还可能有 Mamba state、SWA state、DeepSeek V4 side pools、draft KV 等额外 pool。v2 用 `PoolTransfer` 描述每个 pool 的 host/device indices、keys、命中策略和依赖关系。
+v2 面向混合缓存：除了 KV 以外，还可能有 Mamba 状态、SWA 状态、DeepSeek V4 辅助内存池和草稿模型 KV 等额外数据。v2 用 `PoolTransfer` 描述每个内存池的主机与设备索引、键、命中策略和依赖关系。
 
 ```text
 PoolTransfer
@@ -155,15 +155,15 @@ PoolTransfer
   indices_from_pool
 ```
 
-这样 HiCache 不需要知道 Mooncake、NIXL、3FS 每个 backend 的内部实现，只需要围绕 page key 和 Host pool indices 组织读写。
+这样 HiCache 不需要了解 Mooncake、NIXL、3FS 每个后端的内部实现，只需围绕页键和主机内存池索引组织读写。
 
 ## 写策略决定何时进入 L2/L3
 
 HiCache 的写入不是“生成 KV 后立刻全量写远端”。常见路径有两类。
 
-write-through 路径更主动：命中次数达到阈值，或者策略要求写穿时，node 会先走 D->H backup。之后如果启用 storage，再走 H->Storage。
+写穿路径更主动：命中次数达到阈值，或者策略要求写穿时，节点会先做 D->H 备份；如果启用了存储层，再继续写入 L3。
 
-write-back 路径更像 eviction 保护：GPU 空间不够时，先把还没有 Host 备份的 node 写到 Host，再从 GPU 驱逐。这样被驱逐的 prefix 不一定消失，只是从 L1 降到了 L2。
+回写路径更像一种淘汰保护：GPU 空间不足时，先把尚未备份的节点写入主机内存，再从 GPU 中驱逐。这样，被驱逐的前缀不会直接消失，而只是从 L1 降到 L2。
 
 核心入口在 `unified_radix_cache.py`：
 
@@ -178,34 +178,34 @@ write_backup_storage(node)
   -> HiCacheStorage.batch_set_v1/v2(...)
 ```
 
-## 读策略决定何时等 cache
+## 读策略决定何时等待缓存
 
-请求进入调度器后，HiCache 会先在本地 tree 里找 prefix。GPU 命中的部分可以直接复用；Host 命中的部分需要 load back；Storage 可能命中的部分需要 prefetch 到 Host。
+请求进入调度器后，HiCache 会先在本地树中查找前缀。GPU 命中的部分可以直接复用；主机内存命中的部分需要回载；存储层可能命中的部分需要预取到主机内存。
 
 读路径的关键是：HiCache 不是只要 L3 有数据就阻塞等待。它会考虑：
 
-- prefix 是否 page aligned
-- prefetch length 是否超过阈值
-- Host pool 是否有可用空间
-- load back 是否超过 GPU mem quota
-- 当前请求是否值得为 cache 等待
-- 额外 pool 是否也命中
+- 前缀是否按页对齐
+- 预取长度是否超过阈值
+- 主机内存池是否有可用空间
+- 回载量是否超过 GPU 内存配额
+- 当前请求是否值得等待缓存
+- 额外内存池是否也命中
 
 核心入口包括：
 
 ```text
 prefetch_from_storage(...)
-  -> allocate Host indices
+  -> 分配主机内存索引
   -> cache_controller.prefetch(...)
   -> HiCacheStorage.batch_get_v1/v2(...)
 
 load_back(...)
-  -> allocate GPU indices
+  -> 分配 GPU 索引
   -> cache_controller.load(...)
-  -> commit device indices
+  -> 提交设备索引
 ```
 
-因此 HiCache 是调度感知的缓存层，不是透明 KV store。
+因此，HiCache 是一层能够感知调度状态的缓存，而不是透明的 KV 存储。
 
 ## 和 Mooncake 的连接点
 
@@ -215,14 +215,14 @@ load_back(...)
 --hicache-storage-backend mooncake
 ```
 
-`StorageBackendFactory` 会创建 Mooncake backend。这个 backend 实现 `HiCacheStorage`，并把 SGLang 的 Host KV buffer 注册给 Mooncake Store。之后：
+`StorageBackendFactory` 会创建 Mooncake 后端。该后端实现 `HiCacheStorage`，并把 SGLang 的主机 KV 缓冲区注册给 Mooncake Store。之后：
 
 ```text
-HiCache page key
-  -> Mooncake object key
+HiCache 页键
+  -> Mooncake 对象键
 
-Host KV page pointer
-  -> Mooncake zero-copy buffer pointer
+主机 KV 页指针
+  -> Mooncake 零拷贝缓冲区指针
 
 batch_set_v1/v2
   -> batch_put_from / batch_put_from_multi_buffers
@@ -231,12 +231,12 @@ batch_get_v1/v2
   -> batch_get_into / batch_get_into_multi_buffers
 ```
 
-Mooncake 只接住 L3 这一段。prefix tree、请求调度、GPU slot 管理仍然在 SGLang。
+Mooncake 只接住 L3 这一段。前缀树、请求调度和 GPU 槽位管理仍然由 SGLang 负责。
 
-## 把 HiCache 当成 runtime 状态机
+## 把 HiCache 看作推理系统中的状态机
 
-HiCache 难读，是因为它不是一个独立 KV store，而是嵌在 SGLang runtime 里的状态机。radix node 同时保存 GPU、Host、Storage 三层位置：`value` 指向 GPU token indices，`host_value` 指向 Host pool indices，`hash_value` 指向 L3 page key。
+HiCache 难读，是因为它不是一个独立 KV 存储，而是嵌在 SGLang 推理引擎中的状态机。基数树节点同时保存 GPU、主机内存和存储三层位置：`value` 指向 GPU token 索引，`host_value` 指向主机内存池索引，`hash_value` 指向 L3 页键。
 
-这也解释了为什么 L3 backend 的读写对象是 Host pool，而不是 GPU pool。Storage 负责把 page 写入或读出 Host buffer；Host->GPU 的 load back 仍然由 HiCache 和 cache controller 处理。storage hit 只是“远端可能有数据”，不是“attention 已经能复用”。
+这也解释了为什么 L3 后端读写的是主机内存池，而不是 GPU 内存池。存储层负责把缓存页写入或读出主机缓冲区；从主机内存到 GPU 的回载仍由 HiCache 和缓存控制器处理。存储层命中只说明“远端可能有数据”，不代表“注意力计算已经能够复用”。
 
-读代码时可以沿着一个 page 走：GPU 上生成 KV，必要时 backup 到 Host，再 batch_set 到 Storage；下一次请求先查 radix tree，再 batch_exists/prefetch 到 Host，最后 load_back 到 GPU。把这条路径连起来，Mooncake backend 才不会看起来像凭空插进来的黑盒。
+阅读代码时可以沿着一个缓存页追踪：先在 GPU 上生成 KV，必要时备份到主机内存，再通过 batch_set 写入存储层；下一次请求先查询基数树，再通过 batch_exists 和预取把数据读回主机内存，最后回载到 GPU。把这条路径连起来，Mooncake 后端就不再像一个凭空插入的黑盒。

@@ -12,26 +12,26 @@ featured: false
 
 ZooKeeper 和 etcd 很容易被误用，因为它们看起来都像 KV。
 
-但它们真正提供的不是“大一点的配置表”，而是一小段带顺序、生命周期和通知能力的控制面事实。
+但它们真正提供的不是“大一点的配置表”，而是少量具有顺序、生命周期和通知机制的控制面状态。
 
 我会用四个问题判断一个系统有没有把协调服务用对：
 
 ```text
-watch 断了能不能续？
-历史 compact 了能不能重建本地状态？
-lease 过期后旧进程还能不能写外部资源？
-这里存的是控制面事实，还是数据面流量？
+监听断开后能不能续接？
+历史被压缩后能不能重建本地状态？
+租约过期后旧进程还能不能写外部资源？
+这里存的是控制面状态，还是数据面流量？
 ```
 
 ## 第一条红线：不要把协调服务当数据面
 
 ZooKeeper / etcd 适合存：
 
-- leader identity。
+- 主节点身份。
 - 服务实例。
 - 配置版本。
 - 任务领取状态。
-- worker session。
+- 工作进程会话。
 - 小规模元数据指针。
 
 不适合存：
@@ -42,11 +42,11 @@ ZooKeeper / etcd 适合存：
 - 大块二进制。
 - 消息队列式写入流。
 
-原因不是“它们比较慢”这么粗糙，而是每次写入都会进入一致性复制、落盘、revision 推进和 watch 通知。你把数据面流量塞进去，拖慢的是整个控制面。
+原因不只是“它们比较慢”，而是每次写入都会进入一致性复制、落盘、修订版本推进和监听通知。把数据面流量塞进去，拖慢的是整个控制面。
 
 协调服务应该小、稳、可解释。它的价值是给其它系统提供事实来源，不是替代业务数据库。
 
-## ZooKeeper 的强项是 session 语义
+## ZooKeeper 的强项是会话语义
 
 ZooKeeper 的 znode 树模型很直接：
 
@@ -59,18 +59,18 @@ ZooKeeper 的 znode 树模型很直接：
 
 真正有用的是节点类型：
 
-- persistent：显式删除前一直存在。
-- ephemeral：session 结束后自动删除。
-- sequential：创建时带递增序号。
-- ephemeral sequential：临时且有序。
+- 持久节点：显式删除前一直存在。
+- 临时节点：会话结束后自动删除。
+- 顺序节点：创建时带递增序号。
+- 临时顺序节点：既有会话生命周期，也带递增序号。
 
-服务注册依赖 ephemeral：进程挂了、session 断了，节点消失。锁和选主依赖 sequential：大家创建有序节点，序号最小者持有权力，其它客户端 watch 前一个节点。
+服务注册依赖临时节点：进程退出或会话断开后，节点消失。锁和选主依赖顺序节点：各方创建有序节点，序号最小者持有权力，其它客户端监听前一个节点。
 
-这里的工程边界是 session。协调层不需要知道进程“物理上是否还活着”，它只需要判断这个 session 是否还被承认。
+这里的工程边界是会话。协调层不需要知道进程“物理上是否还活着”，只需要判断这个会话是否仍被承认。
 
-## etcd 的强项是 revision 时间线
+## etcd 的强项是修订版本时间线
 
-etcd 更像 KV，但它的关键不是 key，而是 revision。
+etcd 更像 KV 存储，但它的关键不是键，而是修订版本。
 
 ```text
 rev 101: put /config/a
@@ -78,179 +78,179 @@ rev 102: put /services/x
 rev 103: delete /services/y
 ```
 
-revision 让客户端能说清楚自己看到了哪里。watch 断线后，也能从某个 revision 往后继续消费。
+修订版本让客户端能说清楚自己看到了哪里。监听断开后，也能从某个修订版本继续消费后续事件。
 
-这就是 Kubernetes controller 能工作的基础模式：
-
-```text
-list current objects at resourceVersion R
-watch from R + 1
-process ordered events
-if watch history is gone, relist
-```
-
-如果没有 revision/resourceVersion，controller 断线后只能猜自己漏没漏事件。
-
-## watch 不是 callback
-
-把 watch 当 callback，是使用 etcd/ZooKeeper 时最常见的错误之一。
-
-callback 的心智模型是：
+这就是 Kubernetes 控制器能够工作的基础模式：
 
 ```text
-changed -> notify me
+在 resourceVersion R 列出当前对象
+从 R + 1 开始监听
+按顺序处理事件
+如果监听历史已经被清理，就重新列出对象
 ```
 
-watch 的真实模型更像：
+如果没有修订版本或 `resourceVersion`，控制器断线后只能猜测自己是否遗漏了事件。
+
+## 监听机制不是普通回调
+
+把监听机制当作普通回调，是使用 etcd/ZooKeeper 时最常见的错误之一。
+
+普通回调的心智模型是：
 
 ```text
-I have processed history up to revision R.
-Please give me events after R.
-If you no longer have that history, tell me to rebuild.
+发生变化 -> 通知我
 ```
 
-所以一个可靠 watcher 必须保存进度，并处理断线。
+监听机制的真实模型更像：
+
+```text
+我已经处理到修订版本 R。
+请给我 R 之后的事件。
+如果这段历史已经不存在，请告诉我重建状态。
+```
+
+所以一个可靠的监听者必须保存进度，并处理断线。
 
 <SequenceDiagram
-  title="watch client 应该能重新找回事实"
-  actors={['Client', 'etcd', 'Local Cache']}
+  title="监听客户端应该能够重新找回事实"
+  actors={['客户端', 'etcd', '本地缓存']}
   steps={[
     {
-      from: 'Client',
+      from: '客户端',
       to: 'etcd',
-      label: 'list at revision R',
+      label: '在修订版本 R 列出对象',
       detail: '先拿当前事实和版本',
       tone: 'teal',
     },
     {
-      from: 'Client',
-      to: 'Local Cache',
-      label: 'replace local cache',
-      detail: '本地状态以 list 结果为准',
+      from: '客户端',
+      to: '本地缓存',
+      label: '替换本地缓存',
+      detail: '本地状态以列出结果为准',
       tone: 'blue',
     },
     {
-      from: 'Client',
+      from: '客户端',
       to: 'etcd',
-      label: 'watch from R + 1',
-      detail: '按 revision 消费后续事件',
+      label: '从 R + 1 开始监听',
+      detail: '按修订版本消费后续事件',
       tone: 'green',
     },
     {
       from: 'etcd',
-      to: 'Client',
-      label: 'compacted',
-      detail: '历史不在了，必须重新 list',
+      to: '客户端',
+      label: '历史已被压缩',
+      detail: '历史不在了，必须重新列出对象',
       tone: 'amber',
     },
   ]}
 />
 
-如果代码在 watch 断线后只是重连，不检查 revision 是否还存在，它的本地 cache 就可能悄悄变成旧世界。
+如果代码在监听断开后只是重连，不检查修订版本是否还存在，本地缓存就可能悄悄停留在旧状态。
 
-## compaction 是事件流的保留窗口
+## 压缩决定事件流的保留窗口
 
-etcd 不会无限保存历史 revision。compaction 会清理旧版本。
+etcd 不会无限保存历史修订版本，压缩会清理旧版本。
 
-这意味着慢 watcher 或长时间断线的 watcher 会错过窗口：
-
-```text
-client last seen: 120
-etcd compacted <= 180
-client watches from 121
-  -> compacted error
-```
-
-正确动作不是继续 retry，而是 relist。
-
-这点对 Kubernetes controller 很关键。controller 不能假设自己永远在线，也不能假设 watch 永远连续。它必须能用 list 重建本地状态，再从新的 resourceVersion 继续 watch。
-
-## lease 过期不是死亡证明
-
-lease 解决的是沉默客户端的生命周期。
+这意味着处理过慢或长时间断线的监听者会错过保留窗口：
 
 ```text
-grant lease
-put key with lease
-keepalive
-pause / partition / crash
-lease expires
-key deleted
+客户端最后处理：120
+etcd 已压缩到：180
+客户端从 121 开始监听
+  -> 返回历史已压缩错误
 ```
 
-lease 过期表示协调服务不再承认这个 holder。它不等于进程真的停止了。
+正确动作不是继续重试，而是重新列出对象。
 
-旧进程可能只是 GC pause，或者网络短暂断了。恢复后它还会继续跑。如果它手里还有旧 leader 身份，事情就危险了。
+这点对 Kubernetes 控制器很关键。控制器不能假设自己永远在线，也不能假设监听永远连续。它必须能通过重新列出对象来重建本地状态，再从新的 `resourceVersion` 继续监听。
 
-所以 lease 通常必须配合 fencing token。
+## 租约过期不是节点死亡的证明
 
-## 选主不带 fencing，只是内部正确
+租约解决的是沉默客户端的生命周期。
+
+```text
+授予租约
+携带租约写入键
+持续续租
+停顿 / 网络分区 / 崩溃
+租约过期
+键被删除
+```
+
+租约过期表示协调服务不再承认这个持有者，但不等于进程真的停止了。
+
+旧进程可能只是发生了长时间 GC 停顿，或者网络短暂断开。恢复后它还会继续运行。如果它手里仍有旧主节点身份，事情就危险了。
+
+所以租约通常必须配合隔离令牌。
+
+## 选主若没有隔离令牌，只能保证系统内部正确
 
 假设：
 
 ```text
-node-1 holds leader lease 10
-node-1 pauses
-lease 10 expires
-node-2 gets leader lease 11
-node-1 resumes
+node-1 持有主节点租约 10
+node-1 发生停顿
+租约 10 过期
+node-2 获得主节点租约 11
+node-1 恢复运行
 ```
 
-协调服务内部已经承认 node-2 是新 leader。但 node-1 进程还活着。如果它继续写外部数据库、对象存储或下游服务，而下游不检查 token，就会出现旧 leader 写入。
+协调服务内部已经承认 node-2 是新主节点，但 node-1 进程仍然存活。如果它继续写外部数据库、对象存储或下游服务，而下游不检查令牌，就会出现旧主节点写入。
 
-更稳的模式是把 epoch / revision / lease id 带到外部写入：
+更稳的模式是把世代、修订版本或租约编号带到外部写入：
 
 ```text
 write(value, fencing_token=11)
 
-external system:
-  accept only if token >= current_token
+外部系统：
+  只有 token >= current_token 时才接受写入
 ```
 
-这样旧 leader 即使恢复，也会因为 token 过期被拒绝。
+这样旧主节点即使恢复，也会因为令牌过期而被拒绝。
 
 选主不是终点。选出来的权力必须能被下游验证。
 
-## Kubernetes 用 etcd，是因为它能重建事实
+## Kubernetes 用 etcd，是因为它能重建集群状态
 
-Kubernetes 依赖 etcd，不是因为 etcd 像一个普通数据库，而是因为 API Server 和 controller 能围绕 resourceVersion 建立有序事实。
+Kubernetes 依赖 etcd，不是因为 etcd 像一个普通数据库，而是因为 API Server 和控制器能围绕 `resourceVersion` 维护有序的集群状态。
 
 大致链路是：
 
 ```text
 kubectl apply
-  -> API Server validates object
-  -> write object to etcd
-  -> controller watches change
-  -> controller reconciles actual state
+  -> API Server 校验对象
+  -> 将对象写入 etcd
+  -> 控制器监听变化
+  -> 控制器协调实际状态
 ```
 
-controller 的关键动作不是“收到事件就执行”，而是 reconcile：
+控制器的关键动作不是“收到事件就执行”，而是持续协调：
 
 ```text
-desired state from etcd
-  + observed cluster state
-  -> next action
+来自 etcd 的期望状态
+  + 观察到的集群状态
+  -> 下一步动作
 ```
 
-watch 可以断，事件可以重复，本地 cache 可以丢。只要 controller 能 relist 并重新 watch，它就能回到事实来源上。
+监听可以断开，事件可以重复，本地缓存也可以丢失。只要控制器能够重新列出对象并恢复监听，就能重新回到权威状态上。
 
 ## 我会警惕的使用方式
 
 看到这些设计，我会先打问号：
 
 - 把每个请求状态都写进 etcd。
-- watch 断线后没有保存和检查 revision。
-- compacted error 只做重试，不做 relist。
-- leader 只写一个 key，没有 fencing token。
-- lease TTL 设得很短，但进程有长 GC pause。
+- 监听断线后没有保存和检查修订版本。
+- 遇到历史已压缩错误时只重试，不重新列出对象。
+- 主节点只写一个键，没有使用隔离令牌。
+- 租约 TTL 设得很短，但进程可能发生长时间 GC 停顿。
 - 把大 JSON、二进制 blob、指标流塞进协调服务。
-- controller 本地 cache 没有重建路径。
+- 控制器的本地缓存没有重建路径。
 
 这些问题不是 API 用法小错，而是把协调服务的边界理解错了。
 
 ## 协调服务应该保持克制
 
-ZooKeeper / etcd 提供的是小规模、有顺序、可观察、带生命周期的控制面事实。
+ZooKeeper / etcd 提供的是少量、有序、可观察且带生命周期的控制面状态。
 
-watch 让变化可以被追上，revision 让断线恢复有锚点，lease 让沉默客户端可以被回收，fencing 让旧 leader 不能继续写外部资源。把这些边界用清楚，协调服务会很稳；把它当万能状态中心，它会把整个控制面一起拖下水。
+监听机制让变化可以被追上，修订版本为断线恢复提供锚点，租约让沉默客户端可以被回收，隔离令牌让旧主节点不能继续写外部资源。把这些边界用清楚，协调服务会很稳；把它当成万能状态中心，则可能拖慢整个控制面。

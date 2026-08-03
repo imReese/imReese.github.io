@@ -1,6 +1,6 @@
 ---
 title: 'Mooncake Store 状态管理：副本生命周期、租约和本地热缓存'
-description: '沿着副本状态机、元数据租约和本地热缓存令牌，说明 Mooncake Store 如何维护读写可见性并防止旧写覆盖。'
+description: '沿着副本状态机、元数据租约和本地热缓存的校验令牌，说明 Mooncake Store 如何维护读写可见性并防止旧写覆盖。'
 author: 'Reese'
 date: '2026-06-01'
 topics:
@@ -18,14 +18,14 @@ Mooncake Store 的主路径是 Put/Get，但真正容易出问题的是状态管
 这篇只看三个状态边界：
 
 ```text
-Replica lifecycle
-Metadata lease
-Local hot cache generation/token
+副本生命周期
+元数据租约
+本地热缓存的世代号或令牌
 ```
 
-## replica 生命周期
+## 副本的生命周期
 
-replica 不是一创建就可读。它有状态机：
+副本不是一创建就可读，而是要经过一套状态机：
 
 ```text
 INITIALIZED
@@ -35,25 +35,25 @@ INITIALIZED
 ```
 
 <StateDiagram
-  title="replica 状态决定读路径能不能使用这份数据"
-  caption="Transfer Engine 传输成功只是数据面结果；Store 读路径只应该相信已经提交成 COMPLETE 的 replica。"
+  title="副本状态决定读路径能不能使用这份数据"
+  caption="Transfer Engine 传输成功只是数据传输结果；Store 读路径只应使用已经提交为 COMPLETE 的副本。"
   states={[
     {
       label: 'INITIALIZED',
-      detail: 'master 分配 metadata 位置，还没有数据面写入',
+      detail: 'Master 分配元数据位置，此时尚未写入数据',
       next: 'PutStart',
       tone: 'surface',
     },
     {
       label: 'PROCESSING',
-      detail: 'client 正在写 bytes，Get 不能读取',
+      detail: 'Client 正在写入数据，Get 不能读取',
       next: 'PutEnd',
       tone: 'amber',
     },
     {
       label: 'COMPLETE',
-      detail: 'metadata 提交完成，可以进入 GetReplicaList',
-      next: 'evict/remove',
+      detail: '元数据已经提交，可以进入 GetReplicaList',
+      next: '淘汰或移除',
       tone: 'green',
     },
     {
@@ -64,13 +64,13 @@ INITIALIZED
   ]}
 />
 
-写入时，master 先为 object 分配 replica。此时 replica 只是有位置，还没有完成数据写入。client 完成数据面传输后，PutEnd 才把 replica 提交为 `COMPLETE`。
+写入时，Master 先为对象分配副本。此时副本只有位置，数据尚未写完。Client 完成数据面传输后，PutEnd 才把副本提交为 `COMPLETE`。
 
-读路径只应该使用 `COMPLETE` replica。这条规则看起来简单，但它是 Store 读正确性的核心。
+读路径只应该使用处于 `COMPLETE` 状态的副本。这条规则看起来简单，却是 Store 保证读取正确性的核心。
 
 ## PROCESSING 的意义
 
-如果没有 `PROCESSING`，PutStart 后 metadata 里立刻出现新 replica，Get 就可能读到半写入数据。
+如果没有 `PROCESSING` 状态，PutStart 后元数据中会立刻出现新副本，Get 就可能读到尚未写完的数据。
 
 `PROCESSING` 把写入拆成两步：
 
@@ -79,116 +79,116 @@ INITIALIZED
   我预留了一个位置
 
 数据面:
-  我把 bytes 写过去了
+  我把数据写过去了
 
 提交点:
-  我确认这份 replica 可读
+  我确认这份副本可读
 ```
 
-这个中间态允许 Store 处理部分失败。比如批量写入 100 个 object，其中 3 个远端传输失败，master 不应该把这 3 个 object 也标成 COMPLETE。
+这个中间状态允许 Store 处理部分失败。例如批量写入 100 个对象，其中 3 个远端传输失败，Master 就不应该把这 3 个对象也标记为 COMPLETE。
 
-## lease 的作用
+## 租约的作用
 
-master 返回 replica 列表时，会给 client 一个 lease。lease 的含义是：这份 metadata view 在一个有限时间内可使用。
+Master 返回副本列表时，会给 Client 一份租约。租约表示这份元数据视图只能在有限时间内使用。
 
-lease 不是为了提升性能才加的装饰字段。它限制了 client 复用旧 metadata 的时间。
+租约不是为了提升性能而添加的装饰字段，它限制了 Client 复用旧元数据的时间。
 
-没有 lease，client 可能在很久以前查到一个 replica，然后在 Segment unmount、replica 删除、master failover 之后继续拿旧地址读。这种 bug 难复现，但在分布式缓存里非常危险。
+没有租约，Client 可能一直沿用很早以前查到的副本地址，即使 Segment 已经卸载、副本已经删除或 Master 已经完成故障切换。这类问题很难复现，在分布式缓存里却非常危险。
 
 因此读路径应该理解成：
 
 ```text
 GetReplicaList
-  -> COMPLETE replicas + lease
-  -> client 在 lease 内执行数据面读取
-  -> lease 过期后重新查询
+  -> COMPLETE 副本和租约
+  -> Client 在租约有效期内执行数据面读取
+  -> 租约过期后重新查询
 ```
 
-## local hot cache 的边界
+## 本地热缓存的边界
 
-local hot cache 是 client 本地的加速层。它可以把热对象放在本地内存里，减少远端读取。
+本地热缓存是 Client 侧的加速层，可以把常用对象保留在本地内存中，减少远端读取。
 
-但它不能绕过 master metadata。hot cache 的正确定位是：
+但它不能绕过 Master 元数据。本地热缓存的准确定位是：
 
 ```text
-metadata correctness:
-  master + replica state + lease
+全局可读性：
+  Master + 副本状态 + 租约
 
-local acceleration:
-  hot cache
+本地加速：
+  热缓存
 ```
 
-如果一个 object 在 hot cache 里，但 master 已经认为它不可读，不能仅凭本地缓存命中就返回。hot cache 应该服务于已确认可读的数据路径。
+如果一个对象仍在本地热缓存中，但 Master 已经认为它不可读，就不能仅凭本地缓存命中直接返回。热缓存只能加速已经确认可读的数据路径。
 
-## put token 防止旧写覆盖新写
+## 写入令牌防止旧写覆盖新写
 
-hot cache 里常见的风险是异步写入乱序。
+本地热缓存里常见的风险是异步写入乱序。
 
 想象两个 put 几乎同时发生：
 
 ```text
-put A 获取 block，准备写 key=x
-put B 后来发生，也写 key=x
-put B 先完成
-put A 后完成
+Put A 获取数据块，准备写入 key=x
+Put B 随后也写入 key=x
+Put B 先完成
+Put A 后完成
 ```
 
-如果没有 token/generation 保护，A 可能把旧内容覆盖到 hot cache，导致后续读命中旧数据。
+如果没有写入令牌或版本号保护，A 可能把旧内容覆盖到热缓存中，导致后续读取命中过期数据。
 
-Mooncake 的 hot cache 会使用类似 put token 的机制：写入前先获取 token，真正放入 cache 时检查 token 是否仍然有效。这样过期写入不会覆盖新状态。
+Mooncake 的热缓存会使用类似写入令牌的机制：写入前先获取令牌，真正放入缓存时再检查它是否仍然有效。这样，过期写入就不会覆盖新状态。
 
-## eviction 与可见性
+## 缓存淘汰与可见性
 
-Store 中对象可能被 evict 或移除。对 remote cache 来说，eviction 不是简单 delete memory，还会影响 metadata 可见性。
+Store 中的对象可能被淘汰或移除。对于远端缓存，淘汰不只是释放内存，还会影响元数据可见性。
 
 应该区分：
 
 ```text
-data bytes:
+数据内容：
   某段 Segment 上的内容
 
-metadata:
-  object -> replica 的可读事实
+元数据：
+  对象 -> 副本的可读关系
 
-local cache:
-  client 本地加速副本
+本地缓存：
+  Client 侧的加速副本
 ```
 
-只有 metadata 承认的 COMPLETE replica 才是全局读路径的一部分。单纯 bytes 还在某块内存里，不代表读者可以使用。
+只有元数据承认的 COMPLETE 副本才是全局读取路径的一部分。字节仍然留在某块内存中，并不代表读取方可以使用。
 
 ## 和 HiCache 的关系
 
-SGLang HiCache 只需要知道某个 logical page 是否可用。Mooncake Store 要在内部保证这个 page 对应的 object 都满足可读条件。
+SGLang HiCache 只需要知道某个逻辑页是否可用。Mooncake Store 则要在内部保证这一页对应的所有对象都满足可读条件。
 
-例如 MHA page 对应 K/V 两个 object：
+例如，一个 MHA 页对应 K/V 两个对象：
 
 ```text
-page_k: COMPLETE + lease valid + transfer success
-page_v: COMPLETE + lease valid + transfer success
+page_k：COMPLETE + 租约有效 + 传输成功
+page_v：COMPLETE + 租约有效 + 传输成功
 ```
 
-只有两个 object 都成功，HiCache 才能把这个 logical page 当作命中。
+只有两个对象都成功，HiCache 才能把这个逻辑页视为命中。
 
-这就是为什么 Mooncake backend 要把 object 级结果折回 page 级结果。上层不应该看到半个 page 命中。
+这就是 Mooncake 后端需要把对象级结果聚合为页级结果的原因。上层不应该看到“半页命中”。
 
 ## 排障时看什么
 
-如果怀疑 Mooncake Store 读到了旧数据或 miss 异常，先按状态分层查：
+如果怀疑 Mooncake Store 读到了旧数据或出现异常未命中，可以先按状态分层排查：
 
 - PutStart 是否成功但 PutEnd 没有成功。
-- replica 是否仍处于 PROCESSING。
-- GetReplicaList 返回的 replica 是否 COMPLETE。
-- lease 是否过期。
-- local hot cache 是否命中过期内容。
-- K/V object 是否只有部分存在。
-- 如果使用的 Mooncake 包支持 `group_ids`，再看 group semantics 是否让一组 object 的管理边界一致。
+- 副本是否仍处于 PROCESSING。
+- GetReplicaList 返回的副本是否为 COMPLETE。
+- 租约是否过期。
+- 本地热缓存是否命中过期内容。
+- K/V 对象是否只有部分存在。
+- 如果使用的 Mooncake 包支持 `group_ids`，再看分组语义是否让一组对象拥有一致的管理边界。
 
-不要一上来只查 transport。transport 成功只能证明 bytes 搬过了，不能证明这份 bytes 应该被读。
+不要一上来只查传输层。传输成功只能证明数据搬过了，不能证明这份数据应该被读取。
 
 ## 排查可见性时看哪里
 
 - `PROCESSING` 和 `COMPLETE` 的差别为什么是可见性边界？
-- lease 为什么不能省？
-- hot cache 为什么不能绕过 master metadata？
-- put token 防止的是哪类乱序？
-- HiCache page 命中为什么要求多个 Store object 都成功？
+- 为什么不能省略租约？
+- 本地热缓存为什么不能绕过 Master 元数据？
+- 写入令牌防止的是哪类乱序？
+- 为什么 HiCache 缓存页命中要求多个 Store 对象都成功？

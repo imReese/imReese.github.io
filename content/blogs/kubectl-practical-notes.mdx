@@ -74,7 +74,7 @@ kubectl config view --minify
 kubectl config use-context <context-name>
 ```
 
-给当前 context 设置默认 namespace：
+为当前上下文设置默认命名空间：
 
 ```bash
 kubectl config set-context --current --namespace=<namespace>
@@ -323,7 +323,7 @@ kubectl apply -f deployment.yaml
 kubectl apply -f ./manifests/
 ```
 
-创建 namespace：
+创建命名空间：
 
 ```bash
 kubectl create namespace <namespace>
@@ -383,7 +383,7 @@ kubectl rollout history deployment/<deployment-name> -n <namespace>
 kubectl rollout undo deployment/<deployment-name> -n <namespace>
 ```
 
-回滚到指定 revision：
+回滚到指定修订版本：
 
 ```bash
 kubectl rollout undo deployment/<deployment-name> --to-revision=2 -n <namespace>
@@ -481,7 +481,7 @@ kubectl explain pod.spec.containers
 kubectl explain deployment.spec.strategy
 ```
 
-不知道 YAML 字段怎么写时，先用 `explain` 看 API schema。
+不知道 YAML 字段怎么写时，可以先用 `explain` 查看 API 结构说明。
 
 ## 临时调试 Pod
 

@@ -15,11 +15,11 @@ featured: true
 
 Mooncake Store 的 Put 不是一次 RPC。它是一段控制面和数据面协作的状态机。
 
-这篇追踪的问题是：**一个 object 从调用方传进 Store 后，什么时候只是被 master 预留，什么时候才真正对读路径可见。** 这个边界决定了 HiCache 写入 Mooncake 后能不能被后续请求当作完整 remote hit，而不是只看见一次 `PutStart` 成功。
+这篇文章追踪的问题是：**一个对象从调用方进入 Store 后，什么时候只是被 Master 预留，什么时候才真正对读取路径可见。** 这个边界决定了 HiCache 写入 Mooncake 后，能不能被后续请求视为一次完整的远端命中，而不能只看 `PutStart` 是否成功。
 
 ## 源码版本与范围
 
-本文参考 `kvcache-ai/Mooncake` 的稳定 release tag `v0.3.11.post1`（commit `e9c61075720039bcfc5fffd19f847608402be3d0`），以 Mooncake Store 的源码路径和调用链为阅读边界。
+本文参考 `kvcache-ai/Mooncake` 的稳定发布标签 `v0.3.11.post1`（提交 `e9c61075720039bcfc5fffd19f847608402be3d0`），以 Mooncake Store 的源码路径和调用链为阅读边界。
 
 核心链路：
 
@@ -43,86 +43,86 @@ mooncake-store/include/transfer_task.h
 mooncake-store/src/transfer_task.cpp
 ```
 
-本文只分析 Store Put / BatchPut 的 metadata 和 data-plane 边界；不覆盖完整 replica placement 策略、所有 transport backend，也不提供 page size 或 batch size 的 benchmark 结论。
+本文只分析 Store Put / BatchPut 的元数据和数据面边界；不覆盖完整的副本放置策略和所有传输后端，也不提供页大小或批次大小的基准测试结论。
 
 <FlowDiagram
-  title="Put path overview: metadata reserve, data write, visibility commit"
+  title="写入路径总览：预留元数据、写入数据、提交可见性"
   caption="Put 的关键不是 API 名字，而是哪一步只预留、哪一步搬数据、哪一步让 Get 能读。"
   steps={[
     {
-      label: 'Reserve',
+      label: '预留空间',
       meta: 'PutStart',
-      detail: 'master 为 object 分配 replica 位置，并把它们放进 PROCESSING 状态。',
+      detail: 'Master 为对象分配副本位置，并将其置于 PROCESSING 状态。',
       tone: 'blue',
-      items: ['object key', 'slice', 'replica descriptor'],
+      items: ['对象键', '切片', '副本描述'],
     },
     {
-      label: 'Write bytes',
+      label: '写入数据',
       meta: 'SubmitTransfers',
-      detail: 'client 把 slice 写入本地或远端 Segment，master 不经过大块 payload。',
+      detail: 'Client 把切片写入本地或远端 Segment，大块数据不经过 Master。',
       tone: 'mauve',
       items: ['TransferSubmitter', 'Segment', 'WRITE'],
     },
     {
-      label: 'Commit visibility',
+      label: '提交可见性',
       meta: 'PutEnd',
-      detail: '数据面成功后，master 才把 replica 推进到 COMPLETE。',
+      detail: '数据写入成功后，Master 才把副本推进到 COMPLETE。',
       tone: 'green',
-      items: ['COMPLETE', 'read candidate', 'BatchPutEnd'],
+      items: ['COMPLETE', '读取候选', 'BatchPutEnd'],
     },
     {
-      label: 'Fold to cache semantics',
-      meta: 'HiCache backend',
-      detail: '上层还要把多个 object 级结果折回 logical page 是否完整。',
+      label: '汇总为缓存语义',
+      meta: 'HiCache 后端',
+      detail: '上层还要把多个对象级结果聚合为逻辑页是否完整。',
       tone: 'amber',
-      items: ['K / V objects', 'side pools', 'page result'],
+      items: ['K / V 对象', '辅助内存池', '页级结果'],
     },
   ]}
 />
 
 <SequenceDiagram
   title="Mooncake Store Put 的提交点不在 PutStart，而在 PutEnd"
-  caption="PutStart 只让 master 预留 replica；数据面写完后，PutEnd 才把 replica 推成 COMPLETE。"
-  actors={['caller', 'Store client', 'master', 'TransferSubmitter', 'Segment']}
+  caption="PutStart 只让 Master 预留副本；数据写完后，PutEnd 才把副本推进到 COMPLETE。"
+  actors={['调用方', 'Store Client', 'Master', 'TransferSubmitter', 'Segment']}
   steps={[
     {
-      from: 'caller',
-      to: 'Store client',
-      label: 'Put / BatchPut(keys, slices)',
-      detail: '上层传入 object key 和本地 buffer',
+      from: '调用方',
+      to: 'Store Client',
+      label: 'Put / BatchPut（键、切片）',
+      detail: '上层传入对象键和本地缓冲区',
       tone: 'teal',
     },
     {
-      from: 'Store client',
-      to: 'master',
+      from: 'Store Client',
+      to: 'Master',
       label: 'PutStart / BatchPutStart',
-      detail: '申请 replica 位置和写入配额',
+      detail: '申请副本位置和写入配额',
       tone: 'blue',
     },
     {
-      from: 'master',
-      to: 'Store client',
-      label: 'PROCESSING replicas',
-      detail: '返回 Segment、offset、length，但还不可读',
+      from: 'Master',
+      to: 'Store Client',
+      label: 'PROCESSING 副本',
+      detail: '返回 Segment、偏移量和长度，但还不可读',
       tone: 'amber',
     },
     {
-      from: 'Store client',
+      from: 'Store Client',
       to: 'TransferSubmitter',
       label: 'SubmitTransfers',
-      detail: '把 slice + replica 翻译成数据面任务',
+      detail: '把切片和副本描述转换成传输任务',
       tone: 'mauve',
     },
     {
       from: 'TransferSubmitter',
       to: 'Segment',
-      label: 'WRITE bytes',
-      detail: 'local memcpy、Transfer Engine 或 offload backend',
+      label: 'WRITE 数据',
+      detail: '本地内存复制、Transfer Engine 或卸载后端',
       tone: 'green',
     },
     {
-      from: 'Store client',
-      to: 'master',
+      from: 'Store Client',
+      to: 'Master',
       label: 'PutEnd / BatchPutEnd',
       detail: '数据写完后提交可见性',
       tone: 'blue',
@@ -132,9 +132,9 @@ mooncake-store/src/transfer_task.cpp
 
 ## PutStart 只是开始，不是完成
 
-PutStart 的作用是让 master 为 object 分配写入位置。master 会根据 object key、slice size、replica config、tenant quota、Segment 状态和 allocation strategy 选择 replica。
+PutStart 的作用是让 Master 为对象分配写入位置。Master 会根据对象键、切片大小、副本配置、租户配额、Segment 状态和分配策略选择副本。
 
-这个阶段结束后，replica 通常处于：
+这个阶段结束后，副本通常处于：
 
 ```text
 PROCESSING
@@ -146,48 +146,48 @@ PROCESSING
 
 ## 为什么需要 PROCESSING
 
-Store 的数据面不经过 master。PutStart 之后，client 需要自己把 data slice 写到对应 replica 的 Segment。
+Store 的大块数据不经过 Master。PutStart 之后，Client 需要自己把数据切片写到对应副本所在的 Segment。
 
 这个过程可能失败：
 
-- client 本地 buffer 不可读
-- Transfer Engine 没有 register 对应内存
+- Client 本地缓冲区不可读
+- Transfer Engine 没有注册对应内存
 - 远端 Segment 打不开
-- RDMA/TCP/NVLink transport 出错
-- 只写了一部分 replica
-- client 在 PutEnd 前崩掉
+- RDMA、TCP 或 NVLink 传输出错
+- 只写入了部分副本
+- Client 在 PutEnd 前崩溃
 
-`PROCESSING` 给了系统一个中间态：metadata 已经知道有一批候选 replica，但它们还不能对读者可见。
+`PROCESSING` 为系统提供了一个中间状态：元数据中已经有一批候选副本，但它们还不能对读取方可见。
 
 ## TransferSubmitter 做数据面翻译
 
-PutStart 返回 replica 描述后，client 会把每个 slice/replica 组合转成具体数据面任务。
+PutStart 返回副本描述后，Client 会把每组切片和副本转换成具体的传输任务。
 
 大致路径：
 
 ```text
-Object slice
-  -> Replica descriptor
+对象切片
+  -> 副本描述
   -> TransferSubmitter
-  -> local memcpy / Transfer Engine WRITE / file or offload path
+  -> 本地内存复制 / Transfer Engine WRITE / 文件或卸载路径
 ```
 
-如果 replica 在本地同 endpoint，可能可以直接 memcpy。如果 replica 在远端 memory Segment，就要交给 Transfer Engine：
+如果副本位于同一节点，可能可以直接复制内存；如果副本位于远端内存 Segment，就要交给 Transfer Engine：
 
 ```text
 TransferRequest
   opcode = WRITE
-  source = local slice ptr
-  target_id = remote segment id
-  target_offset = replica offset
-  length = slice size
+  source = 本地切片地址
+  target_id = 远端 Segment ID
+  target_offset = 副本偏移量
+  length = 切片大小
 ```
 
-Store 本身不关心底层 transport 是 RDMA 还是 TCP。TransferSubmitter 只需要把 Store replica 翻译成 Transfer Engine 能执行的请求。
+Store 本身不关心底层使用 RDMA 还是 TCP。TransferSubmitter 只需要把 Store 副本描述转换成 Transfer Engine 能执行的请求。
 
 ## PutEnd 是可见性边界
 
-所有数据面写入成功以后，client 才调用 PutEnd。master 在 PutEnd 中把对应 replica 从 `PROCESSING` 推进到 `COMPLETE`。
+所有数据写入成功以后，Client 才调用 PutEnd。Master 在 PutEnd 中把对应副本从 `PROCESSING` 推进到 `COMPLETE`。
 
 从读语义上看：
 
@@ -196,17 +196,17 @@ PutStart 成功:
   说明位置已分配，不说明数据可读
 
 Transfer 成功:
-  说明字节写入完成，但 master 还没提交可见性
+  说明数据写入完成，但 Master 还没提交可见性
 
 PutEnd 成功:
-  说明 replica 可以成为 Get 候选
+  说明副本可以成为 Get 候选
 ```
 
-这个边界非常关键。它让 Store 有能力处理部分写入失败和 client 失败，而不是把半成品暴露给读者。
+这个边界非常关键。它让 Store 能够处理部分写入失败和 Client 故障，而不是把半成品暴露给读取方。
 
 ## PutRevoke 处理失败
 
-如果数据面失败，client 应该撤销这次写入。撤销路径会告诉 master：这些 PROCESSING replica 不应该转成 COMPLETE。
+如果数据传输失败，Client 应该撤销这次写入。撤销路径会告诉 Master：这些 PROCESSING 副本不应该转成 COMPLETE。
 
 简化状态机：
 
@@ -218,120 +218,120 @@ INITIALIZED
 ```
 
 <StateDiagram
-  title="Put 路径里的 replica 状态变化"
+  title="Put 路径中的副本状态变化"
   caption="PROCESSING 是隔离半成品的中间态。只有 PutEnd 成功之后，GetReplicaList 才应该把这个副本返回给读者。"
   states={[
     {
       label: 'INITIALIZED',
-      detail: 'object 或 replica 记录刚创建',
+      detail: '对象或副本记录刚创建',
       tone: 'surface',
-      next: 'PutStart allocates space',
+      next: 'PutStart 分配空间',
     },
     {
       label: 'PROCESSING',
-      detail: 'metadata 预留完成，数据面写入中',
+      detail: '元数据预留完成，数据写入中',
       tone: 'amber',
-      next: 'TransferSubmitter finishes WRITE',
+      next: 'TransferSubmitter 完成 WRITE',
     },
     {
       label: 'COMPLETE',
       detail: 'PutEnd 提交后可读',
       tone: 'green',
-      next: 'GetReplicaList candidate',
+      next: '成为 GetReplicaList 候选',
     },
     {
       label: 'REMOVED / FAILED',
-      detail: 'PutRevoke、cleanup 或传输失败',
+      detail: 'PutRevoke、清理操作或传输失败',
       tone: 'rose',
     },
   ]}
 />
 
-这也是为什么 Store 不是普通 KV map。它的每次写入都要让 metadata 状态和数据面结果保持一致。
+这也是 Store 不是普通 KV 映射的原因。每次写入都要让元数据状态和数据面结果保持一致。
 
 ## BatchPut 的价值
 
-HiCache 接 Mooncake 时会产生大量 page object。每个 logical page 可能展开成多个 Store object。如果逐个 object Put，RPC 和调度开销会很高。
+HiCache 接入 Mooncake 时会产生大量缓存页对象。每个逻辑页可能展开成多个 Store 对象。如果逐个写入对象，RPC 和调度开销会很高。
 
-BatchPut 可以把多个 object 的写入合并成一批：
+BatchPut 可以把多个对象的写入合并成一批：
 
 ```text
 BatchPutStart
-  -> 批量分配 replica
+  -> 批量分配副本
 SubmitTransfers
   -> 批量数据面传输
 BatchPutEnd
   -> 批量提交可见性
 ```
 
-这和 SGLang 的 `batch_set_v1/v2` 对得上。HiCache 以 page 为单位提交，Mooncake Store 以 object 为单位批量写入。
+这和 SGLang 的 `batch_set_v1/v2` 相对应。HiCache 以页为单位提交，Mooncake Store 以对象为单位批量写入。
 
-## group semantics 是版本相关的可选能力
+## 分组语义是与版本相关的可选能力
 
-SGLang 一个 logical page 在 Mooncake 中可能对应：
+SGLang 的一个逻辑页在 Mooncake 中可能对应：
 
 ```text
 page_key_rank_k
 page_key_rank_v
 ```
 
-SGLang 的 Mooncake backend 会探测当前安装的 Mooncake 包是否支持 `ReplicateConfig.group_ids`。如果支持，backend 可以给同一个 logical page 展开的多个 object 设置相同 group id：
+SGLang 的 Mooncake 后端会探测当前安装的 Mooncake 包是否支持 `ReplicateConfig.group_ids`。如果支持，后端可以给同一个逻辑页展开出的多个对象设置相同的分组编号：
 
 ```text
 sglang-hicache:<logical_page_key>
 ```
 
-这样 Store 看到多个 object key 时，仍然有机会知道它们属于同一个逻辑缓存单元。后续 metadata routing、lease refresh、eviction 等行为才可能按组优化。
+这样 Store 看到多个对象键时，仍然可以知道它们属于同一个逻辑缓存单元。后续元数据路由、租约续期和淘汰等行为才有机会按组优化。
 
-但这不是本文参考的 Mooncake 稳定 tag `v0.3.11.post1` 的基础字段：该版本的 `ReplicateConfig` 没有 `group_ids`。因此在这个版本边界下，HiCache 写入仍应按 object 级 batch put 和 page-level postprocess 来理解；group semantics 只能作为 adapter 面向新包版本的可选优化，而不是 Put path 正确性的前提。
+但这不是本文参考的 Mooncake 稳定标签 `v0.3.11.post1` 中的基础字段：该版本的 `ReplicateConfig` 没有 `group_ids`。因此，在这个版本边界下，HiCache 写入仍应理解为对象级批量写入和页级结果处理；分组语义只能作为适配新版本包的可选优化，而不是写入路径正确性的前提。
 
 ## 写路径的性能边界
 
 Put 路径的成本来自三部分：
 
-- metadata RPC：PutStart/PutEnd
-- data transfer：local memcpy 或 Transfer Engine
-- memory registration 和 Segment open 的前置成本
+- 元数据 RPC：PutStart/PutEnd
+- 数据传输：本地内存复制或 Transfer Engine
+- 内存注册和打开 Segment 的前置成本
 
 因此性能敏感场景通常需要重点检查：
 
-- 批量写入，而不是单 object RPC。
-- Host buffer 预注册，减少写时注册。
-- page 粒度稳定，避免大量小对象。
-- 数据面和控制面分离，master 不经过大块 payload。
+- 批量写入，而不是单对象 RPC。
+- 预先注册主机缓冲区，减少写入时的注册开销。
+- 使用稳定的页粒度，避免产生大量小对象。
+- 数据传输和控制面分离，大块数据不经过 Master。
 
-如果 page 太小，metadata 和 transfer overhead 可能压过复用收益。如果 page 太大，prefix 可复用粒度又会变粗。这里是设计取舍，不是本文给出的 benchmark 结论；真实收益仍要结合 workload、page size、batch size、protocol 和设备拓扑验证。
+如果缓存页太小，元数据和传输开销可能超过复用收益；如果缓存页太大，前缀复用粒度又会变粗。这是一项设计取舍，不是本文给出的基准测试结论；真实收益仍要结合负载、页大小、批次大小、协议和设备拓扑验证。
 
 ## 从 HiCache 视角看写入
 
-HiCache 写 Mooncake 时，真正想完成的不是“调用一次 put”，而是把一个 logical page 的所有 object 都变成可读。对 MHA 来说，K object 和 V object 必须一起成功；对 hybrid pool 来说，side state 也要进入同一组逻辑边界。
+HiCache 写入 Mooncake 时，真正要完成的不是“调用一次 put”，而是让一个逻辑页的所有对象都变得可读。对于 MHA，K 对象和 V 对象必须一起成功；对于混合内存池，辅助状态也要进入同一逻辑边界。
 
-所以写路径要按两个层次理解：Store 负责把每个 object 的 replica 从 `PROCESSING` 推到 `COMPLETE`；HiCache backend 负责把多个 object 级结果折回 page 级结果。只要其中一个 object 写失败，这个 logical page 就不能被后续请求当成完整 remote hit。
+所以写入路径要分两层理解：Store 负责把每个对象的副本从 `PROCESSING` 推进到 `COMPLETE`；HiCache 后端负责把多个对象级结果聚合为页级结果。只要其中一个对象写入失败，这个逻辑页就不能被后续请求视为完整的远端命中。
 
 ## 这条路径能证明什么
 
 <CompareCallout
-  title="Put-path evidence boundary"
-  caption="Store Put 能证明 object 可见性边界；完整 KV cache reuse 还需要上层 page 语义和读回链路闭环。"
+  title="Put 路径能说明什么"
+  caption="Store Put 能证明对象的可见性边界；完整 KV 缓存复用还需要上层页语义和读回链路闭环。"
   columns={[
     {
-      title: 'Put path can establish',
+      title: '能够确认',
       tone: 'green',
       items: [
-        'PutStart 之后 replica 只是 PROCESSING，不能当成可读副本。',
-        'TransferSubmitter 负责把 Store replica 翻译成数据面写入任务。',
+        'PutStart 之后，副本只是 PROCESSING 状态，不能当成可读副本。',
+        'TransferSubmitter 负责把 Store 副本描述转换成数据写入任务。',
         'PutEnd / BatchPutEnd 是 Store 层可读性的提交点。',
-        'BatchPut 更接近 HiCache 大量 page object 的使用粒度；group id 只能在 Mooncake 包支持时作为可选优化。',
+        'BatchPut 更接近 HiCache 大量缓存页对象的使用粒度；分组编号只能在 Mooncake 包支持时作为可选优化。',
       ],
     },
     {
-      title: 'Put path cannot establish alone',
+      title: '不能单独证明',
       tone: 'amber',
       items: [
-        '不能证明 SGLang 后续请求一定命中并复用这段 prefix。',
-        '不能证明 K/V object、side pools 和 logical page 语义全部闭环。',
-        '不能证明 Get、lease refresh、replica eviction 或 load_back 全部正常。',
-        '不能替代端到端 remote hit 验证和真实 workload benchmark。',
+        '不能证明 SGLang 的后续请求一定会命中并复用这段前缀。',
+        '不能证明 K/V 对象和辅助内存池已经能按逻辑页被完整读回并复用。',
+        '不能证明 Get、租约续期、副本淘汰或 `load_back` 回载流程全部正常。',
+        '不能替代端到端远端命中验证和真实负载下的基准测试。',
       ],
     },
   ]}
@@ -342,10 +342,10 @@ HiCache 写 Mooncake 时，真正想完成的不是“调用一次 put”，而�
 这条写路径的关键结论是：Mooncake Store 的写入正确性不靠一次“大 Put RPC”，而靠控制面和数据面的明确分工。
 
 ```text
-PutStart reserves metadata
-  -> TransferSubmitter writes bytes
-  -> PutEnd publishes readable replicas
-  -> HiCache folds object results back to logical page result
+PutStart 预留元数据
+  -> TransferSubmitter 写入数据
+  -> PutEnd 发布可读副本
+  -> HiCache 把对象级结果汇总为逻辑页结果
 ```
 
-这也是 BatchPut 的意义：它不是为了接口好看，而是为了让大量 page object 的控制面开销和状态提交更接近 HiCache 的真实使用粒度。group id 如果在安装的 Mooncake 包里可用，可以继续帮助后续 lease/eviction 等逻辑按组理解这些 object；但对上层 runtime 来说，最基本的正确性仍然是：只要一个 logical page 里的必要 object 没有全部从 `PROCESSING` 走到 `COMPLETE`，这段 prefix 就不应该被当作完整 remote hit。
+这也是 BatchPut 的意义：它不是为了让接口更好看，而是为了让大量缓存页对象的控制面开销和状态提交更接近 HiCache 的真实使用粒度。如果安装的 Mooncake 包支持分组编号，它还可以帮助后续租约和淘汰等逻辑按组理解这些对象；但对上层推理引擎来说，最基本的正确性仍然是：只要一个逻辑页中的必要对象没有全部从 `PROCESSING` 进入 `COMPLETE`，这段前缀就不应该被视为完整的远端命中。
