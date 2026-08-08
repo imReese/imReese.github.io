@@ -42,7 +42,7 @@ export function GoatCounterAnalytics() {
 
   return (
     <Script
-      src="https://gc.zgo.at/count.js"
+      src="/goatcounter-count.js"
       data-goatcounter={`${siteUrl.replace(/\/$/, "")}/count`}
       data-goatcounter-settings='{"no_onload":true}'
       strategy="afterInteractive"

@@ -34,6 +34,7 @@ test('reads GoatCounter dynamically while keeping the client read-only', () => {
     'src/components/analytics/goatcounter-analytics.tsx',
     'utf8',
   )
+  const trackerSource = readFileSync('public/goatcounter-count.js', 'utf8')
   const componentSource = readFileSync(
     'src/components/shared/HomepageViewStats.tsx',
     'utf8',
@@ -43,7 +44,10 @@ test('reads GoatCounter dynamically while keeping the client read-only', () => {
   assert.match(analyticsSource, /data-goatcounter-settings=/)
   assert.match(analyticsSource, /usePathname\(\)/)
   assert.match(analyticsSource, /goatcounter\.count/)
+  assert.match(analyticsSource, /src="\/goatcounter-count\.js"/)
   assert.match(analyticsSource, /strategy="afterInteractive"/)
+  assert.match(trackerSource, /This file is released under the ISC license/)
+  assert.match(trackerSource, /window\.goatcounter\.count/)
   assert.match(componentSource, /\/counter\/TOTAL\.json/)
   assert.match(componentSource, /NEXT_PUBLIC_GOATCOUNTER_URL/)
   assert.match(componentSource, /getGoatCounterViewCount/)
