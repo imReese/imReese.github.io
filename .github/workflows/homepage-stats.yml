@@ -17,9 +17,7 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     env:
-      PLAUSIBLE_STATS_API_KEY: ${{ secrets.PLAUSIBLE_STATS_API_KEY }}
-      PLAUSIBLE_SITE_ID: ${{ secrets.PLAUSIBLE_SITE_ID }}
-      PLAUSIBLE_API_URL: ${{ vars.PLAUSIBLE_API_URL }}
+      GOATCOUNTER_URL: ${{ vars.GOATCOUNTER_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5

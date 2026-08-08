@@ -16,7 +16,7 @@ test('reads site-wide pageviews from the existing generated stats payload', () =
         pageviews: 12345,
         visits: 2345,
         visitors: 1234,
-        source: 'plausible',
+        source: 'goatcounter',
         updatedAt: '2026-07-06T00:00:00.000Z',
       },
     }),
@@ -50,9 +50,13 @@ test('describes the shared metric as site views in both languages', () => {
   assert.equal(formatHomepageViewText(12345, 'zh'), '本站浏览 12,345 次')
 })
 
-test('keeps the existing Plausible flow site-wide and the client read-only', () => {
+test('keeps the GoatCounter flow site-wide and the client read-only', () => {
   const updaterSource = readFileSync(
     '.github/scripts/update-homepage-stats.mjs',
+    'utf8',
+  )
+  const analyticsSource = readFileSync(
+    'src/components/analytics/goatcounter-analytics.tsx',
     'utf8',
   )
   const componentSource = readFileSync(
@@ -60,10 +64,16 @@ test('keeps the existing Plausible flow site-wide and the client read-only', () 
     'utf8',
   )
 
-  assert.match(updaterSource, /metrics: \['pageviews', 'visits', 'visitors'\]/)
+  assert.match(updaterSource, /\/counter\/TOTAL\.json/)
   assert.match(updaterSource, /scope: 'site'/)
-  assert.equal(updaterSource.includes('event:page'), false)
+  assert.match(updaterSource, /source: 'goatcounter'/)
+  assert.match(updaterSource, /pageviews,/)
   assert.equal(updaterSource.includes('pageviews = 0'), false)
+  assert.match(analyticsSource, /data-goatcounter=\{/)
+  assert.match(analyticsSource, /data-goatcounter-settings=/)
+  assert.match(analyticsSource, /usePathname\(\)/)
+  assert.match(analyticsSource, /goatcounter\.count/)
+  assert.match(analyticsSource, /strategy="afterInteractive"/)
   assert.match(componentSource, /fetch\('\/stats\.json'/)
   assert.match(componentSource, /}, \[\]\)/)
   assert.match(componentSource, /import \{ Eye \} from 'lucide-react'/)

@@ -5,60 +5,45 @@ import { fileURLToPath } from 'node:url'
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const outputPath = join(repositoryRoot, 'public', 'stats.json')
 
-const apiKey = process.env.PLAUSIBLE_STATS_API_KEY
-const siteId = process.env.PLAUSIBLE_SITE_ID
-const apiUrl = process.env.PLAUSIBLE_API_URL || 'https://plausible.io'
+const siteUrl = process.env.GOATCOUNTER_URL
 
-if (!apiKey || !siteId) {
-  console.log(
-    'Skipping site stats refresh: PLAUSIBLE_STATS_API_KEY and PLAUSIBLE_SITE_ID are required.',
-  )
-  process.exit(0)
+if (!siteUrl) {
+  throw new Error('GOATCOUNTER_URL is required to refresh site stats.')
 }
 
-const response = await fetch(`${apiUrl.replace(/\/$/, '')}/api/v2/query`, {
-  method: 'POST',
+const endAt = Date.now()
+const response = await fetch(`${siteUrl.replace(/\/$/, '')}/counter/TOTAL.json`, {
   headers: {
-    Authorization: `Bearer ${apiKey}`,
-    'Content-Type': 'application/json',
+    Accept: 'application/json',
   },
-  body: JSON.stringify({
-    site_id: siteId,
-    metrics: ['pageviews', 'visits', 'visitors'],
-    date_range: 'all',
-  }),
 })
 
 if (!response.ok) {
   const errorBody = await response.text()
   throw new Error(
-    `Plausible stats request failed with ${response.status}: ${errorBody}`,
+    `GoatCounter total counter request failed with ${response.status}: ${errorBody}`,
   )
 }
 
 const payload = await response.json()
-const metrics = payload?.results?.[0]?.metrics ?? []
-const [pageviews, visits, visitors] = metrics
+const rawCount = payload?.count
+const normalizedCount =
+  typeof rawCount === 'string' ? rawCount.replaceAll(',', '') : rawCount
+const pageviews =
+  typeof normalizedCount === 'string' && /^\d+$/.test(normalizedCount)
+    ? Number(normalizedCount)
+    : normalizedCount
 
-if (
-  !Number.isInteger(pageviews) ||
-  pageviews < 0 ||
-  !Number.isInteger(visits) ||
-  visits < 0 ||
-  !Number.isInteger(visitors) ||
-  visitors < 0
-) {
-  throw new Error('Plausible stats response did not include valid metrics.')
+if (!Number.isSafeInteger(pageviews) || pageviews < 0) {
+  throw new Error('GoatCounter response did not include a valid total count.')
 }
 
 const stats = {
   homepage: {
     scope: 'site',
     pageviews,
-    visits,
-    visitors,
-    source: 'plausible',
-    updatedAt: new Date().toISOString(),
+    source: 'goatcounter',
+    updatedAt: new Date(endAt).toISOString(),
   },
 }
 
