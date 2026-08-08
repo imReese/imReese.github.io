@@ -59,6 +59,10 @@ test('keeps the GoatCounter flow site-wide and the client read-only', () => {
     'src/components/analytics/goatcounter-analytics.tsx',
     'utf8',
   )
+  const deployWorkflowSource = readFileSync(
+    '.github/workflows/deploy.yml',
+    'utf8',
+  )
   const componentSource = readFileSync(
     'src/components/shared/HomepageViewStats.tsx',
     'utf8',
@@ -74,6 +78,7 @@ test('keeps the GoatCounter flow site-wide and the client read-only', () => {
   assert.match(analyticsSource, /usePathname\(\)/)
   assert.match(analyticsSource, /goatcounter\.count/)
   assert.match(analyticsSource, /strategy="afterInteractive"/)
+  assert.match(deployWorkflowSource, /workflows: \['Snake Contrib', 'Site Stats'\]/)
   assert.match(componentSource, /fetch\('\/stats\.json'/)
   assert.match(componentSource, /}, \[\]\)/)
   assert.match(componentSource, /import \{ Eye \} from 'lucide-react'/)

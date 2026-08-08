@@ -5,7 +5,7 @@ on:
     branches: [main]
   workflow_dispatch:
   workflow_run:
-    workflows: ['Snake Contrib']
+    workflows: ['Snake Contrib', 'Site Stats']
     types: [completed]
 
 permissions:
