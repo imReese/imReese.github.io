@@ -5,39 +5,18 @@ import test from 'node:test'
 import {
   formatHomepageViewCount,
   formatHomepageViewText,
-  getHomepageViewCount,
+  getGoatCounterViewCount,
 } from '../src/lib/homepageStats.ts'
 
-test('reads site-wide pageviews from the existing generated stats payload', () => {
-  assert.equal(
-    getHomepageViewCount({
-      homepage: {
-        scope: 'site',
-        pageviews: 12345,
-        visits: 2345,
-        visitors: 1234,
-        source: 'goatcounter',
-        updatedAt: '2026-07-06T00:00:00.000Z',
-      },
-    }),
-    12345,
-  )
+test('reads GoatCounter total views from its public counter payload', () => {
+  assert.equal(getGoatCounterViewCount({ count: '12,345' }), 12345)
+  assert.equal(getGoatCounterViewCount({ count: 0 }), 0)
 })
 
-test('rejects malformed or legacy page-scoped stats without showing a false zero', () => {
-  assert.equal(
-    getHomepageViewCount({ homepage: { scope: 'site', pageviews: -1 } }),
-    null,
-  )
-  assert.equal(
-    getHomepageViewCount({ homepage: { scope: 'site', pageviews: '123' } }),
-    null,
-  )
-  assert.equal(
-    getHomepageViewCount({ homepage: { path: '/', pageviews: 123 } }),
-    null,
-  )
-  assert.equal(getHomepageViewCount({}), null)
+test('rejects malformed GoatCounter counts without showing a false zero', () => {
+  assert.equal(getGoatCounterViewCount({ count: -1 }), null)
+  assert.equal(getGoatCounterViewCount({ count: 'not-a-count' }), null)
+  assert.equal(getGoatCounterViewCount({}), null)
 })
 
 test('formats site-wide counts for English and Chinese readers', () => {
@@ -50,17 +29,9 @@ test('describes the shared metric as site views in both languages', () => {
   assert.equal(formatHomepageViewText(12345, 'zh'), '本站浏览 12,345 次')
 })
 
-test('keeps the GoatCounter flow site-wide and the client read-only', () => {
-  const updaterSource = readFileSync(
-    '.github/scripts/update-homepage-stats.mjs',
-    'utf8',
-  )
+test('reads GoatCounter dynamically while keeping the client read-only', () => {
   const analyticsSource = readFileSync(
     'src/components/analytics/goatcounter-analytics.tsx',
-    'utf8',
-  )
-  const deployWorkflowSource = readFileSync(
-    '.github/workflows/deploy.yml',
     'utf8',
   )
   const componentSource = readFileSync(
@@ -68,19 +39,14 @@ test('keeps the GoatCounter flow site-wide and the client read-only', () => {
     'utf8',
   )
 
-  assert.match(updaterSource, /\/counter\/TOTAL\.json/)
-  assert.match(updaterSource, /scope: 'site'/)
-  assert.match(updaterSource, /source: 'goatcounter'/)
-  assert.match(updaterSource, /pageviews,/)
-  assert.equal(updaterSource.includes('pageviews = 0'), false)
   assert.match(analyticsSource, /data-goatcounter=\{/)
   assert.match(analyticsSource, /data-goatcounter-settings=/)
   assert.match(analyticsSource, /usePathname\(\)/)
   assert.match(analyticsSource, /goatcounter\.count/)
   assert.match(analyticsSource, /strategy="afterInteractive"/)
-  assert.match(deployWorkflowSource, /workflows: \['Snake Contrib', 'Site Stats'\]/)
-  assert.match(componentSource, /fetch\('\/stats\.json'/)
-  assert.match(componentSource, /}, \[\]\)/)
+  assert.match(componentSource, /\/counter\/TOTAL\.json/)
+  assert.match(componentSource, /NEXT_PUBLIC_GOATCOUNTER_URL/)
+  assert.match(componentSource, /getGoatCounterViewCount/)
   assert.match(componentSource, /import \{ Eye \} from 'lucide-react'/)
   assert.match(componentSource, /<Eye/)
   assert.match(componentSource, /min-h-5/)

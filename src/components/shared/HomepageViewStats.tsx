@@ -6,7 +6,7 @@ import { Eye } from 'lucide-react'
 import { useLanguage } from '@/components/shared/LanguageProvider'
 import {
   formatHomepageViewText,
-  getHomepageViewCount,
+  getGoatCounterViewCount,
 } from '@/lib/homepageStats'
 import { cn } from '@/lib/utils'
 
@@ -17,13 +17,19 @@ type HomepageViewStatsProps = {
 export function HomepageViewStats({ className }: HomepageViewStatsProps) {
   const { locale } = useLanguage()
   const [viewCount, setViewCount] = useState<number | null>(null)
+  const siteUrl = process.env.NEXT_PUBLIC_GOATCOUNTER_URL
 
   useEffect(() => {
+    if (!siteUrl) {
+      return
+    }
+
     const controller = new AbortController()
+    const counterUrl = `${siteUrl.replace(/\/$/, '')}/counter/TOTAL.json`
 
     async function loadStats() {
       try {
-        const response = await fetch('/stats.json', {
+        const response = await fetch(counterUrl, {
           cache: 'no-store',
           signal: controller.signal,
         })
@@ -33,7 +39,7 @@ export function HomepageViewStats({ className }: HomepageViewStatsProps) {
         }
 
         const payload: unknown = await response.json()
-        setViewCount(getHomepageViewCount(payload))
+        setViewCount(getGoatCounterViewCount(payload))
       } catch (error) {
         if (!controller.signal.aborted) {
           setViewCount(null)
@@ -46,7 +52,7 @@ export function HomepageViewStats({ className }: HomepageViewStatsProps) {
     return () => {
       controller.abort()
     }
-  }, [])
+  }, [siteUrl])
 
   return (
     <div

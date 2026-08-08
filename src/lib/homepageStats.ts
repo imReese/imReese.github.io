@@ -1,33 +1,34 @@
 export type Locale = 'en' | 'zh'
 
-type HomepageStatsPayload = {
-  homepage?: {
-    scope?: unknown
-    pageviews?: unknown
-  }
+type GoatCounterPayload = {
+  count?: unknown
 }
 
-function isHomepageStatsPayload(value: unknown): value is HomepageStatsPayload {
+function isGoatCounterPayload(value: unknown): value is GoatCounterPayload {
   return typeof value === 'object' && value !== null
 }
 
-export function getHomepageViewCount(payload: unknown) {
-  if (!isHomepageStatsPayload(payload)) {
+export function getGoatCounterViewCount(payload: unknown) {
+  if (!isGoatCounterPayload(payload)) {
     return null
   }
 
-  const scope = payload.homepage?.scope
-  const pageviews = payload.homepage?.pageviews
-  if (
-    scope !== 'site' ||
-    typeof pageviews !== 'number' ||
-    !Number.isInteger(pageviews) ||
-    pageviews < 0
-  ) {
+  const rawCount = payload.count
+  let count: unknown = rawCount
+
+  if (typeof rawCount === 'string') {
+    const normalizedCount = rawCount.replace(/[,\s._'’]/gu, '')
+    if (!/^\d+$/.test(normalizedCount)) {
+      return null
+    }
+    count = Number(normalizedCount)
+  }
+
+  if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
     return null
   }
 
-  return pageviews
+  return count
 }
 
 export function formatHomepageViewCount(count: number, locale: Locale) {
