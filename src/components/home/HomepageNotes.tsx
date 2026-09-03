@@ -1,9 +1,10 @@
 'use client'
 
+import { useMemo } from 'react'
 import Link from 'next/link'
 import { ArrowRight, ChevronRight } from 'lucide-react'
 import { formatDate } from '@/lib/formatDate'
-import { type BlogType } from '@/lib/blogs'
+import { getLocalizedBlogs, type BlogType } from '@/lib/blogs'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 import { useLanguage } from '@/components/shared/LanguageProvider'
 
@@ -11,6 +12,10 @@ export function HomepageNotes({ blogs }: { blogs: BlogType[] }) {
   const { home } = useLocalizedContent()
   const { locale } = useLanguage()
   const copy = home.notes
+  const recentBlogs = useMemo(
+    () => getLocalizedBlogs(blogs, locale).slice(0, 3),
+    [blogs, locale],
+  )
 
   return (
     <section>
@@ -33,10 +38,10 @@ export function HomepageNotes({ blogs }: { blogs: BlogType[] }) {
       </div>
 
       <div className="mt-8 border-t border-border/70">
-        {blogs.length > 0 ? (
-          blogs.map((blog) => (
+        {recentBlogs.length > 0 ? (
+          recentBlogs.map((blog) => (
             <Link
-              key={blog.slug}
+              key={blog.translationKey ?? blog.slug}
               href={`/blogs/${blog.slug}/`}
               className="group grid min-w-0 gap-3 border-b border-border/70 py-6 transition sm:grid-cols-[8.5rem_minmax(0,1fr)_1.5rem] sm:gap-6"
             >
