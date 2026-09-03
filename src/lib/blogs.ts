@@ -4,7 +4,7 @@ import path from 'path'
 import matter from 'gray-matter'
 import { blogContentDir } from './contentPaths.ts'
 
-export type BlogLanguage = 'zh-CN' | 'en-US'
+export type BlogLanguage = 'zh-CN' | 'en'
 
 export type BlogType = {
   title: string
@@ -27,7 +27,7 @@ async function importBlog(blogFilename: string): Promise<BlogType> {
   )
 
   const { data } = matter(source)
-  const language: BlogLanguage = data.language === 'en-US' ? 'en-US' : 'zh-CN'
+  const language: BlogLanguage = data.language === 'en' ? 'en' : 'zh-CN'
 
   return {
     ...data,
