@@ -4,7 +4,8 @@ import { useMemo } from 'react'
 
 import { BlogsPageContent } from '@/components/blog/BlogsPageContent'
 import { useLanguage } from '@/components/shared/LanguageProvider'
-import { getLocalizedBlogs, type BlogType } from '@/lib/blogs'
+import { type BlogType } from '@/lib/blogs'
+import { getLocalizedBlogs } from '@/lib/blogTranslations'
 
 export function LocalizedBlogsPageContent({ blogs }: { blogs: BlogType[] }) {
   const { locale } = useLanguage()
