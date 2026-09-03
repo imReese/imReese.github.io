@@ -8,7 +8,7 @@ import {
   getFilteredBlogs,
   matchesSeriesGroup,
 } from '../src/lib/blogPresentation.ts'
-import type { BlogType } from '../src/lib/blogs.ts'
+import { getAllBlogs, type BlogType } from '../src/lib/blogs.ts'
 import { getLocalizedBlogs } from '../src/lib/blogTranslations.ts'
 
 const readingMap = {
@@ -71,7 +71,7 @@ test('selects one localized variant for each logical article', () => {
       ...shared,
       title: '中文标题',
       description: '中文简介',
-      slug: 'cache-runtime-boundary',
+      slug: 'cache-runtime-boundary-zh',
       language: 'zh-CN',
     },
     {
@@ -100,7 +100,22 @@ test('selects one localized variant for each logical article', () => {
   )
   assert.deepEqual(
     chinese.map((blog) => blog.slug),
-    ['cache-runtime-boundary', 'chinese-only'],
+    ['cache-runtime-boundary-zh', 'chinese-only'],
+  )
+})
+
+test('publishes translated articles with explicit language suffixes', async () => {
+  const blogs = await getAllBlogs()
+  const translated = blogs.filter(
+    (blog) => blog.translationKey === 'rethinking-sglang-hicache-runtime-boundary',
+  )
+
+  assert.deepEqual(
+    translated.map((blog) => blog.slug).sort(),
+    [
+      'rethinking-sglang-hicache-runtime-boundary-en',
+      'rethinking-sglang-hicache-runtime-boundary-zh',
+    ],
   )
 })
 
