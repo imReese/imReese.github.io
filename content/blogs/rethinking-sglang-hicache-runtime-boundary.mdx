@@ -1,6 +1,6 @@
 ---
-title: '重新思考 SGLang HiCache 的边界：从 L2 Offload 到 Cache Runtime'
-description: '从 out-of-process HiCache L2 出发，沿着 TreeCore、ReqToTokenPool、KV allocator 和 CacheAction 的现有结构，重新审视 logical cache control 与 physical memory/execution runtime 的 ownership boundary。'
+title: '重新思考 SGLang HiCache 的边界：从 L2 卸载到缓存运行时'
+description: '从 HiCache L2 跨进程拆分出发，沿着 TreeCore、ReqToTokenPool、KV 分配器和 CacheAction 的现有结构，重新审视逻辑缓存控制与物理内存执行之间的所有权边界。'
 author: 'Reese'
 date: '2026-09-03'
 language: 'zh-CN'
@@ -19,84 +19,84 @@ featured: false
 
 这篇文章记录的是一次仍在进行中的设计推演，而不是已经定稿的 SGLang 架构。
 
-起点是我在 SGLang 提出的 [#37372: Out-of-process HiCache data plane with device-memory IPC](https://github.com/sgl-project/sglang/issues/37372)。最初的问题很直接：HiCache 的 GPU ↔ Host transfer、Host KV pool 和 L3 I/O 是否可以从 scheduler process 中拆出去，由一个独立的数据面执行？
+起点是我在 SGLang 提出的 [#37372: Out-of-process HiCache data plane with device-memory IPC](https://github.com/sgl-project/sglang/issues/37372)。最初的问题很直接：能否把 HiCache 的 GPU ↔ 主机内存传输、主机 KV 池和 L3 I/O 从调度器进程中拆出去，交给独立的数据面执行？
 
-但随着 Unified Cache linker、Rust TreeCore、HiCache buffer-only mode 以及 shared-replica 相关讨论不断进入同一张图，这个问题逐渐变成了另一个更基础的问题：
+但随着 Unified Cache external linker、Rust TreeCore、HiCache `buffer_only` 模式，以及共享副本相关讨论逐渐汇到同一张架构图里，这个问题开始显露出更本质的一层：
 
-**我们真正需要拆的是 HiCache L2，还是 SGLang 中 logical cache control 与 physical cache runtime 的边界？**
+**我们真正需要拆开的，是 HiCache L2 本身，还是 SGLang 中“逻辑缓存控制”与“物理缓存运行时”之间的边界？**
 
-本文基于 2026-09-03 附近的 SGLang `main` 以及以下讨论：
+本文基于 2026-09-03 附近的 SGLang `main`，并参考以下讨论：
 
-- [#37372](https://github.com/sgl-project/sglang/issues/37372) — out-of-process HiCache data plane
+- [#37372](https://github.com/sgl-project/sglang/issues/37372) — HiCache 数据面跨进程拆分
 - [#35687](https://github.com/sgl-project/sglang/pull/35687) — Unified Cache external linker
-- [#37381](https://github.com/sgl-project/sglang/pull/37381) — external linker end-to-end integration
-- [#32710](https://github.com/sgl-project/sglang/pull/32710) — Rust TreeCore backend
-- [#35648](https://github.com/sgl-project/sglang/issues/35648) — same-GPU replicas and shared KV pool
+- [#37381](https://github.com/sgl-project/sglang/pull/37381) — external linker 端到端集成
+- [#32710](https://github.com/sgl-project/sglang/pull/32710) — Rust TreeCore 后端
+- [#35648](https://github.com/sgl-project/sglang/issues/35648) — 同 GPU 多副本与共享 KV 池
 
-下面的 `CacheRuntime`、`CacheExtentHandle`、`RuntimePlan` 等名字只是设计草案中的概念名，不代表已经被 SGLang 接受或实现。
+下面出现的 `CacheRuntime`、`CacheExtentHandle`、`RuntimePlan` 等名字只是设计草案中的概念名，不代表已经被 SGLang 接受或实现。
 
-## 最初的问题看起来只是 L1 ↔ L2 transfer
+## 最初的问题看起来只是 L1 ↔ L2 传输
 
-HiCache 今天把 KV cache 组织成三级资源：
+HiCache 今天把 KV 缓存组织成三级资源：
 
 ```text
-L1  GPU memory
-L2  Host memory
-L3  External / distributed storage
+L1  GPU 内存
+L2  主机内存
+L3  外部或分布式存储
 ```
 
-最保守的 out-of-process 方案很自然：scheduler 继续拥有 radix tree、prefix matching、locks 和 GPU allocator；独立 daemon 通过 CUDA IPC 映射 GPU KV pool，只负责 D2H/H2D、Host KV residency 和 storage I/O。
+最保守的跨进程方案很自然：调度器继续拥有基数树、前缀匹配、锁与引用语义，以及 GPU 分配器；独立守护进程通过 CUDA IPC 映射 GPU KV 池，只负责 D2H/H2D、主机 KV 驻留状态和存储 I/O。
 
 <LayerDiagram
-  title="最初的 HiCache process split"
-  caption="TreeCore 与 scheduler-visible cache semantics 留在 scheduler；daemon 只执行 lower-tier data movement。"
+  title="最初设想的 HiCache 进程拆分"
+  caption="TreeCore 与调度器可见的缓存语义仍留在调度器侧；独立进程只负责下层数据移动。"
   layers={[
     {
-      label: 'Scheduler process',
-      detail: 'logical cache semantics',
+      label: '调度器进程',
+      detail: '维护逻辑缓存语义',
       tone: 'teal',
-      items: ['UnifiedRadixCache / TreeCore', 'prefix matching', 'lock/ref', 'GPU page allocation'],
+      items: ['UnifiedRadixCache / TreeCore', '前缀匹配', '锁与引用', 'GPU 页分配'],
     },
     {
-      label: 'Device-memory IPC boundary',
-      detail: 'descriptors instead of serialized KV tensors',
+      label: '设备内存 IPC 边界',
+      detail: '传递描述符，而不是序列化 KV 张量',
       tone: 'blue',
-      items: ['page ids', 'generation', 'operation id', 'sync/completion'],
+      items: ['页标识', 'generation', 'operation id', '同步与完成状态'],
     },
     {
-      label: 'HiCache daemon',
-      detail: 'lower-tier execution',
+      label: 'HiCache 守护进程',
+      detail: '执行下层缓存操作',
       tone: 'green',
-      items: ['D2H / H2D', 'Host KV pool', 'transfer queues', 'L3 clients'],
+      items: ['D2H / H2D', '主机 KV 池', '传输队列', 'L3 客户端'],
     },
   ]}
 />
 
-这个方案的优点是 correctness surface 小：`match_prefix()`、`insert()`、`inc_lock_ref()` 这些 scheduler hot-path 操作不需要跨 IPC。
+这个方案的优点是改动面相对可控：`match_prefix()`、`insert()`、`inc_lock_ref()` 这些调度器热路径上的操作不需要跨 IPC。
 
-但它也把“HiCache daemon”假设成了一个主要围绕 L2 构建的组件。随着代码继续演进，这个假设开始显得太窄。
+但它也隐含了一个假设：新组件主要围绕 L2 构建。随着 Unified Cache 继续演进，这个假设开始显得过窄。
 
 ## External linker 让“把 L3 搬出去”不再是核心问题
 
-[#35687](https://github.com/sgl-project/sglang/pull/35687) 增加了 Unified Cache 的 external-cache linker mode。它的目标不是复刻 HiCache hierarchy，而是让 Unified Radix Cache 可以直接连接外部/global memory，同时继续拥有 allocation、insertion、component consistency 和 cache-node lifetime。
+[#35687](https://github.com/sgl-project/sglang/pull/35687) 为 Unified Cache 增加了 external linker 模式。它的目标不是复刻 HiCache 的分层结构，而是让 Unified Radix Cache 可以直接连接外部或全局内存，同时继续掌握分配、插入、多组件一致性和缓存节点生命周期。
 
-这意味着两条路径应该分开理解：
+因此需要把两条路径分开理解：
 
 ```text
-Hierarchical cache
+分层缓存
 L1 -> L2 -> L3
 
-Direct linker
-L1 <-> external/global memory
+直接连接路径
+L1 <-> 外部 / 全局内存
 ```
 
-linker 解决的是“Unified Cache 如何直接访问外部 cache resource”；#37372 更值得讨论的则变成“scheduler/cache control 与 memory execution 是否应该继续绑在一个 runtime 里”。
+external linker 解决的是“Unified Cache 如何直接访问外部缓存资源”；而 #37372 更值得讨论的问题，则变成了“调度与缓存控制是否应该继续和物理内存执行绑定在同一个运行时里”。
 
-因此我不再认为新抽象应该叫 `L2Daemon` 或者只围绕 L2 API 建模。L1 ↔ L2 可以是第一阶段最小实现，但不应该成为 architecture 的永久边界。
+因此，我不再认为新抽象应该叫 `L2Daemon`，也不应该只围绕 L2 API 建模。L1 ↔ L2 可以是第一阶段最小实现，但不应成为长期架构的固定边界。
 
-## 现有 TreeCore split 已经提供了一条 seam
+## 现有 TreeCore 拆分已经提供了一条接口边界
 
-这次重新看代码时，一个很重要的线索是 Unified Cache 已经在做类似的 ownership split。
+重新阅读当前代码时，一个重要线索是：Unified Cache 已经在进行类似的职责拆分。
 
 当前 `cache_action.py` 的开头直接写着：
 
@@ -105,41 +105,41 @@ A TreeCore emits CacheActions through the TreeCoreInterface
 to guide Controller behavior.
 ```
 
-TreeCore 管树结构、匹配、LRU、lock/ref 等逻辑，再产生 `CacheAction` 让 Python/controller 一侧执行 pool operation。Rust TreeCore 的演进也一直强调这个边界：tree side 做 policy / bookkeeping，pool side 执行 allocation/free/translation。
+TreeCore 负责树结构、匹配、LRU、锁与引用等逻辑，再产生 `CacheAction`，由 Python/controller 一侧执行内存池操作。Rust TreeCore 的演进也一直强调这个方向：树侧负责策略和状态维护，内存池侧负责实际的分配、释放与地址转换。
 
 概念上已经接近：
 
 ```text
 TreeCore
    |
-   | decision / action
+   | 决策 / 动作
    v
 UnifiedRadixCache / Controller
    |
    v
-physical pools
+物理内存池
 ```
 
-所以更自然的方向不是另起一套完全独立的 `HiCacheDaemonProtocol`，而是继续把这个 seam 往 physical runtime 的方向推。
+所以，更自然的方向不是重新设计一套完全独立的 `HiCacheDaemonProtocol`，而是继续沿着现有的 TreeCore / controller 边界，把物理内存执行进一步下沉。
 
-## ReqToTokenPool 暴露了真正困难的 ownership boundary
+## ReqToTokenPool 暴露了真正困难的所有权问题
 
-SGLang 的 `memory_pool.py` 对基础 KV memory hierarchy 有一个非常准确的描述：
+SGLang 的 `memory_pool.py` 对基础 KV 内存关系有一个很准确的描述：
 
 ```text
 ReqToTokenPool
-  request -> token locations
+  请求 -> token 位置
 
 TokenToKVPoolAllocator
-  token locations -> KV cache slots
+  token 位置 -> KV 缓存槽位
 
 KVCache
-  physical KV tensors
+  真实的 KV 张量
 ```
 
-`ReqToTokenPool` 看起来像 scheduler bookkeeping，但实际上它横跨了 control 和 execution 两侧。
+`ReqToTokenPool` 表面上像调度器侧的状态记录，但实际上横跨了控制和执行两侧。
 
-它内部的 `req_to_token` 是 device tensor：
+它内部的 `req_to_token` 是设备张量：
 
 ```python
 self.req_to_token = torch.zeros(
@@ -149,9 +149,9 @@ self.req_to_token = torch.zeros(
 )
 ```
 
-attention backend 会直接读取这张表，`ForwardBatch` 也携带 `req_pool_indices`。prefill/extend 和 decode allocation 又会直接更新这张表。例如 decode 每一步在拿到新的 KV slot 后都会把新的 physical location 写回对应 request row。
+注意力后端会直接读取这张表，`ForwardBatch` 也会携带 `req_pool_indices`。预填充、扩展阶段以及解码阶段的 KV 分配又会直接更新这张表。例如，每一步解码拿到新的 KV 槽位后，都会把新的物理位置写回对应的请求行。
 
-但同一个 `ReqToTokenPool` 又同时维护 CPU-side lifetime state：
+但同一个 `ReqToTokenPool` 又维护着 CPU 侧的生命周期状态：
 
 ```text
 free_slots
@@ -162,76 +162,76 @@ free / free_rows
 
 甚至 `alloc(reqs)` 会直接修改 `req.kv.req_pool_idx`。
 
-因此今天的对象实际上混合了三个概念：
+也就是说，今天这个对象实际上混合了三个概念：
 
 ```text
-request lifetime
+请求生命周期
 +
-request-row allocator
+请求行分配器
 +
-GPU-resident page/slot table
+GPU 上的请求到 KV 位置映射表
 ```
 
-这正是 process boundary 最容易出问题的地方。
+这正是跨进程边界最容易出问题的地方。
 
-如果 model execution 和 cache memory runtime 被拆到另一侧，那么 **物理的 `req_to_token` tensor 应该天然靠近 attention runtime**；但 request lifetime、admission policy 是否也应该跟着移动，则不能简单地一刀切。
+如果模型执行和缓存内存运行时被拆到另一侧，那么**物理的 `req_to_token` 张量天然更适合靠近注意力执行运行时**；但请求生命周期、准入策略是否也应该跟着移动，则不能简单地一刀切。
 
-这比“L2 transfer 放在哪个进程”更值得先设计清楚。
+因此，相比“L2 传输放在哪个进程”，`ReqToTokenPool` 的职责应该如何拆分，反而更值得优先设计清楚。
 
-## 一个更通用的候选边界：logical control 与 physical runtime
+## 一个更通用的候选边界：逻辑缓存控制与物理缓存运行时
 
-目前我更倾向把目标架构描述成下面这样，而不是“HiCache L2 daemon”。
+目前我更倾向把目标架构描述成下面这样，而不是“HiCache L2 守护进程”。
 
 <LayerDiagram
-  title="候选的 control / runtime split"
-  caption="上层决定 cache semantics 和 policy；下层拥有 execution-facing mapping、allocator、physical pools 与 transfer mechanism。"
+  title="候选的控制侧 / 运行时侧边界"
+  caption="上层决定缓存语义和策略；下层负责执行所需的映射、分配器、物理内存池与数据传输。"
   layers={[
     {
-      label: 'Logical Cache Control',
-      detail: 'what should happen',
+      label: '逻辑缓存控制',
+      detail: '决定应该做什么',
       tone: 'teal',
-      items: ['Scheduler', 'TreeCore', 'prefix matching', 'lock/ref semantics', 'cache policy', 'logical residency'],
+      items: ['调度器', 'TreeCore', '前缀匹配', '锁与引用语义', '缓存策略', '逻辑驻留状态'],
     },
     {
-      label: 'Runtime boundary',
-      detail: 'batch-oriented plans and completions',
+      label: '运行时边界',
+      detail: '以批次为粒度提交计划并返回完成状态',
       tone: 'blue',
-      items: ['request/cache handles', 'logical extents', 'generation', 'operation lifecycle'],
+      items: ['请求 / 缓存句柄', '逻辑区段', 'generation', '操作生命周期'],
     },
     {
-      label: 'Physical Cache Runtime',
-      detail: 'how it happens',
+      label: '物理缓存运行时',
+      detail: '决定具体如何执行',
       tone: 'green',
-      items: ['ReqToToken table', 'KV allocator', 'GPU KV pools', 'Host pools', 'CUDA streams/events', 'D2H/H2D', 'model execution'],
+      items: ['ReqToToken 表', 'KV 分配器', 'GPU KV 池', '主机内存池', 'CUDA stream / event', 'D2H / H2D', '模型执行'],
     },
   ]}
 />
 
-这里最重要的不是 class 放在哪个文件，而是谁是 authoritative owner。
+这里最重要的不是某个类最终放在哪个文件，而是谁拥有最终决定权。
 
-候选职责可以先这样划：
+候选职责可以先这样划分：
 
-| Responsibility | Control side | Runtime side |
+| 职责 | 控制侧 | 运行时侧 |
 |---|---:|---:|
-| request scheduling / admission policy | ✅ | |
-| TreeCore / prefix matching | ✅ | |
-| cache lock/ref semantics | ✅ | |
-| logical cache policy | ✅ | |
-| request/cache handle reference | ✅ | issues / validates |
-| request-row allocation mechanism | | ✅ candidate |
-| device `ReqToToken` table | | ✅ candidate |
-| `TokenToKVPoolAllocator` | | ✅ candidate |
-| physical GPU KV pools | | ✅ |
-| physical Host pools | | ✅ |
-| CUDA streams/events | | ✅ |
-| D2H/H2D kernels | | ✅ |
-| L3 execution | optional policy | optional capability |
+| 请求调度与准入策略 | ✅ | |
+| TreeCore / 前缀匹配 | ✅ | |
+| 缓存锁与引用语义 | ✅ | |
+| 逻辑缓存策略 | ✅ | |
+| 保存请求 / 缓存句柄 | ✅ | 签发 / 校验 |
+| 请求行分配机制 | | ✅ 候选 |
+| 设备侧 `ReqToToken` 表 | | ✅ 候选 |
+| `TokenToKVPoolAllocator` | | ✅ 候选 |
+| GPU KV 物理内存池 | | ✅ |
+| 主机物理内存池 | | ✅ |
+| CUDA stream / event | | ✅ |
+| D2H/H2D 执行 | | ✅ |
+| L3 执行 | 可选策略 | 可选能力 |
 
-表里的 `candidate` 很重要：这仍然是要验证的设计，而不是准备直接重构的模块清单。
+表里的“候选”很重要：这仍然是需要验证的设计方向，而不是准备直接照表重构的模块清单。
 
-## Raw physical indices 是跨 runtime 边界的泄漏
+## 裸物理索引会泄漏跨运行时的实现细节
 
-现有 TreeCore / controller seam 还有一个明显限制：`CacheAction` 可以直接携带 `torch.Tensor` physical indices。
+现有 TreeCore / controller 边界还有一个明显限制：`CacheAction` 可以直接携带 `torch.Tensor` 形式的物理索引。
 
 例如今天可以看到类似：
 
@@ -240,21 +240,21 @@ FreeDeviceKV(indices)
 FreeComponentDeviceSlot(indices)
 ```
 
-这对 in-process architecture 很高效，因为双方共享同一套 tensor 和 allocator 语义。
+这在当前进程内架构中很高效，因为双方共享同一套张量对象和分配器语义。
 
-但如果 control 与 runtime 真正跨 process，这个表示会变得不理想：
+但如果控制侧和运行时侧真正跨进程，这种表示就会带来一系列问题：
 
-- physical indices 的 lifetime 由谁保证？
-- allocator reuse 后旧 indices 如何防止 stale use？
-- 一段很长的 prefix 是否需要把大量 page index 通过 IPC 发送？
-- multi-component cache 中 FULL/SWA/Mamba 的 physical placement 是否要暴露给 control？
+- 物理索引的生命周期由谁保证？
+- 分配器回收并复用位置后，如何避免旧索引被再次使用？
+- 很长的前缀命中，是否需要把大量页索引通过 IPC 传输？
+- 在多组件缓存中，FULL、SWA、Mamba 等状态的物理布局是否都要暴露给控制侧？
 
-因此真正的 process-safe seam 可能需要 logical handle，而不是 raw index。
+因此，一个真正适合跨进程的接口边界，可能需要使用逻辑句柄，而不是裸物理索引。
 
-例如概念上：
+例如可以先把概念表示成：
 
 ```text
-TreeCore node
+TreeCore 节点
     |
     v
 CacheExtentHandle(id=42, generation=7)
@@ -267,186 +267,186 @@ Cache Runtime
     +-- Host residency: ...
 ```
 
-这里的 `CacheExtentHandle` 只是一个占位名字。关键原则是：**control side 引用 logical cache object，runtime side 解析 physical placement。**
+这里的 `CacheExtentHandle` 只是占位名字。关键原则是：**控制侧引用逻辑缓存对象，运行时侧负责解析它对应的物理位置。**
 
-这也会让 generation / restart safety 变得更自然。裸 `req_pool_idx = 37` 只说明一个位置；`RequestCacheHandle(slot=37, generation=12)` 才能区分“这一代 row 37”和已经回收重用的旧 row 37。
+这样也更容易处理 generation 和重启安全。裸的 `req_pool_idx = 37` 只表达“位置 37”；而 `RequestCacheHandle(slot=37, generation=12)` 才能区分“当前这一代的 37”与已经被回收、重新分配过的旧 37。
 
-## Prefix hit 不应该把 page table 搬过 IPC
+## 前缀命中不应该把整张页表搬过 IPC
 
 这个原则可能比具体 API 更重要。
 
-今天 `match_prefix()` 最终会得到可以供 execution 使用的 `device_indices`。如果 control 和 runtime 被拆开，而一次 128K-token prefix hit 导致 control side 产生 128K physical indices 再通过 IPC 传给 runtime，那么新的 abstraction 基本失去了意义。
+今天 `match_prefix()` 最终会得到可供执行阶段使用的 `device_indices`。如果控制侧和运行时侧被拆开，而一次 128K token 的前缀命中导致控制侧生成 128K 个物理索引，再整体通过 IPC 发送给运行时，那么新的抽象边界基本失去了意义。
 
-更合理的 conceptual path 是：
+更合理的路径应该是：
 
 ```text
-request tokens
+请求 token
     |
     v
-TreeCore prefix match
+TreeCore 前缀匹配
     |
     v
-logical extents / handles
+逻辑区段 / 句柄
     |
-    | small descriptor
+    | 小型描述符
     v
-Cache Runtime
+缓存运行时
     |
-    +-- resolve physical pages
-    +-- populate ReqToToken table
-    +-- prepare execution metadata
+    +-- 解析物理页
+    +-- 填充 ReqToToken 表
+    +-- 准备执行元数据
 ```
 
-也就是说，未来如果真的跨 process：
+也就是说，如果未来真的跨进程：
 
-**prefix matching 应该返回 logical reusable regions，而不是要求 control plane 搬运完整 physical page table。**
+**前缀匹配更适合返回“可复用的逻辑区段”，而不是要求控制侧搬运完整的物理页表。**
 
-这会是 TreeCore representation 是否需要进一步演进的分水岭。
+这会成为 TreeCore 内部表示是否需要进一步演进的分水岭。
 
-## Decode path 决定 IPC 必须按 batch，而不是按 memory operation
+## 解码路径决定 IPC 必须以批次为粒度
 
-decode 更能说明为什么不能机械地把现有 method 变成 RPC。
+解码路径最能说明，为什么不能把现有方法机械地改成 RPC。
 
 当前每一个 decode step 都需要：
 
 ```text
-allocate KV slot
--> update ReqToToken row
--> execute forward
+分配 KV 槽位
+-> 更新 ReqToToken 行
+-> 执行 forward
 ```
 
-如果把这三个动作分别做成跨进程 RPC，IPC 会直接进入每-token hot path。
+如果把这三个动作分别做成跨进程 RPC，IPC 就会直接进入逐 token 的热路径。
 
-因此一个 runtime boundary 至少应该满足：
+因此，一个合理的运行时边界至少应该满足：
 
 ```text
-Scheduler
+调度器
    |
    | ExecuteBatchPlan
    v
-Cache / GPU Runtime
+缓存 / GPU 运行时
    |
-   +-- reserve / allocate
-   +-- update ReqToToken table
-   +-- launch model
-   +-- commit runtime state
+   +-- 预留与分配
+   +-- 更新 ReqToToken 表
+   +-- 启动模型执行
+   +-- 提交运行时状态
    |
    v
 RuntimeCompletion
 ```
 
 <SequenceDiagram
-  title="Batch-oriented runtime boundary"
-  actors={['Scheduler', 'Cache Control', 'Cache Runtime', 'Model Execution']}
+  title="以批次为粒度的运行时边界"
+  actors={['调度器', '缓存控制', '缓存运行时', '模型执行']}
   steps={[
-    { from: 'Scheduler', to: 'Cache Control', label: 'build scheduling/cache intent' },
-    { from: 'Cache Control', to: 'Cache Runtime', label: 'submit batch plan + handles' },
-    { from: 'Cache Runtime', to: 'Cache Runtime', label: 'allocate + update request mapping' },
-    { from: 'Cache Runtime', to: 'Model Execution', label: 'launch forward on local runtime state' },
-    { from: 'Model Execution', to: 'Cache Runtime', label: 'execution complete' },
-    { from: 'Cache Runtime', to: 'Cache Control', label: 'completion / committed state' },
+    { from: '调度器', to: '缓存控制', label: '形成调度与缓存意图' },
+    { from: '缓存控制', to: '缓存运行时', label: '提交批次计划与句柄' },
+    { from: '缓存运行时', to: '缓存运行时', label: '分配并更新请求映射' },
+    { from: '缓存运行时', to: '模型执行', label: '基于本地运行时状态启动 forward' },
+    { from: '模型执行', to: '缓存运行时', label: '执行完成' },
+    { from: '缓存运行时', to: '缓存控制', label: '返回完成状态与已提交状态' },
   ]}
 />
 
 换句话说，目标应该是：
 
-**one scheduling/batch decision per boundary crossing，而不是 one allocation/write/free per crossing。**
+**每次跨边界传递一个调度或批次决策，而不是每次分配、写入、释放都跨一次边界。**
 
 ## L1 ↔ L2 仍然是最好的第一阶段验证面
 
-把 architecture 做得更一般，不等于第一版就要同时解决 L2、L3、shared replicas 和所有 cache component。
+把架构设计得更通用，并不意味着第一版就要同时解决 L2、L3、共享副本和所有缓存组件。
 
-恰恰相反，L1 ↔ L2 仍然可能是最合理的 prototype：
+恰恰相反，L1 ↔ L2 仍然可能是最合理的原型范围：
 
-- one scheduler
-- one GPU
-- one local runtime
+- 单调度器
+- 单 GPU
+- 单本地运行时
 - NVIDIA CUDA / Linux
-- Full attention first
-- D2H/H2D backup and restore
-- TreeCore 保持 control-local
-- 不把 prefix matching 放到 IPC 后面
-- 暂时不引入 external L3 failure modes
+- 先支持 Full Attention
+- 验证 D2H/H2D 备份与回载
+- TreeCore 保持在控制侧本地
+- 不把前缀匹配放到 IPC 后面
+- 暂时不引入外部 L3 的故障模式
 
 这可以先回答最基本的问题：
 
 ```text
-current in-process cache execution
+当前进程内的缓存执行
 vs.
-control/runtime split
+控制侧 / 运行时侧拆分
 ```
 
-真正需要测的是 TTFT、ITL、scheduler CPU time、transfer overlap、control overhead、memory overhead 和 failure behavior，而不是只证明“CUDA IPC 能映射一块内存”。
+真正需要测的是 TTFT、ITL、调度器 CPU 时间、传输重叠程度、控制开销、内存开销和故障表现，而不是只证明“CUDA IPC 能映射一块内存”。
 
-## L3、buffer-only 和 direct linker 应该是 capability，而不是重新定义 boundary
+## L3、buffer_only 和 direct linker 应该是能力扩展，而不是重新定义边界
 
-HiCache 现在不只有传统意义上的 Host L2 cache。`buffer_only` mode 可以把 Host memory 当作 GPU ↔ storage 的 transient staging，而不是长期 L2 residency。
+HiCache 现在不只有传统意义上的主机 L2 缓存。`buffer_only` 模式可以把主机内存仅作为 GPU ↔ 存储之间的临时中转区，而不是长期保存 L2 驻留数据。
 
-这进一步说明，如果 API 直接被命名成 L2 service，很快就会被现有语义卡住。
+这进一步说明，如果 API 直接被命名成 L2 service，很快就会被现有语义限制住。
 
-更通用的 runtime 可以把能力描述成 capability：
+更通用的缓存运行时可以把这些能力分别描述出来：
 
 ```text
-device <-> host transfer
-host cache residency
-host transient staging
-storage read/write execution
-external linker execution
+设备 <-> 主机内存传输
+主机缓存驻留
+主机临时中转
+存储读写执行
+external linker 执行
 ```
 
-其中 direct linker 我更倾向继续保持为 orthogonal abstraction：
+其中 direct linker 我更倾向继续保持为一条相对独立的抽象：
 
 ```text
 UnifiedCacheLinker
-  direct L1 <-> external/global memory path
+  负责 L1 <-> 外部 / 全局内存的直接路径
 
-CacheRuntime boundary
-  control <-> physical memory/execution ownership
+CacheRuntime 边界
+  负责控制侧 <-> 物理内存与执行侧的所有权拆分
 ```
 
-如果将来 linker operation 也需要在独立 GPU runtime 内执行，可以把 linker backend 挂到 runtime capability 后面，而不是今天就强行把两套设计合并。
+如果将来 linker 操作也需要在独立 GPU 运行时里执行，可以再把 linker 后端接到 `CacheRuntime` 的能力接口之后，而不是今天就强行把两套设计合并。
 
-## Shared replicas 是这个边界未来价值最明显的场景之一
+## 共享副本是这个边界未来价值最明显的场景之一
 
-[#35648](https://github.com/sgl-project/sglang/issues/35648) 讨论 same-GPU homogeneous replicas、shared KV pool 和 CUDA MPS。它指出的核心难点同样不是“CUDA IPC 能不能看到 tensor”，而是：
+[#35648](https://github.com/sgl-project/sglang/issues/35648) 讨论了同 GPU 的同构副本、共享 KV 池和 CUDA MPS。它指出的核心难点同样不是“CUDA IPC 能不能看到张量”，而是：
 
 ```text
-allocation
-publication
-reference lifetime
-eviction
-synchronization
+分配
+发布
+引用生命周期
+淘汰
+同步
 generation
-failure recovery
+故障恢复
 ```
 
-如果未来多个 scheduler 都连接一个 runtime：
+如果未来多个调度器都连接同一个运行时：
 
 ```text
 Scheduler A --\
-Scheduler B ----> Cache Runtime -> shared physical KV resources
+Scheduler B ----> Cache Runtime -> 共享物理 KV 资源
 Scheduler C --/
 ```
 
-那么 request/cache handles、generation 和 authoritative physical allocator 就会比每个 scheduler 各自维护裸 physical indices 更有扩展性。
+那么请求 / 缓存句柄、generation，以及由单一权威分配器管理物理资源，会比每个调度器各自保存裸物理索引更容易扩展。
 
-不过这不意味着第一阶段应该做 multi-scheduler TreeCore。相反，我仍然倾向先让 TreeCore 和 prefix matching 留在 control side，把 distributed cache-state-machine 的复杂度延后。
+不过，这并不意味着第一阶段就应该实现多调度器共享 TreeCore。相反，我仍然倾向先让 TreeCore 和前缀匹配留在控制侧，把分布式缓存状态机的复杂度延后。
 
-## 现在最需要回答的不是“daemon 用什么 RPC”
+## 现在最需要回答的不是“守护进程用什么 RPC”
 
-UDS、shared-memory ring、eventfd、CUDA event IPC 都可以讨论，但它们不是最先需要锁定的东西。
+UDS、共享内存环形队列、eventfd、CUDA event IPC 都可以讨论，但它们不是最先需要锁定的东西。
 
-在 transport 之前，我认为有几个更基础的 open questions：
+在讨论通信机制之前，我认为还有几个更基础的问题。
 
-### TreeCore node 最终保存什么
+### TreeCore 节点最终应该保存什么
 
-继续保存 physical indices，还是逐步变成 runtime-owned logical extent handle？
+继续保存物理索引，还是逐步改成由运行时拥有的逻辑区段句柄？
 
-这是整个设计的分水岭。如果 control side 仍然必须理解每一块 physical placement，那么我们只是把 allocator 放到了另一个进程，并没有真正分离 logical control 和 physical execution。
+这是整个设计的分水岭。如果控制侧仍然必须理解每一块缓存的物理位置，那么我们只是把分配器放到了另一个进程，并没有真正分离逻辑控制和物理执行。
 
 ### ReqToTokenPool 应该如何拆
 
-它今天同时包含 GPU table、row allocation 和 request mutation。更合理的长期形态可能是把它拆成：
+它今天同时包含 GPU 表、请求行分配和对请求对象的修改。更合理的长期形态可能是拆成：
 
 ```text
 RequestCacheHandle / RequestDirectory
@@ -454,61 +454,61 @@ RequestSlotAllocator
 DeviceReqToTokenTable
 ```
 
-但是否值得做、如何兼容 speculative decoding、beam search、SWA、Mamba、DSA 和不同 hardware backend，需要逐路径验证。
+但是否值得这样做，以及如何兼容 speculative decoding、beam search、SWA、Mamba、DSA 和不同硬件后端，都需要逐路径验证。
 
-### CUDA graph 如何保持稳定地址与低开销
+### CUDA Graph 如何保持稳定地址与低开销
 
-很多 attention / graph path 直接消费 `req_to_token` 和 allocator-backed buffers。process split 不能破坏 graph capture 所依赖的稳定 allocation、pointer 和 execution ordering。
+很多注意力和 CUDA Graph 路径会直接读取 `req_to_token` 以及由分配器管理的缓冲区。跨进程拆分不能破坏 Graph capture 所依赖的稳定地址、指针关系和执行顺序。
 
-### Multi-component state 如何成为一个原子 cache object
+### 多组件状态如何组成一个原子的缓存对象
 
-Unified Cache 已经不只有 Full KV。SWA、Mamba、DSA sidecar 等 component 可能有不同的 placement、hit policy 和 lifecycle。logical extent 不能只是假设“一串 KV page ids”。
+Unified Cache 已经不只有 Full KV。SWA、Mamba、DSA sidecar 等组件可能拥有不同的物理位置、命中策略和生命周期。因此，逻辑区段不能简单假设成“一串 KV page id”。
 
-### Failure/restart 如何 fail closed
+### 故障和重启必须拒绝陈旧状态
 
-如果 runtime restart，旧 request handle、old generation、pending transfer completion 必须不能污染新 runtime。反过来，如果 control side crash，runtime 也需要能回收 request-local leases，而不误删仍然安全的 shared cache state。
+如果运行时重启，旧请求句柄、旧 generation、尚未完成的传输结果都不能污染新的运行时。反过来，如果控制侧崩溃，运行时也需要能够回收请求私有的租约，同时不能误删仍然安全的共享缓存状态。
 
 ## 一个更稳妥的演进顺序
 
-我目前更倾向 design-first，而不是直接把现有 HiCache controller 拆成两个 process。
+我目前更倾向先把设计边界收敛清楚，而不是直接把现有 HiCache controller 拆成两个进程。
 
-可以把演进粗略理解为：
+可以把演进过程粗略理解为：
 
 ```text
-0. 先定义 ownership matrix
-   明确 TreeCore / request mapping / allocator / physical pools 谁 authoritative
+0. 先定义所有权矩阵
+   明确 TreeCore、请求映射、分配器和物理内存池分别由谁最终负责
 
-1. 先在进程内收窄 seam
-   减少 TreeCore/control 对 raw physical representation 的依赖
+1. 先在进程内收窄接口边界
+   减少 TreeCore / 控制侧对裸物理表示的依赖
 
-2. 用 L1 <-> L2 做最小 runtime prototype
-   单 scheduler / 单 GPU，验证 execution boundary 与性能
+2. 用 L1 <-> L2 做最小运行时原型
+   单调度器 / 单 GPU，验证执行边界与性能
 
-3. 再评估 request mapping / allocator 是否真正 runtime-owned
-   重点验证 forward、CUDA graph、speculative 和 hybrid cache
+3. 再评估请求映射和分配器是否真正应该由运行时持有
+   重点验证 forward、CUDA Graph、speculative decoding 和混合缓存
 
-4. 把 storage execution 作为 capability 加入
-   而不是重新定义一套 L3-specific process model
+4. 把存储执行作为可选能力加入
+   而不是再定义一套只面向 L3 的进程模型
 
-5. 最后再讨论 multi-scheduler / shared replica authority
+5. 最后再讨论多调度器 / 共享副本下的权威所有权
 ```
 
-这个顺序不是 roadmap，而是一种降低 correctness risk 的思路。
+这个顺序不是路线图，而是一种降低正确性风险的思路。
 
 ## 这次讨论真正改变了什么
 
-最初我以为问题是：
+最初我问的是：
 
-> Can HiCache L2 run out of process?
+> HiCache L2 能否独立运行在另一个进程中？
 
 现在我觉得更值得问的是：
 
-> Can SGLang separate logical cache control from the physical memory/execution runtime without putting physical cache bookkeeping or per-token IPC back onto the scheduler hot path?
+> SGLang 能否把逻辑缓存控制与物理内存执行拆开，同时又不把物理缓存簿记或逐 token IPC 重新塞回调度器热路径？
 
-如果答案是可以，那么 L2 daemon 只是这个 architecture 的第一个验证场景；L3 execution、buffer-only staging、shared replicas 甚至未来其他 cache state 都可以在同一个 ownership model 上扩展。
+如果答案是可以，那么所谓 L2 守护进程只是这套架构的第一个验证场景；L3 执行、`buffer_only` 中转、共享副本，甚至未来其他缓存状态，都可以沿着同一套所有权模型继续扩展。
 
-如果答案是否，那么我们也应该尽早知道原因：也许 `ReqToTokenPool`、attention metadata、CUDA graph 或 TreeCore physical-index semantics 本身就要求这些组件保持紧耦合。
+如果答案是否，我们也应该尽早知道原因：也许 `ReqToTokenPool`、注意力元数据、CUDA Graph，或者 TreeCore 对物理索引的依赖，本身就要求这些组件保持紧耦合。
 
-这也是我更愿意先把 boundary 画清楚，再开始实现的原因。
+这也是我更愿意先把边界画清楚，再开始实现的原因。
 
-这篇文章会随着 [#37372](https://github.com/sgl-project/sglang/issues/37372) 的设计讨论继续更新。它记录的是推理系统中一个 ownership boundary 是怎么被逐步推导出来的，而不是一份已经冻结的 RFC。
+这篇文章会随着 [#37372](https://github.com/sgl-project/sglang/issues/37372) 的设计讨论继续更新。它记录的是推理系统中一个所有权边界如何被逐步推导出来，而不是一份已经冻结的 RFC。
