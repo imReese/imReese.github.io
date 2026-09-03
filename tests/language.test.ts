@@ -20,14 +20,18 @@ test('maps navigation locale to a valid document language tag', () => {
   assert.equal(localeToHtmlLang('zh'), 'zh-CN')
 })
 
-test('keeps Chinese article content language independent from navigation locale', () => {
+test('keeps article content language independent from navigation locale', () => {
   const blogLoader = readFileSync('src/lib/blogs.ts', 'utf8')
   const blogLayout = readFileSync(
     'src/components/layout/BlogLayout.tsx',
     'utf8',
   )
 
-  assert.match(blogLoader, /language:\s*'zh-CN'/)
+  assert.match(blogLoader, /export type BlogLanguage = 'zh-CN' \| 'en'/)
+  assert.match(
+    blogLoader,
+    /data\.language === 'en' \? 'en' : 'zh-CN'/,
+  )
   assert.match(blogLayout, /<article[^>]+lang=\{blog\.language\}/)
   assert.match(blogLayout, /formatDate\(blog\.date, locale\)/)
 })
