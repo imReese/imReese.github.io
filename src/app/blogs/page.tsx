@@ -1,6 +1,6 @@
 import { type Metadata } from 'next'
 
-import { BlogsPageContent } from '@/components/blog/BlogsPageContent'
+import { LocalizedBlogsPageContent } from '@/components/blog/LocalizedBlogsPageContent'
 import { contentByLocale } from '@/config/content'
 import { getAllBlogs } from '@/lib/blogs'
 import { createPageMetadata } from '@/lib/seo'
@@ -18,5 +18,5 @@ export const metadata: Metadata = createPageMetadata({
 export default async function BlogsIndex() {
   let blogs = await getAllBlogs()
 
-  return <BlogsPageContent blogs={blogs} />
+  return <LocalizedBlogsPageContent blogs={blogs} />
 }
