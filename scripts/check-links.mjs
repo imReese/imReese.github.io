@@ -177,19 +177,30 @@ for (const file of htmlFiles) {
   if (relativeFile === 'index.html' && !html.includes('"@type":"Person"')) {
     errors.push(`${relativeFile}: missing Person JSON-LD`)
   }
-  if (
-    relativeFile.startsWith('blogs/') &&
-    relativeFile !== 'blogs/index.html' &&
-    !html.includes('"@type":"Article"')
-  ) {
+
+  const isBlogArticle =
+    relativeFile.startsWith('blogs/') && relativeFile !== 'blogs/index.html'
+  if (isBlogArticle && !html.includes('"@type":"Article"')) {
     errors.push(`${relativeFile}: missing Article JSON-LD`)
   }
-  if (
-    relativeFile.startsWith('blogs/') &&
-    relativeFile !== 'blogs/index.html' &&
-    !/<article\b[^>]*\blang="zh-CN"/.test(html)
-  ) {
-    errors.push(`${relativeFile}: Chinese article is missing lang="zh-CN"`)
+  if (isBlogArticle) {
+    const articleLanguage = html.match(
+      /<article\b[^>]*\blang=["']([^"']+)["']/i,
+    )?.[1]
+    const jsonLdLanguage = html.match(/"inLanguage":"([^"]+)"/)?.[1]
+
+    if (!articleLanguage || !['zh-CN', 'en'].includes(articleLanguage)) {
+      errors.push(
+        `${relativeFile}: expected article lang="zh-CN" or lang="en", found ${articleLanguage ?? 'none'}`,
+      )
+    }
+    if (!jsonLdLanguage) {
+      errors.push(`${relativeFile}: Article JSON-LD is missing inLanguage`)
+    } else if (articleLanguage && jsonLdLanguage !== articleLanguage) {
+      errors.push(
+        `${relativeFile}: article lang (${articleLanguage}) does not match JSON-LD inLanguage (${jsonLdLanguage})`,
+      )
+    }
   }
 
   for (const href of hrefs) {
