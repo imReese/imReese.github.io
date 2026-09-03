@@ -8,7 +8,8 @@ import {
   getFilteredBlogs,
   matchesSeriesGroup,
 } from '../src/lib/blogPresentation.ts'
-import { getLocalizedBlogs, type BlogType } from '../src/lib/blogs.ts'
+import type { BlogType } from '../src/lib/blogs.ts'
+import { getLocalizedBlogs } from '../src/lib/blogTranslations.ts'
 
 const readingMap = {
   topics: [
