@@ -18,7 +18,7 @@ export const metadata: Metadata = createPageMetadata({
 })
 
 export default async function Home() {
-  const blogList = (await getAllBlogs()).slice(0, 3)
+  const blogList = await getAllBlogs()
   const personJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Person',
