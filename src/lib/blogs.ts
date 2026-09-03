@@ -19,6 +19,7 @@ export type BlogType = {
   draft?: boolean
   language: BlogLanguage
   translationKey?: string
+  sourceSlug?: string
 }
 
 async function importBlog(blogFilename: string): Promise<BlogType> {
@@ -29,27 +30,52 @@ async function importBlog(blogFilename: string): Promise<BlogType> {
 
   const { data } = matter(source)
   const language: BlogLanguage = data.language === 'en' ? 'en' : 'zh-CN'
-  const slug = blogFilename.replace(/\.mdx$/, '')
+  const sourceSlug = blogFilename.replace(/\.mdx$/, '')
   const translationKey =
     data.translationKey ??
-    (language === 'en' && slug.endsWith('-en') ? slug.slice(0, -3) : undefined)
+    (language === 'en' && sourceSlug.endsWith('-en')
+      ? sourceSlug.slice(0, -3)
+      : undefined)
 
   return {
     ...data,
     language,
     translationKey,
-    slug,
+    sourceSlug,
+    slug: sourceSlug,
   } as BlogType
 }
 
+function applyTranslatedPublicSlugs(blogs: BlogType[]) {
+  const translatedKeys = new Set(
+    blogs
+      .filter((blog) => blog.language === 'en' && blog.translationKey)
+      .map((blog) => blog.translationKey as string),
+  )
+
+  return blogs.map((blog) => {
+    const sourceSlug = blog.sourceSlug ?? blog.slug
+
+    if (blog.language === 'zh-CN' && translatedKeys.has(sourceSlug)) {
+      return {
+        ...blog,
+        translationKey: blog.translationKey ?? sourceSlug,
+        slug: `${sourceSlug}-zh`,
+      }
+    }
+
+    return blog
+  })
+}
+
 export async function getAllBlogs() {
-  let blogFileNames = await glob('*.mdx', {
+  const blogFileNames = await glob('*.mdx', {
     cwd: blogContentDir,
   })
 
-  let blogs = await Promise.all(blogFileNames.map(importBlog))
+  const blogs = await Promise.all(blogFileNames.map(importBlog))
 
-  return getPublishedBlogs(blogs)
+  return getPublishedBlogs(applyTranslatedPublicSlugs(blogs))
 }
 
 export function getPublishedBlogs(blogs: BlogType[]) {
@@ -73,13 +99,7 @@ export function getPublishedBlogs(blogs: BlogType[]) {
 }
 
 export async function getBlogBySlug(slug: string): Promise<BlogType | null> {
-  try {
-    // 移除可能存在的 .mdx 扩展名
-    const cleanSlug = slug.replace(/\.mdx$/, '')
-    const blog = await importBlog(`${cleanSlug}.mdx`)
-    return blog.draft === true ? null : blog
-  } catch (error) {
-    console.error(`Failed to load blog with slug: ${slug}`, error)
-    return null
-  }
+  const cleanSlug = slug.replace(/\.mdx$/, '')
+  const blogs = await getAllBlogs()
+  return blogs.find((blog) => blog.slug === cleanSlug) ?? null
 }
