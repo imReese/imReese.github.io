@@ -53,7 +53,12 @@ export default async function BlogPage({ params }: Props) {
     notFound()
   }
 
-  const content = await getMDXContent(params.slug, blog.title)
+  const content = await getMDXContent(
+    blog.sourceSlug ?? blog.slug,
+    blog.title,
+    blog.translationKey,
+    blog.language,
+  )
   const articleJsonLd = createArticleJsonLd({
     title: blog.title,
     description: blog.description,
