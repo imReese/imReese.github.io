@@ -82,7 +82,7 @@ type ArticleJsonLdInput = {
   slug: string
   publishedTime: string
   author: string
-  language: 'zh-CN'
+  language: 'en' | 'zh-CN'
   topics?: string[]
 }
 
