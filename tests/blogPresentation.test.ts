@@ -8,7 +8,7 @@ import {
   getFilteredBlogs,
   matchesSeriesGroup,
 } from '../src/lib/blogPresentation.ts'
-import type { BlogType } from '../src/lib/blogs.ts'
+import { getLocalizedBlogs, type BlogType } from '../src/lib/blogs.ts'
 
 const readingMap = {
   topics: [
@@ -57,6 +57,50 @@ test('groups articles into system series without changing their URLs', () => {
   assert.equal(matchesSeriesGroup(blog, 'kv-cache-systems'), true)
   assert.equal(matchesSeriesGroup(blog, 'distributed-storage'), true)
   assert.equal(blog.slug, 'stable-slug')
+})
+
+test('selects one localized variant for each logical article', () => {
+  const shared = {
+    author: 'Reese',
+    date: '2026-09-03',
+    translationKey: 'cache-runtime-boundary',
+  }
+  const blogs: BlogType[] = [
+    {
+      ...shared,
+      title: '中文标题',
+      description: '中文简介',
+      slug: 'cache-runtime-boundary',
+      language: 'zh-CN',
+    },
+    {
+      ...shared,
+      title: 'English title',
+      description: 'English description',
+      slug: 'cache-runtime-boundary-en',
+      language: 'en',
+    },
+    {
+      title: 'Chinese-only note',
+      description: 'Fallback note',
+      author: 'Reese',
+      date: '2026-09-02',
+      slug: 'chinese-only',
+      language: 'zh-CN',
+    },
+  ]
+
+  const english = getLocalizedBlogs(blogs, 'en')
+  const chinese = getLocalizedBlogs(blogs, 'zh')
+
+  assert.deepEqual(
+    english.map((blog) => blog.slug),
+    ['cache-runtime-boundary-en', 'chinese-only'],
+  )
+  assert.deepEqual(
+    chinese.map((blog) => blog.slug),
+    ['cache-runtime-boundary', 'chinese-only'],
+  )
 })
 
 test('keeps featured articles in the default archive', () => {
