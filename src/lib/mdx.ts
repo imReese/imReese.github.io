@@ -6,6 +6,7 @@ import remarkMath from 'remark-math'
 import { mdxComponents } from '@/components/shared/MdxComponents'
 import { blogContentDir } from './contentPaths'
 import rehypeMathjaxV4 from './rehypeMathjaxV4'
+import type { BlogLanguage } from './blogs'
 
 function normalizeHeading(value: string) {
   return value
@@ -45,11 +46,33 @@ function removeDuplicateTitleHeading(source: string, title?: string) {
   return lines.join('\n')
 }
 
-export async function getMDXContent(slug: string, title?: string) {
-  const filePath = path.join(blogContentDir, `${slug}.mdx`)
-  const source = removeDuplicateTitleHeading(
-    await fs.readFile(filePath, 'utf-8'),
-    title,
+function rewriteLegacyTranslationLink(
+  source: string,
+  translationKey?: string,
+  language?: BlogLanguage,
+) {
+  if (!translationKey || language !== 'en') {
+    return source
+  }
+
+  return source.replaceAll(
+    `/blogs/${translationKey}/`,
+    `/blogs/${translationKey}-zh/`,
+  )
+}
+
+export async function getMDXContent(
+  sourceSlug: string,
+  title?: string,
+  translationKey?: string,
+  language?: BlogLanguage,
+) {
+  const filePath = path.join(blogContentDir, `${sourceSlug}.mdx`)
+  const rawSource = await fs.readFile(filePath, 'utf-8')
+  const source = rewriteLegacyTranslationLink(
+    removeDuplicateTitleHeading(rawSource, title),
+    translationKey,
+    language,
   )
 
   const { content } = await compileMDX({
