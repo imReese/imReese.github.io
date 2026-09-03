@@ -77,8 +77,7 @@ test('keeps featured articles in the default archive', () => {
     series: null,
   })
 
-  assert.equal(blogs.length, 28)
-  assert.equal(archive.length, 28)
+  assert.equal(archive.length, blogs.length)
   assert.deepEqual(
     archive.filter((blog) => blog.featured).map((blog) => blog.slug),
     blogs.filter((blog) => blog.featured).map((blog) => blog.slug),
