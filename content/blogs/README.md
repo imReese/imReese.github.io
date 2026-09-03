@@ -16,6 +16,7 @@ title: 'My post title'
 description: 'A short summary for the blog index and metadata.'
 author: 'Reese'
 date: '2026-06-30'
+language: 'zh-CN'
 category: 'engineering-deep-dive'
 series: 'Mooncake / HiCache Internals'
 featured: false
@@ -23,6 +24,8 @@ topics:
   - cloud-tooling
 ---
 ```
+
+`language` supports `zh-CN` and `en-US`. Existing posts without the field default to `zh-CN` for backward compatibility. For translated posts, keep separate slugs and link the two versions near the beginning of each article.
 
 ## Writing Standard
 
