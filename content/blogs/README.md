@@ -25,7 +25,7 @@ topics:
 ---
 ```
 
-`language` supports `zh-CN` and `en-US`. Existing posts without the field default to `zh-CN` for backward compatibility. For translated posts, keep separate slugs and link the two versions near the beginning of each article.
+`language` supports `zh-CN` and `en`. Existing posts without the field default to `zh-CN` for backward compatibility. For translated posts, keep separate slugs and link the two versions near the beginning of each article.
 
 ## Writing Standard
 
@@ -35,8 +35,8 @@ Use `category`, `series`, and `featured` to control how the blog index presents 
 engineering-deep-dive  Source-level engineering analysis; eligible for featured placement
 debugging-validation   Debugging and validation paths; eligible for featured placement
 engineering-notes      Medium-depth engineering notes
-runbooks               Tool guides and operational notes
-reading-notes          Paper or classic system reading notes
+runbooks                Tool guides and operational notes
+reading-notes           Paper or classic system reading notes
 ```
 
 Only set `featured: true` for posts with a clear thesis, source context, engineering trade-offs, evidence, and a strong takeaway.
