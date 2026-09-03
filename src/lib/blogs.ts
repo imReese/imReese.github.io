@@ -30,11 +30,16 @@ async function importBlog(blogFilename: string): Promise<BlogType> {
 
   const { data } = matter(source)
   const language: BlogLanguage = data.language === 'en' ? 'en' : 'zh-CN'
+  const slug = blogFilename.replace(/\.mdx$/, '')
+  const translationKey =
+    data.translationKey ??
+    (language === 'en' && slug.endsWith('-en') ? slug.slice(0, -3) : undefined)
 
   return {
     ...data,
     language,
-    slug: blogFilename.replace(/\.mdx$/, ''),
+    translationKey,
+    slug,
   } as BlogType
 }
 
