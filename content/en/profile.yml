@@ -1,10 +1,6 @@
 focusAreas:
-  - Inference scheduling
-  - KV cache
-  - Data movement
-  - Mooncake Transfer Engine
-  - SGLang
-  - Accelerator backends
+  - AI Inference
+  - KV Cache
 
 aboutParagraphs:
   - I currently optimize LLM inference engines, focusing on scheduling, KV cache management, cross-node data movement, and accelerator backends.
