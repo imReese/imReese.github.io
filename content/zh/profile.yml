@@ -1,10 +1,6 @@
 focusAreas:
-  - 推理调度
-  - KV Cache
-  - 数据传输
-  - Mooncake Transfer Engine
-  - SGLang
-  - 异构加速
+  - AI 推理
+  - KV Cache 管理
 
 aboutParagraphs:
   - 我现在主要负责大模型推理引擎的性能优化，关注请求调度、KV Cache 管理、跨节点数据传输和异构加速后端。
