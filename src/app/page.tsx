@@ -41,7 +41,7 @@ export default async function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(personJsonLd) }}
       />
-      <section className="pb-16 pt-10 sm:py-20 lg:pb-8 lg:pt-16">
+      <section className="pb-16 pt-10 sm:py-20 lg:py-20 xl:py-24 2xl:py-28 min-[1920px]:py-32">
         <Container>
           <ElegantIntro />
         </Container>
