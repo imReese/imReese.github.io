@@ -115,3 +115,38 @@ test('RSS response exposes the standard content type and language', () => {
   )
   assert.equal(response.headers.get('content-language'), 'zh-CN')
 })
+
+test('RSS prioritizes English version and deduplicates bilingual posts', () => {
+  const xml = createRssXml(
+    [
+      blog({
+        title: 'HiCache Boundary (EN)',
+        slug: 'hicache-boundary-en',
+        translationKey: 'hicache-boundary',
+        language: 'en',
+        date: '2026-09-01',
+      }),
+      blog({
+        title: 'HiCache 边界 (ZH)',
+        slug: 'hicache-boundary-zh',
+        translationKey: 'hicache-boundary',
+        language: 'zh-CN',
+        date: '2026-09-01',
+      }),
+      blog({
+        title: 'Another Single Post',
+        slug: 'single-post',
+        date: '2026-08-01',
+      }),
+    ],
+    author,
+  )
+  const { items } = parseItems(xml)
+
+  assert.equal(items.length, 2)
+  assert.deepEqual(
+    items.map((item) => value(item.title)),
+    ['HiCache Boundary (EN)', 'Another Single Post'],
+  )
+})
+

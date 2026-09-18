@@ -21,6 +21,20 @@ export function createRssXml(blogs: BlogType[], rssAuthor: RssAuthor) {
     ...rssAuthor,
     link: absoluteUrl('/about/'),
   }
+
+  const englishTranslationKeys = new Set(
+    publishedBlogs
+      .filter((b) => b.language === 'en' && b.translationKey)
+      .map((b) => b.translationKey as string),
+  )
+
+  const feedBlogs = publishedBlogs.filter((blog) => {
+    if (blog.translationKey && englishTranslationKeys.has(blog.translationKey)) {
+      return blog.language === 'en'
+    }
+    return true
+  })
+
   const feed = new Feed({
     title: RSS_TITLE,
     description: RSS_DESCRIPTION,
@@ -32,12 +46,12 @@ export function createRssXml(blogs: BlogType[], rssAuthor: RssAuthor) {
     image: absoluteUrl('/social-card.png'),
     favicon: absoluteUrl('/favicon.ico'),
     copyright: `All rights reserved ${rssAuthor.name}`,
-    updated: publishedBlogs[0]
-      ? publicationDate(publishedBlogs[0].date)
+    updated: feedBlogs[0]
+      ? publicationDate(feedBlogs[0].date)
       : undefined,
   })
 
-  for (const blog of publishedBlogs) {
+  for (const blog of feedBlogs) {
     const url = absoluteUrl(`/blogs/${blog.slug}/`)
 
     feed.addItem({
