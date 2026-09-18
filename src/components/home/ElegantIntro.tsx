@@ -27,8 +27,8 @@ export function ElegantIntro() {
   const headlineLines = getHeadlineLines(site.headline)
 
   return (
-    <section className="grid min-w-0 gap-10 lg:grid-cols-[0.98fr_1.02fr] lg:items-center lg:gap-14">
-      <div className="min-w-0 max-w-2xl">
+    <section className="grid min-w-0 gap-10 lg:grid-cols-2 lg:items-center lg:gap-14 xl:gap-16">
+      <div className="min-w-0">
         <h1 className="max-w-4xl break-words font-semibold text-foreground">
           {headlineLines.map((line, index) => (
             <span

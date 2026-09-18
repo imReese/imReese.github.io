@@ -9,18 +9,18 @@ export function OpenSourcePulse() {
   const { currentFocus, selectedWork } = profile
 
   return (
-    <section className="grid gap-12 lg:grid-cols-[0.82fr_1.18fr] lg:items-start lg:gap-16">
-      <div>
+    <section className="grid min-w-0 gap-12 lg:grid-cols-2 lg:items-start lg:gap-14 xl:gap-16">
+      <div className="min-w-0">
         <p className="text-sm font-semibold text-primary">
           {currentFocus.eyebrow}
         </p>
-        <h2 className="mt-3 max-w-xl text-3xl font-semibold leading-tight text-foreground sm:text-4xl">
+        <h2 className="mt-3 text-3xl font-semibold leading-tight text-foreground sm:text-4xl">
           {currentFocus.title}
         </h2>
-        <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground">
+        <p className="mt-5 text-base leading-8 text-muted-foreground">
           {currentFocus.summary}
         </p>
-        <ul className="mt-6 max-w-xl space-y-3">
+        <ul className="mt-6 space-y-3">
           {currentFocus.bullets.slice(0, 3).map((bullet) => (
             <li
               key={bullet}
@@ -50,11 +50,11 @@ export function OpenSourcePulse() {
         </div>
       </div>
 
-      <div>
+      <div className="min-w-0">
         <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
           {home.selectedWork.title}
         </h2>
-        <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
+        <p className="mt-3 text-sm leading-7 text-muted-foreground">
           {home.selectedWork.intro}
         </p>
         <div className="mt-6 border-t border-border/70">

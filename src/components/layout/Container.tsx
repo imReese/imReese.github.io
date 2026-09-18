@@ -7,7 +7,7 @@ export const ContainerOuter = forwardRef<
 >(function OuterContainer({ className, children, ...props }, ref) {
   return (
     <div ref={ref} className={clsx('w-full max-w-full overflow-x-clip sm:px-8', className)} {...props}>
-      <div className="mx-auto w-full max-w-full lg:max-w-[1600px] lg:px-8">{children}</div>
+      <div className="mx-auto w-full max-w-full lg:max-w-[1600px] min-[1920px]:max-w-[1720px] lg:px-8">{children}</div>
     </div>
   )
 })
@@ -26,7 +26,7 @@ export const ContainerInner = forwardRef<
     >
       <div
         className={clsx(
-          'mx-auto w-full max-w-2xl min-w-0 lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1440px]',
+          'mx-auto w-full max-w-2xl min-w-0 lg:max-w-6xl xl:max-w-7xl 2xl:max-w-[1440px] min-[1920px]:max-w-[1536px]',
           contentClassName,
         )}
       >

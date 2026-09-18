@@ -234,7 +234,7 @@ export function Header() {
                 <Avatar />
               </AvatarContainer>
             </div>
-            <div className="flex flex-none justify-end md:flex-1 md:justify-start">
+            <div className="flex flex-none justify-end md:flex-1 md:justify-center">
               <MobileNavigation className="pointer-events-auto md:hidden" />
               <DesktopNavigation className="pointer-events-auto hidden md:block" />
             </div>
