@@ -27,7 +27,7 @@ function MobileNavItem({
 }) {
   return (
     <li>
-      <Popover.Button as={Link} href={href} className="block py-3">
+      <Popover.Button as={Link} href={href} className="block py-3 focus:outline-none focus-visible:outline-none">
         {children}
       </Popover.Button>
     </li>
@@ -118,7 +118,7 @@ function NavItem({
         href={href}
         aria-current={isActive ? 'page' : undefined}
         className={clsx(
-          'group relative block px-3 py-2 transition-colors duration-200',
+          'group relative block px-3 py-2 transition-colors duration-200 focus:outline-none focus-visible:outline-none',
           isActive
             ? 'font-semibold text-primary'
             : 'text-muted-foreground hover:text-primary',
@@ -179,7 +179,7 @@ function AvatarContainer({
         {...props}
       />
       {showName && (
-        <Link href="/" aria-label={t('common.home')}>
+        <Link href="/" aria-label={t('common.home')} className="focus:outline-none focus-visible:outline-none">
           <div className="text-base font-semibold capitalize">{site.name}</div>
         </Link>
       )}
@@ -200,7 +200,7 @@ function Avatar({
     <Link
       href="/"
       aria-label={t('common.home')}
-      className={clsx(className, 'pointer-events-auto')}
+      className={clsx(className, 'pointer-events-auto focus:outline-none focus-visible:outline-none')}
       {...props}
     >
       <Image
