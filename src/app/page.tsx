@@ -47,13 +47,13 @@ export default async function Home() {
         </Container>
       </section>
 
-      <section className="border-t border-border/60 py-14 sm:py-16 lg:py-14">
+      <section className="border-t border-border/60 py-14 sm:py-16 lg:py-16 2xl:py-20 min-[1920px]:py-24">
         <Container>
           <OpenSourcePulse />
         </Container>
       </section>
 
-      <section className="border-t border-border/60 py-14 sm:py-16 lg:py-20">
+      <section className="border-t border-border/60 py-14 sm:py-16 lg:py-20 2xl:py-24 min-[1920px]:py-28">
         <Container>
           <HomepageNotes blogs={blogList} />
         </Container>
