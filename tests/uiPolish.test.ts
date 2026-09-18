@@ -85,7 +85,7 @@ test('defines the required semantic Catppuccin tokens for both themes', () => {
 })
 
 test('keeps the homepage editorial two-column layout without a system map', () => {
-  assert.match(homeSource, /lg:grid-cols-\[0\.82fr_1\.18fr\]/)
+  assert.match(homeSource, /lg:grid-cols-2/)
   assert.match(homeSource, /sm:grid-cols-\[2\.5rem_11rem_minmax\(0,1fr\)\]/)
   assert.equal(homeSource.includes('SystemBoundaryMap'), false)
   assert.equal(homeSource.includes('framer-motion'), false)
