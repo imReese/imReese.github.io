@@ -43,7 +43,7 @@ Scheduler、BlockManager、SequenceMetadata 等关键结构通过 deepinfer._C.e
 
 <LayerDiagram title="源码中的职责" layers={[
 { label: 'LLM / entrypoint', detail: 'tokenize、请求参数、step 循环、输出 decode', tone: 'blue' },
-{ label: 'LLMEngine', detail: '调度调用、step 生命周期、输出处理、资源释放与统计', tone: 'violet' },
+{ label: 'LLMEngine', detail: '调度调用、step 生命周期、输出处理、资源释放与统计', tone: 'mauve' },
 { label: '原生 Scheduler / BlockManager', detail: '序列选择、调度输出、块与状态槽位生命周期', tone: 'amber' },
 { label: 'Worker / WorkerBase', detail: '设备进程、分布式初始化、模型与缓存初始化', tone: 'teal' },
 { label: 'ModelRunner', detail: '输入元数据、模型前向、CUDA Graph、采样相关处理', tone: 'rose' },

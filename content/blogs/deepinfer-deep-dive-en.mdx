@@ -50,7 +50,7 @@ Scheduler, BlockManager, and SequenceMetadata are exposed through deepinfer._C.e
 
 <LayerDiagram title="Source-level responsibilities" layers={[
 { label: 'LLM / entrypoint', detail: 'Tokenization, request parameters, step loop, output decode', tone: 'blue' },
-{ label: 'LLMEngine', detail: 'Step lifecycle, Scheduler calls, output handling, resource release and statistics', tone: 'violet' },
+{ label: 'LLMEngine', detail: 'Step lifecycle, Scheduler calls, output handling, resource release and statistics', tone: 'mauve' },
 { label: 'Native Scheduler / BlockManager', detail: 'Sequence selection, scheduling outputs, block and state-slot lifecycle', tone: 'amber' },
 { label: 'Worker / WorkerBase', detail: 'Device process, distributed setup, model and cache initialization', tone: 'teal' },
 { label: 'ModelRunner', detail: 'Input metadata, model forward, CUDA Graph, sampling-related work', tone: 'rose' },
