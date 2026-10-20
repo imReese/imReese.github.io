@@ -1,0 +1,151 @@
+---
+title: 'DeepInfer 深度解读：调度、执行与模型状态的源码路径'
+description: '沿 LLMEngine.step、Worker.execute_model_step 和 CacheEngine，分析 DeepInfer 的调度循环、ZOS、KV/状态布局与 SWA replay。'
+author: 'Reese'
+date: '2026-10-20'
+language: 'zh-CN'
+topics:
+  - llm-serving
+  - deepinfer
+  - deepseek-v4
+  - kv-cache
+  - inference-scheduling
+  - speculative-decoding
+category: 'engineering-deep-dive'
+series: 'LLM Serving Internals'
+featured: true
+---
+
+> English version: [DeepInfer Deep Dive: Scheduling, Execution, and Model State in Source Code](/blogs/deepinfer-deep-dive-en/)
+
+本文只讨论 DeepInfer，依据 [DeepInfer 公开源码](https://github.com/deepseek-ai/DeepInfer) 与 DeepSeek 的[《DeepSeek V4.1 Flash 大规模推理部署实践》](https://zhuanlan.zhihu.com/p/2095560295930508953)。源码链接指向持续变化的 main 分支。下文区分源码可确认的实现与部署文章描述的生产架构，不把二者混为一谈。
+
+DeepInfer README 明确说明：公开版本聚焦离线推理核心能力；完整 KV Cache 系统、VE/Prefill/Decode disaggregation，以及跨 DP 副本的 Prefill/Decode 负载均衡不属于当前开源交付。因此，部署文章中的生产组件不能都直接映射成开源仓库中的类。
+
+## 1. 从 LLM.generate 到单步执行
+
+<SequenceDiagram title="DeepInfer 的单步控制路径" actors={['LLM.generate', 'LLMEngine.step', 'C++ Scheduler', 'Worker', 'ModelRunner / Device']} steps={[
+{ from: 'LLM.generate', to: 'LLMEngine.step', label: 'token IDs + sampling params' },
+{ from: 'LLMEngine.step', to: 'C++ Scheduler', label: 'schedule(sequence_metadata_pool)' },
+{ from: 'C++ Scheduler', to: 'LLMEngine.step', label: 'seq metadata + SchedulerOutputs' },
+{ from: 'LLMEngine.step', to: 'Worker', label: 'execute_model_step(...)' },
+{ from: 'Worker', to: 'ModelRunner / Device', label: 'execute_main_model → execute_sample' },
+{ from: 'Worker', to: 'LLMEngine.step', label: 'step outputs' },
+]}/>
+
+[entrypoints/llm.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/entrypoints/llm.py) 的 LLM.generate() 逐个调用 _add_request()。如果调用方没有提供 prompt_token_ids，_add_request() 在请求进入引擎前调用 tokenizer.encode(prompt)；输出侧的 _run_engine() 收集 RequestOutput，再按需调用 tokenizer.decode()。所以 tokenize 不在 GPU forward 中，也不是 Scheduler 每轮执行的工作。
+
+调度循环在 [engine/llm_engine.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/engine/llm_engine.py) 的 step()。它先调用 self.scheduler.schedule(self.sequence_metadata_pool)，得到 seq_metadata_list 和 SchedulerOutputs。若调度器要求克隆或清零状态/块，Engine 会调用 Worker 的 clone_and_zero_states_and_blocks_on_default_stream()，并通过 DeferredRelease 延迟解除资源 pin。随后执行 post_schedule()、处理 Prompt chunk 的结构化输出状态、多模态 fetch 和必要的状态复制，最后进入 _execute_model_async_step()，通过 _run_workers("execute_model_step", ...) 驱动设备执行。
+
+Scheduler、BlockManager、SequenceMetadata 等关键结构通过 deepinfer._C.engine 暴露。Python 层能看到控制流程和协调责任，但调度算法并不都在 Python 文件里。
+
+## 2. Engine、Scheduler、Worker、ModelRunner 的责任边界
+
+<LayerDiagram title="源码中的职责" layers={[
+{ label: 'LLM / entrypoint', detail: 'tokenize、请求参数、step 循环、输出 decode', tone: 'blue' },
+{ label: 'LLMEngine', detail: '调度调用、step 生命周期、输出处理、资源释放与统计', tone: 'violet' },
+{ label: '原生 Scheduler / BlockManager', detail: '序列选择、调度输出、块与状态槽位生命周期', tone: 'amber' },
+{ label: 'Worker / WorkerBase', detail: '设备进程、分布式初始化、模型与缓存初始化', tone: 'teal' },
+{ label: 'ModelRunner', detail: '输入元数据、模型前向、CUDA Graph、采样相关处理', tone: 'rose' },
+]}/>
+
+- **LLMEngine** 是 step 级控制器，协调 Scheduler、Worker、输出处理和资源生命周期。
+- **Scheduler** 决定当前执行步处理哪些序列。SchedulerOutputs 包含本轮序列、token 数、Prompt/Decode 信息及状态操作请求。
+- **WorkerBase** 创建 ModelRunner，初始化设备和分布式环境，加载模型并初始化缓存。
+- **Worker** 驱动每一步的 forward、post-process 和 sample。
+- **ModelRunner** 执行本地模型计算，不负责生产集群的请求路由。
+
+[worker/base.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/base.py) 的注释说明每个 Worker 关联一张 GPU，分布式时每个 Worker 持有模型的一个分片。常见 TP 部署可近似理解为每个 GPU rank 一个 Worker/ModelRunner 上下文，但不能推广成所有部署模式的硬性规则。
+
+初始化顺序决定 KV 容量：LLMEngine 先创建 Worker 并加载模型，再调用 _init_cache()。Worker 的 profile_num_available_blocks() 根据当前显存使用、非 PyTorch 分配、state buffer 预留和 gpu_memory_utilization 计算可用块；Engine 汇总多个 Worker 的结果，再初始化 CacheEngine 并 warm up 模型、捕获 CUDA Graph。
+
+## 3. Worker 执行顺序与 Zero-Overhead Scheduling
+
+[worker/worker.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py) 的 execute_model_step() 注释给出四个阶段：
+
+1. 当前 step 执行 model_runner.execute_main_model()。
+2. 处理上一 step 保存的 prev_step_state。
+3. 对当前前向结果调用 model_runner.execute_sample()。
+4. Prompt 或非 ZOS 路径立即处理当前结果；ZOS Decode 路径则可能把当前 WorkerStepState 留到下一 step。
+
+因此，ZOS 的核心不是把 Scheduler 简单放进线程池，而是延迟一部分 Decode 后处理：step N+1 执行主模型前向时，Worker 可以处理 step N 的结果，减少 CPU 后处理与设备前向之间的空隙。
+
+这条路径并非无同步。ZOS 下 CPU 侧 seqlens_q/k 可能落后于上一步采样结果；_correct_seqlens_qk() 会依据上一轮状态修正长度。涉及 D2H 时，要等待对应 CUDA event，再更新采样元数据。Engine 的 pre_sampler_sync() 还负责释放延迟资源、处理 KV/state 保存、pump 结构化输出 matcher，并 finalize 已完成序列。
+
+<SequenceDiagram title="ZOS Decode：跨 step 的工作重叠" actors={['Engine / Scheduler', 'Worker', 'GPU']} steps={[
+{ from: 'Engine / Scheduler', to: 'Worker', label: '准备 step N+1 的调度结果' },
+{ from: 'Worker', to: 'GPU', label: 'forward(N+1)' },
+{ from: 'Worker', to: 'Worker', label: '处理 prev_step_state（step N）' },
+{ from: 'GPU', to: 'Worker', label: 'forward(N+1) 输出' },
+{ from: 'Worker', to: 'GPU', label: 'sample(N+1)' },
+]}/>
+
+这张图描述代码安排的依赖关系，不保证任意负载下都完全 overlap。验证时应同时观察 CPU schedule、device_forward、device_sample 和 D2H event 的时间线。
+
+## 4. CacheEngine：物理布局由模型配置决定
+
+[worker/cache_engine.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/cache_engine.py) 为 V4.1 的缓存布局实现 GPUCacheInterface / KVCacheManager。它遍历 attn_module_list，根据层配置创建不同缓存视图。KVCache 包含 ica_cache（index attention 的 K cache）、ica_state、ca_cache（压缩 attention KV）、ca_state 和 swa_cache。
+
+分配逻辑受 sink_mode、index_topk、kv_compress_ratio 和 layer_info_shared_cfg 等配置影响。主 KV 与 index K 使用不同的共享映射（layer_kv_map、layer_index_k_map 或 layer_index_module_map）；被映射到先前层的 cache 可以直接复用，不重复分配对应空间。
+
+GPUCacheInterface._kvcache_layout() 按层调用 KVCacheManager.process()，累计 kv_offset / kv_length，再由 finalize() 对齐总大小。源码明确提到 DeepGEMM index 的 block stride 需要满足 128-byte 对齐，多处 offset 按 32-byte 对齐；压缩 KV 的每 token 大小还包含 data 和 scale。SWA-only 层可以不占普通 KV buffer，对应的 kv_length 为 0。
+
+因此，不能只用“层数 × token 数 × 每 token KV 大小”估算总显存。必须把压缩比例、index cache、共享层、SWA state ring、对齐 padding 和回退历史都纳入计算。
+
+## 5. 为什么 SWA cache 大于 window size
+
+源码区分两个尺寸：
+
+- get_inference_swa_block_size(window_size)：在窗口长度上增加 DEEPINFER_MAX_BACKTRACKING_TOKENS。
+- get_kvstore_swa_block_size(window_size)：在推理尺寸上，按配置再增加 Prefill 落盘余量和 YoCo truncation 锚点余量。
+
+KVSTORE_GRAIN 定义为 128 tokens，源码注释说明 KV store 只在 token 数为 128 的倍数处落盘。如果 Prefill 结束位置未对齐到这个边界，当轮就可能无法直接形成可持久化状态；额外保留区用于后续查找与回退。
+
+压缩状态也要预留 rollback 历史：get_inference_compress_block_size(compress_ratio) 将压缩比对应的 ring 大小与最大回退 token 数结合。启用 YoCo prefill truncation 时，ModelRunner 会校验 keep_tokens 至少覆盖 window_size + max_backtracking_tokens。不满足时初始化会失败。
+
+窗口长度不是完整的内存预算。窗口、回退历史、存储粒度、压缩状态与 replay 边界共同决定实际需要保存多少数据。
+
+## 6. SWA Bounded Replay：不能简化成丢弃窗口外 KV
+
+部署文章把 SWA Bounded Replay 描述为减少 Decoder Prefill 重复计算的策略：对有限窗口语义的层，只重放必要后缀，而不是重新计算整个长前缀。
+
+但不同状态的生命周期并不相同：普通 Attention KV 按 token/block 组织；SWA 的回退和 chunk 边界可能要求额外历史；压缩 KV / index attention 可能维护独立 state ring；YoCo consumer 层的 SWA 还可能按配置分为保留与 dropped 区域。
+
+所以 bounded replay 不能等价为“删除窗口外 KV”。必须让 replay 起点、状态 ring、KV block 边界和最大 backtracking 一致。缓存命中率也不足以单独预测收益：若命中后仍要大段 replay，省下的计算可能低于预期。
+
+## 7. DSpark / MTP 如何影响状态推进
+
+DeepInfer README 将 DSpark 与 confidence-scheduled verification 列为解码优化。公开 ModelRunner 包含 Next-N / MTP 路径，并为 DFlash 配置独立的 DFlashCudaGraphRunner。Engine 的 _process_model_outputs() 会把 accepted_token_ids、next-N token IDs 和 confidence rates 传给原生 process_MTPInfo()，再调用 Scheduler.process_outputs() 更新序列状态。
+
+要一起跟踪的是 draft token 与置信度、最终接受的 token，以及接受/拒绝后序列长度、KV/state 和 grammar matcher 应处于的位置。CacheEngine 预留回退历史、matcher 提供 rollback，都与这条状态推进链相关。只看 kernel latency 不能完整评估 speculative decoding 收益。
+
+## 8. 结构化输出：schema 编译是入调度前的异步支路
+
+[structure_output/so_matcher_builder.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/structure_output/so_matcher_builder.py) 在初始化时根据 tokenizer 建立 TokenizerInfo、线程池与 XGrammarCompiler。请求到来后，build() 将 JSON Schema、Regex 或 EBNF 编译为 grammar 并创建 matcher。
+
+submit() 将 future 放入 pending 列表，不在主调度路径同步等待；pump() 通过 try_result() 非阻塞轮询，完成后把 matcher 绑定到序列，再调用 on_ready(seq) 将序列送入 Scheduler。生成时 matcher.accept_token() 推进文法状态；rollback() 支持推测解码回退时恢复状态。trigger_token_ids 与 bound_token_id 也在 matcher 中处理。
+
+XGrammarCompiler 支持编译缓存开关和容量上限。源码警告，启用缓存但不设容量限制时，不同 schema 可能持续占用内存。因此结构化输出至少要分别衡量 schema 编译、每步 mask/matcher 工作和模型前向。
+
+## 9. 生产部署文章与开源执行框架的边界
+
+知乎文章描述 DeepSeek Recipe、多协议 API、Tokenizer 加速、流式输出优化，以及 Prefill、Decode、Vision Encoder 和 Expert Parallel 的负载均衡；也讨论 KVCache Storage、Block KVCache、KVCache + State、SWA KVCache 与 SWA Bounded Replay。
+
+这些内容是生产部署视角，不足以证明每个组件都以同名模块存在于开源代码中。开源 DeepInfer 展示引擎内调度、Worker/ModelRunner、设备状态管理、专用 Kernel、异步调度和采样路径；部署文章展示围绕执行框架搭建的更大系统。两者之间的接口若无额外源码或文档证据，就应保留为未验证部分。
+
+## 10. 性能验证应该拆哪些阶段
+
+把端到端请求拆成可独立测量的阶段：输入 tokenize 与预处理、Scheduler CPU 时间与 batch 构建、模型前向和设备 kernel、CacheEngine 状态准备与 replay、采样/MTP 验证、输出 decode 与结果交付。
+
+重点验证两件事：第一，ZOS 是否真的让 CPU 后处理与下一轮 forward 重叠；第二，缓存命中省下的计算是否大于状态恢复、传输、同步和 replay 成本。前者需要 CUDA event、NVTX 或 profiler 时间线；后者需要同时记录命中长度、状态恢复量、replay token 数和端到端延迟。
+
+## References
+
+- [DeepSeek：DeepSeek V4.1 Flash 大规模推理部署实践](https://zhuanlan.zhihu.com/p/2095560295930508953)
+- [DeepInfer repository and README](https://github.com/deepseek-ai/DeepInfer)
+- [LLMEngine](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/engine/llm_engine.py)
+- [WorkerBase](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/base.py)
+- [Worker execution loop](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py)
+- [ModelRunner](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/model_runner.py)
+- [CacheEngine](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/cache_engine.py)
+- [Structured output matcher builder](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/structure_output/so_matcher_builder.py)

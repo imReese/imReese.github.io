@@ -1,0 +1,158 @@
+---
+title: 'DeepInfer Deep Dive: Scheduling, Execution, and Model State in Source Code'
+description: 'A source-level analysis of LLMEngine.step, Worker.execute_model_step, CacheEngine, ZOS overlap, KV/state layout, and SWA replay.'
+author: 'Reese'
+date: '2026-10-20'
+language: 'en'
+topics:
+  - llm-serving
+  - deepinfer
+  - deepseek-v4
+  - kv-cache
+  - inference-scheduling
+  - speculative-decoding
+category: 'engineering-deep-dive'
+series: 'LLM Serving Internals'
+featured: true
+---
+
+> 中文版：[DeepInfer 深度解读：调度、执行与模型状态的源码路径](/blogs/deepinfer-deep-dive/)
+
+This article focuses on DeepInfer itself, using the [public repository](https://github.com/deepseek-ai/DeepInfer) and DeepSeek's [DeepSeek V4.1 Flash Large-Scale Inference Deployment Practice](https://zhuanlan.zhihu.com/p/2095560295930508953). The source links point to the moving main branch. The discussion distinguishes behavior visible in public code from production architecture described by the deployment article.
+
+DeepInfer's README states that the open-source release focuses on core offline inference. A complete KV-cache system, VE/Prefill/Decode disaggregation, and load balancing across DP replicas are outside the current release. Production components described in the article therefore cannot all be mapped to classes in the public repository.
+
+## 1. From LLM.generate to one execution step
+
+<SequenceDiagram title="DeepInfer step control path" actors={['LLM.generate', 'LLMEngine.step', 'C++ Scheduler', 'Worker', 'ModelRunner / Device']} steps={[
+{ from: 'LLM.generate', to: 'LLMEngine.step', label: 'Token IDs + sampling params' },
+{ from: 'LLMEngine.step', to: 'C++ Scheduler', label: 'schedule(sequence_metadata_pool)' },
+{ from: 'C++ Scheduler', to: 'LLMEngine.step', label: 'Sequence metadata + SchedulerOutputs' },
+{ from: 'LLMEngine.step', to: 'Worker', label: 'execute_model_step(...)' },
+{ from: 'Worker', to: 'ModelRunner / Device', label: 'execute_main_model → execute_sample' },
+{ from: 'Worker', to: 'LLMEngine.step', label: 'Step outputs' },
+]}/>
+
+In [entrypoints/llm.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/entrypoints/llm.py), LLM.generate() calls _add_request() for each input. If prompt_token_ids were not supplied, _add_request() calls tokenizer.encode(prompt) before adding the request to the engine. The output path in _run_engine() collects RequestOutput and optionally calls tokenizer.decode(). Tokenization is therefore outside the GPU forward and is not repeated by the Scheduler on every step.
+
+The scheduling loop is LLMEngine.step() in [engine/llm_engine.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/engine/llm_engine.py):
+
+1. self.scheduler.schedule(self.sequence_metadata_pool) returns seq_metadata_list and SchedulerOutputs.
+2. If the schedule requests state/block cloning or zeroing, the Engine invokes the Worker operation clone_and_zero_states_and_blocks_on_default_stream() and defers resource unpinning through DeferredRelease.
+3. post_schedule() handles scheduling results and Prompt-chunk structured-output state.
+4. The Engine performs multimodal fetches and required state copies.
+5. _execute_model_async_step() invokes _run_workers("execute_model_step", ...).
+6. Output processing updates sequence state in the Scheduler and constructs request outputs.
+
+Scheduler, BlockManager, and SequenceMetadata are exposed through deepinfer._C.engine. Python shows the control flow and ownership boundaries, but not the entire scheduling algorithm.
+
+## 2. Engine, Scheduler, Worker, and ModelRunner
+
+<LayerDiagram title="Source-level responsibilities" layers={[
+{ label: 'LLM / entrypoint', detail: 'Tokenization, request parameters, step loop, output decode', tone: 'blue' },
+{ label: 'LLMEngine', detail: 'Step lifecycle, Scheduler calls, output handling, resource release and statistics', tone: 'violet' },
+{ label: 'Native Scheduler / BlockManager', detail: 'Sequence selection, scheduling outputs, block and state-slot lifecycle', tone: 'amber' },
+{ label: 'Worker / WorkerBase', detail: 'Device process, distributed setup, model and cache initialization', tone: 'teal' },
+{ label: 'ModelRunner', detail: 'Input metadata, model forward, CUDA Graph, sampling-related work', tone: 'rose' },
+]}/>
+
+- **LLMEngine** coordinates Scheduler, Worker execution, output processing, and resource lifetime at step granularity.
+- **Scheduler** selects the sequences for the current step. SchedulerOutputs carries the selected sequences, token counts, Prompt/Decode information, and requested state operations.
+- **WorkerBase** creates ModelRunner, initializes the device and distributed environment, loads the model, and initializes caches.
+- **Worker** drives forward, post-processing, and sampling for each step.
+- **ModelRunner** executes local model computation; it is not the production cluster request router.
+
+WorkerBase documents one GPU per Worker and a model partition per Worker in distributed inference. A common TP setup can be approximated as one Worker/ModelRunner context per GPU rank, but this is not a universal rule for every deployment mode.
+
+Initialization order affects KV capacity. LLMEngine creates workers and loads the model before calling _init_cache(). Worker.profile_num_available_blocks() estimates available blocks from current memory use, non-PyTorch allocations, reserved state buffers, and gpu_memory_utilization. The Engine reconciles the result across workers, initializes CacheEngine, then warms up the model and captures CUDA Graphs.
+
+## 3. Worker execution order and Zero-Overhead Scheduling
+
+The execute_model_step() implementation in [worker/worker.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py) documents four stages:
+
+1. Run model_runner.execute_main_model() for the current step.
+2. Process the previous step's prev_step_state.
+3. Sample the current forward output with model_runner.execute_sample().
+4. Process the current result immediately for Prompt or non-ZOS paths; in ZOS Decode, the current WorkerStepState may be deferred to the next step.
+
+ZOS is not simply a Scheduler thread pool. It defers part of Decode post-processing: while the main forward for step N+1 runs, the Worker can process results from step N, reducing the gap between CPU-side work and device execution.
+
+This path still has synchronization points. Under ZOS, CPU seqlens_q/k metadata can lag behind the previous sampling result. _correct_seqlens_qk() adjusts lengths from the previous step; when D2H is involved, the corresponding CUDA event must complete before sampling metadata is updated. LLMEngine.pre_sampler_sync() also releases deferred resources, handles KV/state saving, pumps structured-output matchers, and finalizes completed sequences.
+
+<SequenceDiagram title="ZOS Decode overlap across steps" actors={['Engine / Scheduler', 'Worker', 'GPU']} steps={[
+{ from: 'Engine / Scheduler', to: 'Worker', label: 'Prepare schedule for step N+1' },
+{ from: 'Worker', to: 'GPU', label: 'forward(N+1)' },
+{ from: 'Worker', to: 'Worker', label: 'Process prev_step_state from N' },
+{ from: 'GPU', to: 'Worker', label: 'Forward output for N+1' },
+{ from: 'Worker', to: 'GPU', label: 'sample(N+1)' },
+]}/>
+
+The diagram describes the intended dependency overlap, not a guarantee that every workload fully overlaps. Validate CPU scheduling, device_forward, device_sample, and D2H events on the same profiler timeline.
+
+## 4. CacheEngine: physical layout follows model configuration
+
+[worker/cache_engine.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/cache_engine.py) implements GPUCacheInterface / KVCacheManager for the V4.1 cache layout. It walks attn_module_list and creates cache views based on layer configuration. KVCache contains ica_cache (index-attention K cache), ica_state, ca_cache (compressed attention KV), ca_state, and swa_cache.
+
+Allocation depends on sink_mode, index_topk, kv_compress_ratio, and layer_info_shared_cfg. Main KV and index K use separate sharing maps: layer_kv_map, layer_index_k_map, or layer_index_module_map. A layer mapped to an earlier owner can reuse that cache view rather than allocating the same storage again.
+
+GPUCacheInterface._kvcache_layout() processes layers in order, accumulates kv_offset / kv_length, and aligns the total in finalize(). The source notes a 128-byte block-stride requirement for DeepGEMM index data and 32-byte alignment at multiple offsets. Compressed KV bytes per token include data and scale. An SWA-only layer can have kv_length == 0 in the ordinary KV buffer.
+
+Consequently, cache footprint cannot be estimated as “number of layers × tokens × bytes per token” alone. Compression ratio, index cache, shared layers, SWA state rings, padding, and rollback history all matter.
+
+## 5. Why SWA cache capacity exceeds the window
+
+The code distinguishes two sizes:
+
+- get_inference_swa_block_size(window_size) adds DEEPINFER_MAX_BACKTRACKING_TOKENS to the window.
+- get_kvstore_swa_block_size(window_size) adds configured Prefill persistence slack and YoCo truncation-anchor slack on top of the inference size.
+
+KVSTORE_GRAIN is 128 tokens; the source comment says KV-store persistence occurs only at token counts divisible by 128. If Prefill ends off that boundary, the current step may not directly produce a persistable state. Extra retained data supports later lookup and rollback.
+
+Compressed state also reserves rollback history through get_inference_compress_block_size(compress_ratio). When YoCo prefill truncation is enabled, ModelRunner checks that keep_tokens covers at least window_size + max_backtracking_tokens; initialization fails if it does not.
+
+The window size is therefore not the full memory budget. Window, rollback history, persistence grain, compressed state, and replay boundaries jointly determine required storage.
+
+## 6. SWA Bounded Replay is not simply dropping old KV
+
+The deployment article describes SWA Bounded Replay as a way to reduce repeated Decoder Prefill work by replaying only a necessary suffix for layers with finite-window semantics.
+
+Different states have different lifetimes: ordinary Attention KV is organized by token/block; SWA rollback and chunk boundaries may need extra history; compressed KV and index attention may maintain separate state rings; YoCo consumer SWA may be split into retained and dropped regions.
+
+Bounded replay is therefore not equivalent to deleting all KV outside the window. The replay start, state ring, KV block boundary, and maximum backtracking length must agree. Hit rate alone cannot predict savings: a hit followed by substantial replay may save less compute than expected.
+
+## 7. DSpark / MTP changes state advancement
+
+DeepInfer's README lists DSpark and confidence-scheduled verification as decoding optimizations. ModelRunner contains Next-N / MTP paths and a dedicated DFlashCudaGraphRunner. LLMEngine._process_model_outputs() passes accepted_token_ids, next-N token IDs, and confidence rates to native process_MTPInfo(), then calls Scheduler.process_outputs() to update sequence state.
+
+The relevant state is not just draft length. It includes draft tokens and confidence, accepted tokens, and the positions that KV/state and the grammar matcher must return to after acceptance or rejection. CacheEngine rollback history and matcher rollback are part of this same state-management problem. Kernel latency alone is not enough to evaluate speculative decoding.
+
+## 8. Structured output: schema compilation is an asynchronous pre-scheduling path
+
+[structure_output/so_matcher_builder.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/structure_output/so_matcher_builder.py) builds TokenizerInfo, a thread pool, and XGrammarCompiler at initialization. For a request, build() compiles JSON Schema, Regex, or EBNF into a grammar and creates a matcher.
+
+submit() puts the future in a pending list rather than blocking the main scheduling path. pump() polls try_result() non-blockingly; once ready, it attaches the matcher to the sequence and calls on_ready(seq), which enqueues the sequence in the Scheduler. During generation, matcher.accept_token() advances grammar state and rollback() restores it after speculative rollback. trigger_token_ids and bound_token_id are handled by the matcher as well.
+
+XGrammarCompiler supports cache controls and a cache size limit. The source warns that enabling compilation caching without a limit can retain memory as distinct schemas accumulate. Structured-output cost should therefore be separated into schema compilation, per-step mask/matcher work, and model forward.
+
+## 9. Production deployment versus the open-source engine
+
+The Zhihu article describes DeepSeek Recipe, multiple API protocols, tokenizer acceleration, streaming-output optimization, and separate load balancers for Prefill, Decode, Vision Encoder, and Expert Parallel. It also discusses KVCache Storage, Block KVCache, KVCache + State, SWA KVCache, and SWA Bounded Replay.
+
+These details describe production deployment, but do not prove every component exists under the same name in the public repository. Public DeepInfer shows engine scheduling, Worker/ModelRunner, device-state management, specialized kernels, asynchronous scheduling, and sampling. The article describes the larger system built around that execution core. Interfaces between the two remain unverified unless supported by additional source or documentation.
+
+## 10. What to measure
+
+Break an end-to-end request into input tokenization/preprocessing, Scheduler CPU time and batch construction, model forward and device kernels, CacheEngine state preparation and replay, sampling/MTP verification, and output decoding/delivery.
+
+Two questions matter most: does ZOS actually overlap CPU post-processing with the next forward, and does the computation saved by a cache hit exceed state restore, transfer, synchronization, and replay costs? The first requires CUDA events, NVTX, or profiler timelines. The second requires recording hit length, restored state, replay token count, and end-to-end latency.
+
+## References
+
+- [DeepSeek: DeepSeek V4.1 Flash Large-Scale Inference Deployment Practice](https://zhuanlan.zhihu.com/p/2095560295930508953)
+- [DeepInfer repository and README](https://github.com/deepseek-ai/DeepInfer)
+- [LLMEngine](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/engine/llm_engine.py)
+- [WorkerBase](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/base.py)
+- [Worker execution loop](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py)
+- [ModelRunner](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/model_runner.py)
+- [CacheEngine](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/cache_engine.py)
+- [Structured output matcher builder](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/structure_output/so_matcher_builder.py)
