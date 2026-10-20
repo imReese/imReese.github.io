@@ -139,6 +139,52 @@ XGrammarCompiler 支持编译缓存开关和容量上限。源码警告，启用
 
 重点验证两件事：第一，ZOS 是否真的让 CPU 后处理与下一轮 forward 重叠；第二，缓存命中省下的计算是否大于状态恢复、传输、同步和 replay 成本。前者需要 CUDA event、NVTX 或 profiler 时间线；后者需要同时记录命中长度、状态恢复量、replay token 数和端到端延迟。
 
+## 11. 把 step loop 展开成可审查的状态机
+
+前面列出了函数名，这里把它们之间的依赖关系说清楚。对每一轮，至少存在三份不同的信息：
+
+- `seq_metadata_list`：本轮实际交给 Worker 的序列视图，ModelRunner 用它构造输入元数据。
+- `SchedulerOutputs`：本轮调度决策的上下文，包括哪些序列被调度、Prompt/Decode 属性、token 统计，以及输出回写需要的状态。
+- `WorkerStepState`：Worker 保存的某次执行结果，包含序列元数据、调度输出、采样输出、是否 Prompt/placeholder、CUDA Event 和 graph 信息。
+
+这三者生命周期不同。Scheduler 输出是当前 step 的调度快照；WorkerStepState 在 ZOS Decode 下可能活过当前函数调用，直到下一轮 post-process；Sequence 则会被 Scheduler 更新，成为后续调度的输入。将它们统称为“batch 状态”会掩盖跨 step 的依赖。
+
+从 [`worker/worker.py`](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py) 可以看到，`execute_model_step()` 在 driver worker 上先计算 `total_q`，再通过 `_correct_seqlens_qk()` 生成 `MetadataZOS`。随后 ModelRunner 执行 forward；当前输出被包装成 `Movable`，再处理 `prev_step_state`，接着修正采样元数据并调用 `execute_sample()`。最后构造新的 `WorkerStepState`，根据 Prompt/ZOS 配置决定立即处理或延迟处理。
+
+这说明 ZOS 不只是改变函数调用顺序，还改变了“哪个 step 的输出此刻可以安全处理”这一状态机条件。排查错误时，应该同时检查 step 编号、`prev_step_state` 对应的 scheduler outputs、采样结束 Event 和当前序列长度，而不是只检查某个 forward 的输入。
+
+## 12. CacheEngine 的容量计算：从逻辑 token 到物理字节
+
+[`worker/cache_engine.py`](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/cache_engine.py) 中有几组不同职责的辅助函数，不能把它们混成一个“计算 KV 大小”的函数：
+
+- `_kv_bytes_per_token()`：根据 V4.1 的 KV 格式，计算一个 token 的 interleaved KV 数据与 scale 的总字节数，并检查模型维度与格式元数据是否一致。
+- `_get_qk_topk_bytes()`：计算 indexer 的 FP4 KV 每 token 字节数，其中包括打包后的值和 UE8M0 scale。
+- `_state_bytes()`：按 `[num_state_token, 2, head_dim]` 的 FP32 state 形状计算字节数。
+- `get_inference_swa_block_size()` / `get_kvstore_swa_block_size()`：计算运行时窗口、回退余量与存储侧额外保留量。
+- `_align_to_multiple()`：将逻辑元素数按分组粒度向上对齐到指定 alignment。
+
+这些函数分别回答“一个 token 的数据有多大”“index cache 多大”“state ring 多大”“为了回退/落盘要多留多少 token”“物理布局要填充多少 padding”。它们的结果最终才汇总进 `GPUCacheInterface._kvcache_layout()` 的 offset/length。
+
+一个实用的审查方法是逐层核对：先从模型 metadata 确定这一层属于哪种 attention 类型，再确定压缩格式、index 配置和共享关系，接着计算数据字节数和 state 字节数，最后应用 stride/offset 对齐。只拿模型层数乘每 token 大小，会漏掉共享层、SWA-only 层、scale、state ring 和 padding。
+
+## 13. 结构化输出 matcher 为什么必须支持 rollback
+
+源码：[ `structure_output/matcher.py`](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/structure_output/matcher.py)。
+
+matcher 并不只是“每轮生成前检查一下 JSON”。它维护至少三类进度：触发 token 匹配进度、进入 grammar matcher 的 token 数，以及 EOS/bound 之后的状态。收到 token 时，`accept_token()` 先处理 trigger/bound 逻辑；文法已经激活时，再将 token 交给内部 XGrammar matcher。采样前，`fill_vocab_mask()` 根据当前 matcher 状态填充词表 bitmask，决定哪些 token 可以被选中。
+
+这与 speculative decoding 直接相关：draft token 可能被验证器拒绝，序列的最终前缀会回退。若 KV/state 回退了，而 grammar matcher 仍停留在被拒绝的 token 之后，下一步 mask 就会基于错误的文法状态，造成合法 token 被错误屏蔽或非法 token 被允许。因此 matcher 的 `rollback()` 必须与实际 accepted-token 数同步；它不是可选的清理方法，而是约束解码和推测解码能够组合使用的状态一致性机制。
+
+## 14. 从源码推导性能结论时，哪些事不能直接假设
+
+1. **函数名带 async 不等于 GPU 与 CPU 已完全重叠。** 必须确认 stream/event 依赖，并用 profiler 看时间线。
+2. **有 cache view 不等于支持远端持久化 KV Store。** 公开 CacheEngine 的设备状态管理和部署文章里的生产存储服务是不同层次。
+3. **SWA window 有限不等于窗口外状态都能删除。** 最大 backtracking、chunk 边界、压缩 state 与 index state 会改变最小保留范围。
+4. **draft token 数多不等于推测解码收益高。** 接受率、验证开销、回退和状态修正共同决定收益。
+5. **KV block 数不只取决于模型配置。** 实际可用显存、state buffer、非 PyTorch 分配和 CUDA Graph 捕获后的内存占用都影响最终容量。
+
+这些不是抽象的“优化建议”，而是由前述函数之间的数据依赖直接导出的验证条件。
+
 ## References
 
 - [DeepSeek：DeepSeek V4.1 Flash 大规模推理部署实践](https://zhuanlan.zhihu.com/p/2095560295930508953)

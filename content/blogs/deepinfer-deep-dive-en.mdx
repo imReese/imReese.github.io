@@ -146,6 +146,52 @@ Break an end-to-end request into input tokenization/preprocessing, Scheduler CPU
 
 Two questions matter most: does ZOS actually overlap CPU post-processing with the next forward, and does the computation saved by a cache hit exceed state restore, transfer, synchronization, and replay costs? The first requires CUDA events, NVTX, or profiler timelines. The second requires recording hit length, restored state, replay token count, and end-to-end latency.
 
+## 11. Read the step loop as a state machine
+
+The important point is that a step involves several distinct pieces of state:
+
+- `seq_metadata_list`: the sequence view for the current step, used by ModelRunner to prepare model inputs.
+- `SchedulerOutputs`: the scheduling context for this step, including selected sequences, Prompt/Decode properties, token counts, and information needed to update state after execution.
+- `WorkerStepState`: a saved execution result containing sequence metadata, scheduler outputs, sampler output, Prompt/placeholder flags, CUDA events, and graph information.
+
+Their lifetimes differ. SchedulerOutputs is a snapshot of the current scheduling decision; under ZOS Decode, WorkerStepState can outlive the current function call until it is post-processed in the next step; Sequence state is updated by the Scheduler and becomes input to future scheduling. Calling all of them “batch state” hides the cross-step dependencies.
+
+In [`worker/worker.py`](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py), `execute_model_step()` calculates `total_q` on the driver worker and calls `_correct_seqlens_qk()` to produce `MetadataZOS`. ModelRunner then runs the forward pass; the current output is wrapped in `Movable`; the Worker processes `prev_step_state`; sampling metadata is corrected; and `execute_sample()` is called. Finally, a new `WorkerStepState` is built and either processed immediately or deferred according to Prompt/ZOS configuration.
+
+ZOS therefore changes more than call order: it changes when a step's output is safe to consume. When debugging, inspect the step number, the scheduler outputs associated with `prev_step_state`, the sampling completion event, and the current sequence length together—not just one forward input.
+
+## 12. Cache capacity: from logical tokens to physical bytes
+
+Several helpers in [`worker/cache_engine.py`](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/cache_engine.py) answer different questions:
+
+- `_kv_bytes_per_token()` computes bytes for one interleaved KV token, including data and scale, and checks that model dimensions match the selected format metadata.
+- `_get_qk_topk_bytes()` computes indexer's FP4 KV bytes per token, including packed values and UE8M0 scales.
+- `_state_bytes()` computes bytes for FP32 state shaped as `[num_state_token, 2, head_dim]`.
+- `get_inference_swa_block_size()` and `get_kvstore_swa_block_size()` include runtime window, rollback slack, and additional persistence retention.
+- `_align_to_multiple()` rounds a logical element count up to the required alignment.
+
+These helpers separately answer: how large is each KV token, how much index cache is needed, how large is a state ring, how much history is needed for rollback/persistence, and how much physical padding alignment adds. Their results are then accumulated into offsets and lengths by `GPUCacheInterface._kvcache_layout()`.
+
+A practical audit should proceed layer by layer: determine the attention type from model metadata, inspect compression/index configuration and layer sharing, calculate data and state bytes, then apply stride/offset alignment. Multiplying layer count by bytes per token misses shared layers, SWA-only layers, scales, state rings, and padding.
+
+## 13. Why the structured-output matcher needs rollback
+
+Source: [`structure_output/matcher.py`](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/structure_output/matcher.py).
+
+The matcher does not merely “validate JSON before each token.” It tracks trigger-token progress, the number of tokens accepted by the grammar matcher, and state around EOS/bound tokens. On token acceptance, `accept_token()` handles trigger/bound logic first; once grammar constraints are active, it forwards the token to the inner XGrammar matcher. Before sampling, `fill_vocab_mask()` uses the current matcher state to populate the vocabulary bitmask and restrict the next token.
+
+This matters for speculative decoding: draft tokens may be rejected by verification, so the final prefix rolls back. If KV/state is rolled back but the grammar matcher remains beyond the rejected token, the next mask is computed from the wrong grammar state. A valid token might be blocked or an invalid one permitted. Therefore matcher `rollback()` must track the accepted-token count; it is a state-consistency requirement for combining constrained decoding and speculative decoding.
+
+## 14. What source code does not let us assume
+
+1. **An async function name does not prove full CPU/GPU overlap.** Check stream/event dependencies and inspect a profiler timeline.
+2. **A cache view does not imply a remote persistent KV Store.** Device-side CacheEngine and production storage described in the deployment article are different layers.
+3. **A finite SWA window does not mean all older state can be discarded.** Maximum backtracking, chunk boundaries, compressed state, and index state affect retention.
+4. **More draft tokens do not automatically mean better speculative-decoding speedup.** Acceptance rate, verification, rollback, and state correction all matter.
+5. **KV block count is not determined by model configuration alone.** Available memory, state buffers, non-PyTorch allocations, and memory used during CUDA Graph capture affect the final capacity.
+
+These are not generic optimization slogans; they are verification conditions derived from the data dependencies in the functions discussed above.
+
 ## References
 
 - [DeepSeek: DeepSeek V4.1 Flash Large-Scale Inference Deployment Practice](https://zhuanlan.zhihu.com/p/2095560295930508953)
