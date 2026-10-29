@@ -3,7 +3,7 @@ focusAreas:
   - KV Cache
 
 aboutParagraphs:
-  - 我从事大模型推理系统研发，关注 Prefill 加速、分离式推理、约束解码和异步执行优化。
+  - 我从事大模型推理系统研发与性能优化，工作覆盖运行时调度与执行、分布式推理服务，以及注意力状态的存储与复用。
   - 我参与团队自有 Attention Store 的研发与适配，覆盖 Kimi、DeepSeek、GLM 模型系列，支持 KDA 和流水线并行部署，并优化 H2D、D2H 缓存传输与 GPU 计算的重叠。
   - 此前，我在华为做过分布式存储的高可用与集群管理，也做过云工作负载分析和 CPU 体系结构优化。
   - 这个网站用来整理我参与的工程项目、阅读源码时形成的笔记，以及实际调试和验证过程中积累的方法。
@@ -15,7 +15,7 @@ currentFocus:
     围绕推理调度、注意力状态存储与 GPU 执行之间的协同，
     优化推理服务的吞吐、延迟与资源利用率。
   bullets:
-    - Prefill 加速、EPD 推理与约束解码优化。
+    - 运行时调度与执行优化，包括 Prefill 加速、EPD 推理与约束解码。
     - Attention Store 适配 Kimi、DeepSeek、GLM 模型系列，支持 KDA。
     - 支持流水线并行（PP）部署下的 L3 存储。
     - 实现 H2D、D2H 缓存传输与 GPU 批次执行的重叠。
@@ -99,7 +99,7 @@ experience:
     start: '2025.06.30'
     end: 至今
     highlights:
-      - 优化 Prefill 执行、EPD 推理、约束解码与推理调度。
+      - 优化推理运行时调度与执行，具体工作包括 Prefill 加速、EPD 推理与约束解码。
       - 参与团队自有 Attention Store 研发与适配，覆盖 Kimi、DeepSeek、GLM 模型系列，支持 KDA 及流水线并行部署下的 L3 存储。
       - 优化 H2D、D2H 缓存传输与 GPU 批次执行的重叠，降低缓存 I/O 开销。
       - 适配异构加速器上的推理路径，定位并优化运行时性能瓶颈。

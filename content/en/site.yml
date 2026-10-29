@@ -2,10 +2,10 @@ site:
   name: Reese
   headline: "Hi, I'm Reese. I build and optimize LLM serving systems."
   introduction: >
-    I'm on Baidu's AI Computing team, working on LLM inference runtimes,
-    prefill acceleration, and attention-state storage and reuse. My work spans
-    scheduling, constrained decoding, and overlapping cache transfers with GPU
-    execution. Previously, I worked on CPU performance and distributed storage at Huawei.
+    I'm on Baidu's AI Computing team, building and optimizing LLM inference
+    systems. My work spans runtime scheduling and execution, distributed
+    serving, and attention-state storage and reuse. Previously, I worked on
+    CPU performance and distributed storage at Huawei.
   location: Beijing, China
   email: reese_duan@outlook.com
   githubUsername: imReese

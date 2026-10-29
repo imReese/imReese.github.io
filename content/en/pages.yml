@@ -1,10 +1,10 @@
 metadata:
   home:
     title: 'Reese — LLM inference and systems performance'
-    description: 'LLM inference engineering across prefill acceleration, constrained decoding, attention-state storage, and asynchronous GPU execution.'
+    description: 'LLM inference systems and performance engineering across runtime scheduling, distributed serving, attention-state storage and reuse, and asynchronous execution.'
   about:
     title: About
-    description: 'Reese’s engineering path from distributed storage and CPU workload analysis to LLM inference runtimes, KV cache systems, and transfer infrastructure.'
+    description: 'Reese’s engineering work on LLM inference runtimes, distributed serving, attention-state storage and reuse, building on experience in CPU performance and distributed storage.'
   projects:
     title: Projects
     description: 'Projects and code walkthroughs on SGLang, NexusKV, Mooncake, HiCache, KV cache management, and LLM serving systems.'

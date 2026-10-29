@@ -3,7 +3,7 @@ focusAreas:
   - KV Cache
 
 aboutParagraphs:
-  - I work on LLM inference systems, with a focus on prefill acceleration, disaggregated serving, constrained decoding, and asynchronous runtime execution.
+  - I build and optimize LLM inference systems, spanning runtime scheduling and execution, distributed serving, and attention-state storage and reuse.
   - I contribute to our team’s Attention Store, supporting attention-state storage and reuse across Kimi, DeepSeek, and GLM model families, including KDA and pipeline-parallel deployments. My performance work includes overlapping H2D and D2H cache transfers with GPU computation.
   - Earlier in my career, I worked on high availability and cluster management for distributed storage, then on cloud workload analysis and CPU architecture.
   - This site collects my engineering projects, notes from reading source code, and lessons from debugging and validation work.
@@ -15,7 +15,7 @@ currentFocus:
     I optimize the interaction between inference scheduling, attention-state
     storage, and GPU execution to improve serving efficiency.
   bullets:
-    - Prefill acceleration, EPD serving, and constrained decoding.
+    - Runtime scheduling and execution, including prefill acceleration, EPD serving, and constrained decoding.
     - Attention Store support for Kimi, DeepSeek, and GLM model families, including KDA.
     - Pipeline-parallel inference with L3 storage support.
     - H2D and D2H cache transfers overlapped with GPU batch execution.
@@ -99,7 +99,7 @@ experience:
     start: '2025.06.30'
     end: Present
     highlights:
-      - Optimize prefill execution, EPD serving, constrained decoding, and inference scheduling.
+      - Optimize inference runtime scheduling and execution, with work on prefill acceleration, EPD serving, and constrained decoding.
       - Contribute to the team’s Attention Store, supporting Kimi, DeepSeek, and GLM model families, KDA, and L3 storage in pipeline-parallel deployments.
       - Overlap H2D and D2H cache transfers with GPU batch execution to reduce cache I/O overhead.
       - Adapt inference paths for heterogeneous accelerators and investigate runtime performance bottlenecks.

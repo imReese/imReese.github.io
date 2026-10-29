@@ -1,10 +1,10 @@
 metadata:
   home:
     title: '段冰 — 大模型推理与系统性能'
-    description: '段冰的个人网站，记录 Prefill 加速、约束解码、注意力状态存储与异步 GPU 执行等大模型推理工程实践。'
+    description: '段冰的个人网站，记录大模型推理系统与性能优化实践，涵盖运行时调度、分布式推理服务、注意力状态存储与复用，以及异步执行。'
   about:
     title: 关于
-    description: '段冰从分布式存储、CPU 性能分析到大模型推理系统的工作经历与关注方向。'
+    description: '段冰在大模型推理运行时、分布式推理服务、注意力状态存储与复用方面的工作，以及分布式存储和 CPU 性能分析经历。'
   projects:
     title: 项目
     description: '大模型推理、KV Cache、Mooncake、HiCache 与性能工程相关的项目和源码笔记。'
