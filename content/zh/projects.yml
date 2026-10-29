@@ -69,6 +69,26 @@ items:
       - Python
       - KV Cache
       - 大模型推理
+  - name: Locus
+    description: 面向多引擎的推理控制面，综合模型语义、租户策略、运行时能力与可复用状态的位置规划请求部署。批次调度、设备内存与模型执行仍由推理引擎负责。
+    href: https://github.com/imReese/Locus
+    label: github.com/imReese/Locus
+    status:
+      label: Pre-1.0
+      description: 本地协议与编排路径已实现；真实 GPU 执行、引擎原生状态导入和物理传输仍需针对部署环境独立验证。
+    capabilities:
+      - 提供 OpenAI 与 Anthropic 兼容入口，统一请求与模型语义。
+      - 结合策略选择目标，生成可解释的部署计划并支持有界回退。
+      - 通过通用状态接口与 NexusKV 桥接获取可复用状态信息。
+    evidenceLinks:
+      - label: 架构与职责边界
+        href: https://github.com/imReese/Locus/blob/main/docs/design/architecture.md
+      - label: 当前范围与验证边界
+        href: https://github.com/imReese/Locus#what-ships-today
+    tags:
+      - Rust
+      - 推理控制面
+      - 状态感知调度
 
 diagrams:
   runtime:

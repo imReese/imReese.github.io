@@ -2,6 +2,7 @@
 
 import { ArrowRight, BookOpen, Github } from 'lucide-react'
 import { SystemsPanel } from '@/components/home/SystemsPanel'
+import { useLanguage } from '@/components/shared/LanguageProvider'
 import { useLocalizedContent } from '@/components/shared/useLocalizedContent'
 
 function getHeadlineLines(headline: string) {
@@ -24,6 +25,7 @@ function getHeadlineLines(headline: string) {
 
 export function ElegantIntro() {
   const { site, profile, home } = useLocalizedContent()
+  const { locale } = useLanguage()
   const headlineLines = getHeadlineLines(site.headline)
 
   return (
@@ -33,6 +35,8 @@ export function ElegantIntro() {
           {headlineLines.map((line, index) => (
             <span
               key={`${index}-${line}`}
+              // Keep CJK line boxes proportional when responsive font sizes change.
+              style={locale === 'zh' ? { lineHeight: 1.3 } : undefined}
               className={
                 index === 0
                   ? `block text-4xl leading-tight sm:text-5xl lg:text-6xl 2xl:text-7xl min-[1920px]:text-[4.5rem] ${

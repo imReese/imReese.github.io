@@ -2,10 +2,10 @@ site:
   name: Reese
   headline: "Hi, I'm Reese. I build and optimize LLM serving systems."
   introduction: >
-    I'm currently on Baidu's AI Computing team, working on inference scheduling,
-    KV cache management, data transfer, and accelerator backends. Previously, I
-    worked on cloud workload analysis, CPU architecture, and distributed storage
-    at Huawei.
+    I'm on Baidu's AI Computing team, working on LLM inference runtimes,
+    prefill acceleration, and attention-state storage and reuse. My work spans
+    scheduling, constrained decoding, and overlapping cache transfers with GPU
+    execution. Previously, I worked on CPU performance and distributed storage at Huawei.
   location: Beijing, China
   email: reese_duan@outlook.com
   githubUsername: imReese

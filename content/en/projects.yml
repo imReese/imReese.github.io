@@ -69,6 +69,26 @@ items:
       - Python
       - KV cache
       - LLM serving
+  - name: Locus
+    description: An engine-neutral inference control plane that considers model semantics, tenant policy, runtime capabilities, and reusable-state locality when placing requests. Engines retain ownership of batching, device memory, and model execution.
+    href: https://github.com/imReese/Locus
+    label: github.com/imReese/Locus
+    status:
+      label: Pre-1.0
+      description: Local protocol and orchestration paths are implemented. Live GPU execution, native state import, and physical state transfer require deployment-specific qualification.
+    capabilities:
+      - OpenAI- and Anthropic-compatible request entry points with normalized model semantics.
+      - Policy-aware target selection with explainable placement plans and bounded fallback.
+      - Reusable-state evidence through a generic store interface and a NexusKV bridge.
+    evidenceLinks:
+      - label: Architecture and ownership boundaries
+        href: https://github.com/imReese/Locus/blob/main/docs/design/architecture.md
+      - label: Current scope and qualification
+        href: https://github.com/imReese/Locus#what-ships-today
+    tags:
+      - Rust
+      - Inference Control Plane
+      - State-aware Placement
 
 diagrams:
   runtime:

@@ -1,7 +1,7 @@
 metadata:
   home:
     title: 'Reese — LLM inference and systems performance'
-    description: 'Backend and systems engineering work on LLM inference runtimes, KV cache systems, Mooncake integration, and performance analysis.'
+    description: 'LLM inference engineering across prefill acceleration, constrained decoding, attention-state storage, and asynchronous GPU execution.'
   about:
     title: About
     description: 'Reese’s engineering path from distributed storage and CPU workload analysis to LLM inference runtimes, KV cache systems, and transfer infrastructure.'
@@ -17,7 +17,7 @@ about:
   timelineTitle: Experience
   timelineIntro: My work has taken me from distributed storage and computer architecture to LLM inference.
   capabilitiesTitle: Areas of focus
-  capabilitiesIntro: Scheduling, cache management, data movement, and accelerator backends.
+  capabilitiesIntro: Inference runtimes, attention-state storage and reuse, transfer-compute overlap, and accelerator backends.
 
 home:
   hero:

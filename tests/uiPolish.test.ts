@@ -223,3 +223,10 @@ test('keeps the workspace company labels concise and the current company promine
     /text-base font-semibold text-foreground[\s\S]*currentExperience\.company/,
   )
 })
+
+
+test('Chinese hero headings keep proportional line height across responsive font sizes', () => {
+  const source = readFileSync('src/components/home/ElegantIntro.tsx', 'utf8')
+  assert.ok(source.includes("const { locale } = useLanguage()"))
+  assert.ok(source.includes("style={locale === 'zh' ? { lineHeight: 1.3 } : undefined}"))
+})

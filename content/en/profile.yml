@@ -3,7 +3,8 @@ focusAreas:
   - KV Cache
 
 aboutParagraphs:
-  - I currently optimize LLM inference engines, focusing on scheduling, KV cache management, cross-node data movement, and accelerator backends.
+  - I work on LLM inference systems, with a focus on prefill acceleration, disaggregated serving, constrained decoding, and asynchronous runtime execution.
+  - I contribute to our team’s Attention Store, supporting attention-state storage and reuse across Kimi, DeepSeek, and GLM model families, including KDA and pipeline-parallel deployments. My performance work includes overlapping H2D and D2H cache transfers with GPU computation.
   - Earlier in my career, I worked on high availability and cluster management for distributed storage, then on cloud workload analysis and CPU architecture.
   - This site collects my engineering projects, notes from reading source code, and lessons from debugging and validation work.
 
@@ -11,13 +12,13 @@ currentFocus:
   eyebrow: Current focus
   title: LLM serving systems
   summary: >
-    I currently focus on scheduling, KV cache lifecycle, data movement, and
-    accelerator backend performance.
+    I optimize the interaction between inference scheduling, attention-state
+    storage, and GPU execution to improve serving efficiency.
   bullets:
-    - I look for throughput, latency, and memory bottlenecks in request scheduling and execution.
-    - I trace KV cache state through prefill, decode, cache loading, and data transfer.
-    - I validate Mooncake Transfer Engine integration with inference backends.
-    - I work on SGLang request handling, scheduling, and cache behavior.
+    - Prefill acceleration, EPD serving, and constrained decoding.
+    - Attention Store support for Kimi, DeepSeek, and GLM model families, including KDA.
+    - Pipeline-parallel inference with L3 storage support.
+    - H2D and D2H cache transfers overlapped with GPU batch execution.
   links:
     - label: Projects
       href: /projects/
@@ -37,47 +38,47 @@ selectedWork:
     link:
       label: Read the design notes
       href: https://github.com/imReese/NexusKV/blob/main/docs/design/execution-boundary.md
-  - eyebrow: Code walkthrough
-    title: Mooncake and HiCache internals
-    description: Follows real read and write paths across SGLang, HiCache, and Mooncake Store to explain cache lookup, host-memory loading, metadata updates, and cross-node transfer.
+  - eyebrow: Inference control plane
+    title: Locus
+    description: An engine-neutral control plane that plans request placement using model semantics, fleet policy, runtime capabilities, and reusable-state locality. Local protocol and orchestration paths are implemented; live deployment qualification remains separate.
     link:
-      label: Read the walkthrough
-      href: /blogs/sglang-to-mooncake-store-kv-cache-path/
+      label: Explore the architecture
+      href: https://github.com/imReese/Locus/blob/main/docs/design/architecture.md
 
 researchAreas:
-  - title: Inference engines
+  - title: Inference runtimes
     label: Scheduling and execution
-    description: Analyze performance across request scheduling, operators, kernels, and backend execution.
+    description: Optimize prefill execution, disaggregated serving, and constrained decoding across the request lifecycle.
     points:
-      - Throughput and latency
-      - Operator and kernel paths
-      - Prefill and decode behavior
+      - Prefill acceleration and EPD
+      - Batch scheduling and execution
+      - Constrained decoding
     tags:
       - LLM Serving
       - Runtime
       - Scheduling
-  - title: KV cache
-    label: Cache management
-    description: Study prefix reuse, KV page lifecycle, memory residency, and loading across storage tiers.
+  - title: Attention Store
+    label: State storage and reuse
+    description: Develop attention-state storage and reuse for multiple model families and parallel deployment configurations.
     points:
-      - Prefix cache behavior
-      - KV page lifecycle
-      - Cache hits and residency
+      - Kimi, DeepSeek, and GLM
+      - KV cache and KDA state
+      - Pipeline parallelism and L3 storage
     tags:
-      - Cache
-      - KV cache
-      - Memory
-  - title: Mooncake Transfer Engine
-    label: Data movement
-    description: Work on transfer planning, memory registration, descriptors, and readiness checks for KV data.
+      - KV Cache
+      - KDA
+      - Pipeline Parallelism
+  - title: Asynchronous execution
+    label: Transfer and compute overlap
+    description: Reduce exposed cache I/O overhead by overlapping host-device transfers with GPU batch execution.
     points:
-      - KV transfer planning
-      - Descriptors and checksums
-      - Readiness checks
+      - H2D and D2H transfers
+      - Cache loading and persistence
+      - GPU execution overlap
     tags:
-      - Mooncake
-      - Transfer Engine
-      - PD
+      - GPU
+      - Cache I/O
+      - Performance
   - title: Accelerator backends
     label: Backend performance
     description: Adapt and optimize inference paths for different accelerators while keeping device-specific code isolated.
@@ -98,10 +99,10 @@ experience:
     start: '2025.06.30'
     end: Present
     highlights:
-      - Optimize LLM inference engine performance.
-      - Analyze how KV cache state and data move through prefill and decode.
-      - Adapt and optimize inference paths for heterogeneous accelerators.
-      - Investigate bottlenecks in kernels, operators, scheduling, memory, and data transfer.
+      - Optimize prefill execution, EPD serving, constrained decoding, and inference scheduling.
+      - Contribute to the team’s Attention Store, supporting Kimi, DeepSeek, and GLM model families, KDA, and L3 storage in pipeline-parallel deployments.
+      - Overlap H2D and D2H cache transfers with GPU batch execution to reduce cache I/O overhead.
+      - Adapt inference paths for heterogeneous accelerators and investigate runtime performance bottlenecks.
   - company: Huawei Cloud
     team: Shuhai Lab
     title: Research Engineer, Computer Architecture

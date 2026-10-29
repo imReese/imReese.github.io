@@ -3,7 +3,8 @@ focusAreas:
   - KV Cache
 
 aboutParagraphs:
-  - 我现在主要负责大模型推理引擎的性能优化，关注请求调度、KV Cache 管理、跨节点数据传输和异构加速后端。
+  - 我从事大模型推理系统研发，关注 Prefill 加速、分离式推理、约束解码和异步执行优化。
+  - 我参与团队自有 Attention Store 的研发与适配，覆盖 Kimi、DeepSeek、GLM 模型系列，支持 KDA 和流水线并行部署，并优化 H2D、D2H 缓存传输与 GPU 计算的重叠。
   - 此前，我在华为做过分布式存储的高可用与集群管理，也做过云工作负载分析和 CPU 体系结构优化。
   - 这个网站用来整理我参与的工程项目、阅读源码时形成的笔记，以及实际调试和验证过程中积累的方法。
 
@@ -11,13 +12,13 @@ currentFocus:
   eyebrow: 当前重点
   title: 大模型推理系统
   summary: >
-    我的工作主要集中在推理调度、KV Cache 管理、跨节点数据传输和
-    异构后端性能优化。
+    围绕推理调度、注意力状态存储与 GPU 执行之间的协同，
+    优化推理服务的吞吐、延迟与资源利用率。
   bullets:
-    - 分析请求调度和执行链路中的吞吐、延迟与内存瓶颈。
-    - 追踪 KV Cache 在预填充、解码、回载和传输过程中的状态变化。
-    - 验证 Mooncake Transfer Engine 与推理后端的集成流程。
-    - 参与 SGLang 请求处理、调度和缓存相关功能的开发与分析。
+    - Prefill 加速、EPD 推理与约束解码优化。
+    - Attention Store 适配 Kimi、DeepSeek、GLM 模型系列，支持 KDA。
+    - 支持流水线并行（PP）部署下的 L3 存储。
+    - 实现 H2D、D2H 缓存传输与 GPU 批次执行的重叠。
   links:
     - label: 项目
       href: /projects/
@@ -37,47 +38,47 @@ selectedWork:
     link:
       label: 查看设计文档
       href: https://github.com/imReese/NexusKV/blob/main/docs/design/execution-boundary.md
-  - eyebrow: 源码分析
-    title: Mooncake 与 HiCache 源码
-    description: 沿 SGLang、HiCache 和 Mooncake Store 的真实读写路径，梳理缓存查找、主机内存回载、元数据同步和跨节点传输的职责分工。
+  - eyebrow: 推理控制面
+    title: Locus
+    description: 面向多引擎的推理控制面，结合模型语义、集群策略、运行时能力与可复用状态的位置规划请求部署。本地协议与编排路径已实现，真实部署仍需独立验证。
     link:
-      label: 阅读源码分析
-      href: /blogs/sglang-to-mooncake-store-kv-cache-path/
+      label: 查看架构设计
+      href: https://github.com/imReese/Locus/blob/main/docs/design/architecture.md
 
 researchAreas:
   - title: 推理引擎
     label: 调度与执行
-    description: 分析请求调度、算子、内核和后端调用中的性能瓶颈。
+    description: 围绕请求生命周期，优化 Prefill 执行、分离式推理与约束解码。
     points:
-      - 吞吐与延迟
-      - 算子与内核路径
-      - 预填充与解码行为
+      - Prefill 加速与 EPD
+      - 批次调度与执行
+      - 约束解码
     tags:
       - 大模型推理
       - 推理引擎
       - 调度
-  - title: KV Cache
-    label: 缓存管理
-    description: 关注前缀复用、KV 页生命周期、内存驻留和跨层回载。
+  - title: Attention Store
+    label: 状态存储与复用
+    description: 面向多模型与多种并行部署，开发注意力状态的存储与复用能力。
     points:
-      - 前缀缓存行为
-      - KV 页生命周期
-      - 缓存命中与驻留状态
+      - Kimi、DeepSeek 与 GLM
+      - KV Cache 与 KDA 状态
+      - 流水线并行与 L3 存储
     tags:
-      - 缓存
       - KV Cache
-      - 内存
-  - title: Mooncake Transfer Engine
-    label: 数据传输
-    description: 分析 KV 数据的传输规划、内存注册、描述符和就绪状态。
+      - KDA
+      - 流水线并行
+  - title: 异步执行
+    label: 传输与计算重叠
+    description: 通过主机与设备间的缓存传输和 GPU 批次执行重叠，降低暴露在关键路径上的缓存 I/O 开销。
     points:
-      - KV 传输规划
-      - 描述符与校验和
-      - KV 就绪判断
+      - H2D 与 D2H 传输
+      - 缓存回载与持久化
+      - GPU 执行重叠
     tags:
-      - Mooncake
-      - Transfer Engine
-      - PD 分离式推理
+      - GPU
+      - 缓存 I/O
+      - 性能优化
   - title: 异构加速
     label: 后端优化
     description: 适配并优化不同加速器上的推理路径，同时尽量隔离设备相关逻辑。
@@ -98,10 +99,10 @@ experience:
     start: '2025.06.30'
     end: 至今
     highlights:
-      - 负责大模型推理引擎性能优化。
-      - 分析预填充与解码流程中的 KV Cache 状态和 Mooncake Transfer Engine 数据传输。
-      - 适配并优化不同加速器上的推理执行路径。
-      - 定位内核、算子、调度、内存和数据传输中的性能瓶颈。
+      - 优化 Prefill 执行、EPD 推理、约束解码与推理调度。
+      - 参与团队自有 Attention Store 研发与适配，覆盖 Kimi、DeepSeek、GLM 模型系列，支持 KDA 及流水线并行部署下的 L3 存储。
+      - 优化 H2D、D2H 缓存传输与 GPU 批次执行的重叠，降低缓存 I/O 开销。
+      - 适配异构加速器上的推理路径，定位并优化运行时性能瓶颈。
   - company: 华为云
     team: 竖亥实验室
     title: 计算机体系结构研究工程师
