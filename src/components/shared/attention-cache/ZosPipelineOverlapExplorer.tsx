@@ -29,14 +29,15 @@ export function ZosPipelineOverlapExplorer() {
 
   // Timeline scale constants
   // Total virtual milliseconds represented on SVG width
-  const svgWidth = 660
-  const svgHeight = 240
+  const svgWidth = 980
+  const svgHeight = 245
   const trackHeight = 38
   const cpuY = 48
   const gpuY = 112
   const timeAxisY = 175
-  const leftPadding = 80
-  const trackWidth = svgWidth - leftPadding - 24
+  const leftPadding = 90
+  const rightPadding = 65
+  const trackWidth = svgWidth - leftPadding - rightPadding
 
   // In Baseline:
   // Step N: Schedule (2.0) -> Forward N (6.0) -> Sample N (1.5) -> Post N (3.0) = 12.5ms
@@ -75,20 +76,20 @@ export function ZosPipelineOverlapExplorer() {
   // Timeline data for ZOS Overlap
   const zosBlocks: TimelineBlock[] = [
     // Step N
-    { id: 'z_fwd_n', track: 'gpu', start: 0.0, duration: 6.0, labelZh: '前向 Forward N', labelEn: 'Forward N', subZh: 'CUDA Graph Replay (<2μs)', subEn: 'CUDA Graph Replay', type: 'forward' },
+    { id: 'z_fwd_n', track: 'gpu', start: 0.0, duration: 6.0, labelZh: '前向 Forward N', labelEn: 'Forward N', subZh: 'CUDA Graph 重放 (<2μs)', subEn: 'CUDA Graph Replay (<2μs)', type: 'forward' },
     { id: 'z_post_prev', track: 'cpu', start: 0.0, duration: 3.0, labelZh: '后处理 Step N-1', labelEn: 'Post-process N-1', subZh: '藏于前向阴影', subEn: 'Hidden in shadow', type: 'postprocess' },
     { id: 'z_sched_n1', track: 'cpu', start: 3.0, duration: 2.0, labelZh: '调度 Step N+1', labelEn: 'Schedule N+1', subZh: '藏于前向阴影', subEn: 'Hidden in shadow', type: 'schedule' },
-    { id: 'z_idle_cpu_1', track: 'cpu', start: 5.0, duration: 1.0, labelZh: '就绪等待', labelEn: 'Ready wait', subZh: '前向尾声', subEn: 'Forward finish', type: 'sync' },
-    { id: 'z_smp_n', track: 'gpu', start: 6.0, duration: 1.5, labelZh: '采样 Sample N', labelEn: 'Sample N', subZh: '生成产物保留', subEn: 'State preserved', type: 'sample' },
-    { id: 'z_launch_smp_n', track: 'cpu', start: 6.0, duration: 1.5, labelZh: '采样发射与保留', labelEn: 'Sample Launch', subZh: '延迟至下一步', subEn: 'Deferred to next', type: 'sync' },
+    { id: 'z_idle_cpu_1', track: 'cpu', start: 5.0, duration: 1.0, labelZh: '就绪等待', labelEn: 'Ready', type: 'sync' },
+    { id: 'z_smp_n', track: 'gpu', start: 6.0, duration: 1.5, labelZh: '采样 Sample N', labelEn: 'Sample N', subZh: '状态保留', subEn: 'State preserved', type: 'sample' },
+    { id: 'z_launch_smp_n', track: 'cpu', start: 6.0, duration: 1.5, labelZh: '采样发射', labelEn: 'Sample Launch', subZh: '延迟至下一步', subEn: 'Deferred', type: 'sync' },
 
     // Step N+1
     { id: 'z_fwd_n1', track: 'gpu', start: 7.5, duration: 6.0, labelZh: '前向 Forward N+1', labelEn: 'Forward N+1', subZh: 'CUDA Graph 零气泡衔接', subEn: 'Zero-bubble Graph Replay', type: 'forward' },
-    { id: 'z_post_n', track: 'cpu', start: 7.5, duration: 3.0, labelZh: '后处理 Step N (prev_step_state)', labelEn: 'Post-process N', subZh: '跨步延迟并发处理', subEn: 'Overlap via prev_step_state', type: 'postprocess' },
-    { id: 'z_sched_n2', track: 'cpu', start: 10.5, duration: 2.0, labelZh: '调度 Step N+2', labelEn: 'Schedule N+2', subZh: '_correct_seqlens_qk 修正', subEn: 'Metadata correction', type: 'schedule' },
-    { id: 'z_idle_cpu_2', track: 'cpu', start: 12.5, duration: 1.0, labelZh: '就绪等待', labelEn: 'Ready wait', subZh: '前向尾声', subEn: 'Forward finish', type: 'sync' },
-    { id: 'z_smp_n1', track: 'gpu', start: 13.5, duration: 1.5, labelZh: '采样 Sample N+1', labelEn: 'Sample N+1', subZh: '生成产物保留', subEn: 'State preserved', type: 'sample' },
-    { id: 'z_launch_smp_n1', track: 'cpu', start: 13.5, duration: 1.5, labelZh: '采样发射与保留', labelEn: 'Sample Launch', subZh: '延迟至下一步', subEn: 'Deferred to next', type: 'sync' },
+    { id: 'z_post_n', track: 'cpu', start: 7.5, duration: 3.0, labelZh: '后处理 Step N', labelEn: 'Post-process N', subZh: '并发处理 prev_step', subEn: 'Overlap via prev_step', type: 'postprocess' },
+    { id: 'z_sched_n2', track: 'cpu', start: 10.5, duration: 2.0, labelZh: '调度 Step N+2', labelEn: 'Schedule N+2', subZh: '_correct_seqlens_qk 修正', subEn: 'Fix seqlen lag', type: 'schedule' },
+    { id: 'z_idle_cpu_2', track: 'cpu', start: 12.5, duration: 1.0, labelZh: '就绪等待', labelEn: 'Ready', type: 'sync' },
+    { id: 'z_smp_n1', track: 'gpu', start: 13.5, duration: 1.5, labelZh: '采样 Sample N+1', labelEn: 'Sample N+1', subZh: '状态保留', subEn: 'State preserved', type: 'sample' },
+    { id: 'z_launch_smp_n1', track: 'cpu', start: 13.5, duration: 1.5, labelZh: '采样发射', labelEn: 'Sample Launch', subZh: '延迟至下一步', subEn: 'Deferred', type: 'sync' },
   ]
 
   const activeBlocks = mode === 'zos' ? zosBlocks : baselineBlocks
@@ -239,7 +240,7 @@ export function ZosPipelineOverlapExplorer() {
         >
           <svg
             viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-            className="w-full min-w-[580px] select-none font-sans"
+            className="w-full min-w-[760px] select-none font-sans"
             style={{ height: 'auto' }}
           >
             <defs>
@@ -253,6 +254,24 @@ export function ZosPipelineOverlapExplorer() {
               >
                 <line x1="0" y1="0" x2="0" y2="8" stroke="#d20f39" strokeWidth="2" strokeOpacity="0.35" />
               </pattern>
+
+              {/* Clip paths for timeline blocks to prevent label overflow */}
+              {activeBlocks.map((block) => {
+                const x = scale(block.start)
+                const w = widthScale(block.duration)
+                const y = block.track === 'cpu' ? cpuY : gpuY
+                return (
+                  <clipPath key={`clip-${block.id}`} id={`clip-${block.id}`}>
+                    <rect
+                      x={x + 2}
+                      y={y + 1}
+                      width={Math.max(0, w - 4)}
+                      height={trackHeight - 2}
+                      rx="4"
+                    />
+                  </clipPath>
+                )
+              })}
             </defs>
 
             {/* Track Labels */}
@@ -314,6 +333,15 @@ export function ZosPipelineOverlapExplorer() {
                   strokeOpacity="0.35"
                   strokeDasharray="4 3"
                 />
+                <text
+                  x={scale(0) + widthScale(3.0)}
+                  y={cpuY - 11}
+                  textAnchor="middle"
+                  className="text-[10px] font-semibold fill-primary tracking-wide"
+                >
+                  ⚡ {isZh ? '前向重叠区 (Step N 隐藏后处理与调度)' : 'Forward Overlap Shadow (Step N)'}
+                </text>
+
                 {/* Step N+1 Overlap Zone */}
                 <rect
                   x={scale(7.5)}
@@ -322,9 +350,9 @@ export function ZosPipelineOverlapExplorer() {
                   height={gpuY + trackHeight - cpuY + 12}
                   rx="6"
                   fill="#179299"
-                  fillOpacity="0.07"
+                  fillOpacity="0.06"
                   stroke="#179299"
-                  strokeOpacity="0.45"
+                  strokeOpacity="0.4"
                   strokeDasharray="4 3"
                 />
                 <text
@@ -333,7 +361,7 @@ export function ZosPipelineOverlapExplorer() {
                   textAnchor="middle"
                   className="text-[10px] font-semibold fill-primary tracking-wide"
                 >
-                  ⚡ {isZh ? '前向计算阴影重叠区 (Overlap Shadow: 100% 隐藏 CPU 开销)' : 'Forward Overlap Shadow (Zero Exposed CPU Overhead)'}
+                  ⚡ {isZh ? '前向重叠区 (Step N+1 零气泡并发)' : 'Forward Overlap Shadow (Step N+1)'}
                 </text>
               </g>
             )}
@@ -346,6 +374,7 @@ export function ZosPipelineOverlapExplorer() {
               const isSelected = selectedBlockId === block.id
               const style = getBlockStyle(block.type, isSelected)
               const isBubble = block.type === 'bubble'
+              const hasSub = Boolean(isZh ? block.subZh : block.subEn)
 
               return (
                 <g
@@ -368,34 +397,36 @@ export function ZosPipelineOverlapExplorer() {
                     strokeDasharray={isBubble ? '3 2' : undefined}
                   />
 
-                  {/* Text inside block if wide enough */}
-                  {w > 36 && (
-                    <text
-                      x={x + w / 2}
-                      y={y + (block.subZh ? 16 : trackHeight / 2 + 4)}
-                      textAnchor="middle"
-                      fill={style.textColor}
-                      className={clsx(
-                        'pointer-events-none font-medium',
-                        w > 65 ? 'text-[10px]' : 'text-[9px]',
-                      )}
-                    >
-                      {isZh ? block.labelZh : block.labelEn}
-                    </text>
-                  )}
+                  {/* Text inside block if wide enough, clipped to block bounds */}
+                  <g clipPath={`url(#clip-${block.id})`}>
+                    {w > 32 && (
+                      <text
+                        x={x + w / 2}
+                        y={y + (w > 70 && hasSub ? 15 : trackHeight / 2 + 4)}
+                        textAnchor="middle"
+                        fill={style.textColor}
+                        className={clsx(
+                          'pointer-events-none font-medium',
+                          w > 80 ? 'text-[10px]' : 'text-[9px]',
+                        )}
+                      >
+                        {isZh ? block.labelZh : block.labelEn}
+                      </text>
+                    )}
 
-                  {w > 65 && block.subZh && (
-                    <text
-                      x={x + w / 2}
-                      y={y + 28}
-                      textAnchor="middle"
-                      fill={style.textColor}
-                      opacity={0.8}
-                      className="pointer-events-none text-[8.5px] font-mono"
-                    >
-                      {isZh ? block.subZh : block.subEn}
-                    </text>
-                  )}
+                    {w > 70 && hasSub && (
+                      <text
+                        x={x + w / 2}
+                        y={y + 27}
+                        textAnchor="middle"
+                        fill={style.textColor}
+                        opacity={0.85}
+                        className="pointer-events-none text-[8.5px] font-mono"
+                      >
+                        {isZh ? block.subZh : block.subEn}
+                      </text>
+                    )}
+                  </g>
                 </g>
               )
             })}
@@ -416,9 +447,9 @@ export function ZosPipelineOverlapExplorer() {
                 )
               })}
               <text
-                x={leftPadding + trackWidth + 12}
+                x={leftPadding + trackWidth + 10}
                 y="10"
-                className="text-[9.5px] font-mono fill-muted-foreground"
+                className="text-[9.5px] font-mono fill-muted-foreground font-medium"
               >
                 Time →
               </text>
@@ -430,22 +461,22 @@ export function ZosPipelineOverlapExplorer() {
                 <>
                   <line x1={scale(0)} y1="0" x2={scale(12.5)} y2="0" stroke="currentColor" strokeOpacity="0.3" strokeWidth="1" />
                   <text x={scale(6.25)} y="12" textAnchor="middle" className="text-[10px] font-semibold fill-muted-foreground">
-                    Step N: 12.5 ms (GPU 闲置 40%)
+                    {isZh ? 'Step N: 12.5 ms (GPU 闲置 40%)' : 'Step N: 12.5 ms (GPU 40% idle)'}
                   </text>
                   <line x1={scale(12.5)} y1="0" x2={scale(25.0)} y2="0" stroke="currentColor" strokeOpacity="0.3" strokeWidth="1" />
                   <text x={scale(18.75)} y="12" textAnchor="middle" className="text-[10px] font-semibold fill-muted-foreground">
-                    Step N+1: 12.5 ms (GPU 闲置 40%)
+                    {isZh ? 'Step N+1: 12.5 ms (GPU 闲置 40%)' : 'Step N+1: 12.5 ms (GPU 40% idle)'}
                   </text>
                 </>
               ) : (
                 <>
                   <line x1={scale(0)} y1="0" x2={scale(7.5)} y2="0" stroke="#179299" strokeOpacity="0.6" strokeWidth="1.5" />
                   <text x={scale(3.75)} y="12" textAnchor="middle" className="text-[10px] font-semibold fill-primary">
-                    Step N: 7.5 ms (0 气泡)
+                    {isZh ? 'Step N: 7.5 ms (0 气泡)' : 'Step N: 7.5 ms (Zero bubble)'}
                   </text>
                   <line x1={scale(7.5)} y1="0" x2={scale(15.0)} y2="0" stroke="#179299" strokeOpacity="0.6" strokeWidth="1.5" />
                   <text x={scale(11.25)} y="12" textAnchor="middle" className="text-[10px] font-semibold fill-primary">
-                    Step N+1: 7.5 ms (0 气泡，吞吐 +66%)
+                    {isZh ? 'Step N+1: 7.5 ms (0 气泡，吞吐 +66%)' : 'Step N+1: 7.5 ms (Zero bubble, +66% throughput)'}
                   </text>
                 </>
               )}
