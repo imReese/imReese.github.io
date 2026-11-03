@@ -380,28 +380,3 @@ Schema 编译为有限状态自动机（DFA）属于典型的 CPU 重型操作�
 
 因此，源码中 Matcher 的状态回退不是防御性冗余，而是约束解码与推测解码协同工作的数学前提。
 
-## 8. 源码维度的系统审查准则
-
-基于 DeepInfer 的代码依赖与数据流拓扑，在评估或调优该系统时，应当坚持以下工程审查准则：
-
-1. **异步发射不等于零气泡重叠**：必须结合 CUDA Event 观测 D2H 回传、CPU 调度与设备计算的真实时间线分布；
-2. **算子视图不等于持久化存储**：代码中的 `CacheEngine` 管理的是显存内的物理切片，与生产环境基于 3FS 集群的分层存储不是同一个系统边界；
-3. **有限 SWA 窗口不等于能任意丢弃历史**：推测解码的回退需求、128 Tokens 对齐粒度与压缩状态共同决定了显存保留下界；
-4. **Draft Token 数量不等于净收益**：必须将置信度验证开销、拒绝回退成本与硬件吞吐曲线结合评估；
-5. **显存容量不能由单维参数推导**：CUDA Graph 静态图捕获开销、双向链表对齐余量、混合精度缩放因子均直接参与最终 Block 数量决策。
-
----
-
-## References
-
-- [DeepSeek：DeepSeek V4.1 Flash 大规模推理部署实践](https://zhuanlan.zhihu.com/p/2095560295930508953)
-- [DeepInfer repository and README](https://github.com/deepseek-ai/DeepInfer)
-- [LLMEngine 控制器实现](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/engine/llm_engine.py)
-- [Worker 设备基类与拓扑抽象](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/base.py)
-- [Worker 执行主循环与 ZOS 状态机](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py)
-- [ModelRunner 静态图与前向代理](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/model_runner.py)
-- [Scheduler C++ 原生调度器](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/scheduler.hpp)
-- [BlockManager C++ 原生显存管理器](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/block_manager.hpp)
-- [PrepareTensorInput 原生零拷贝组装](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/input_metadata/prepare_tensor_input_v4.cpp)
-- [CacheEngine 物理显存布局管理](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/cache_engine.py)
-- [结构化输出文法构建器与状态机](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/structure_output/so_matcher_builder.py)

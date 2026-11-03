@@ -380,28 +380,3 @@ When combining speculative decoding with structured output, state consistency be
 
 Matcher rollback is not defensive cleanup; it is a mathematical prerequisite for combining speculative decoding with grammar-constrained generation.
 
-## 8. Source-Level System Review Guidelines
-
-When auditing or optimizing DeepInfer deployments, apply these source-grounded verification principles:
-
-1. **Async dispatch does not equal zero idle time**: Inspect profiler timelines for D2H sync, CPU schedule duration, and device execution;
-2. **Cache views do not represent distributed storage**: `CacheEngine` manages device memory buffers, which operate at a different layer than production 3FS distributed storage clusters;
-3. **Finite SWA windows do not allow arbitrary history purging**: Rollback slack, 128-token alignment, and compression accumulators set lower bounds on buffer sizes;
-4. **Draft token volume does not directly translate to net speedup**: Confidence verification cost, rejection rates, and rollback overhead determine actual performance;
-5. **Memory capacity is not a scalar calculation**: CUDA Graph memory footprints, alignment padding, and mixed-precision scaling factors all dictate maximum allocation blocks.
-
----
-
-## References
-
-- [DeepSeek: DeepSeek V4.1 Flash Large-Scale Inference Deployment Practice](https://zhuanlan.zhihu.com/p/2095560295930508953)
-- [DeepInfer repository and README](https://github.com/deepseek-ai/DeepInfer)
-- [LLMEngine controller implementation](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/engine/llm_engine.py)
-- [Worker base class and topology abstraction](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/base.py)
-- [Worker execution loop and ZOS state machine](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py)
-- [ModelRunner execution proxy](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/model_runner.py)
-- [Scheduler native C++ implementation](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/scheduler.hpp)
-- [BlockManager native C++ implementation](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/block_manager.hpp)
-- [PrepareTensorInput native zero-copy assembly](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/input_metadata/prepare_tensor_input_v4.cpp)
-- [CacheEngine physical memory layout management](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/cache_engine.py)
-- [Structured output grammar builder and state machine](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/structure_output/so_matcher_builder.py)
