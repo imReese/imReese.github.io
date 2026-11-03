@@ -202,28 +202,56 @@ self.prev_step_state = curr_step_state
 - **`ca_cache` / `ca_state`**：压缩注意力（Compressed Attention）的 Key-Value 缓存与边界累加状态；
 - **`swa_cache`**：滑动窗口注意力（Sliding Window Attention）缓存。
 
-### 显存物理容量与侵入式链表管理
+### 显存物理块的侵入式双向链表管理
 
-在 C++ 底层，显存块管理由 [csrc/engine/block_manager.hpp](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/block_manager.hpp) 接管。为了在极高并发下规避频繁堆内存申请释放，系统采用了基于连续数组存储的侵入式双向链表：
+在 C++ 调度器底层，显存块与状态缓冲管理由 [csrc/engine/block_manager.hpp](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/block_manager.hpp) 接管。
+
+面对每秒数万 Token 的高频分配与回收，常规的 STL 容器（如 `std::list`）存在显著缺陷：每次 `push` 都会触发操作系统的堆分配（`malloc`），在微秒级调度主循环中引发锁竞争与堆碎片；散落在堆空间的节点还会导致频繁的 CPU Cache Miss。
+
+DeepInfer 采用了操作系统内核级（类似于 Linux `list_head` 与物理页帧分配）的**基于预分配连续数组的整数索引侵入式双向链表**：
 
 ```cpp
 // csrc/engine/block_manager.hpp
-// 侵入式双向链表管理显存块：实现 O(1) 块分配与回收，消除内存碎片与分配抖动
 struct Blocks {
-    std::vector<BlockNode> _blocks;
+    struct block {
+        int ref_count{0}; // 引用计数，支持前缀缓存与推测解码多分支共享
+        int next{0};      // 侵入式链表：指向后继空闲块的数组下标
+        int prev{0};      // 侵入式链表：指向前驱空闲块的数组下标
+    };
+
+    std::vector<block> _blocks; // 一次性预分配全量连续元数据数组
     int _head, _tail, _size;
 
-    void _push_back(int i) {
-        TORCH_CHECK(i > 0 && i < static_cast<int>(_blocks.size()));
-        auto &block = _blocks[i];
-        block.prev = _tail;
-        if (_tail) { _blocks[_tail].next = i; }
-        else { _head = i; }
-        _tail = i;
-        _size += 1;
+    // 0 代表 NULL 哨兵：源码约定 gpu blocks 0 不参与业务分配
+    Blocks(int _n) : _blocks(_n), _head(1), _tail(_n - 1), _size(_n - 1) {
+        for (int i = 1; i < _n; ++i) {
+            _blocks[i].prev = i - 1;
+            _blocks[i].next = i + 1;
+        }
+        _blocks[_n - 1].next = 0;
+    }
+
+    int allocate() {
+        int block_id = _pop_front();
+        _blocks[block_id].ref_count += 1;
+        return block_id;
+    }
+
+    void free(int block_id) {
+        auto &block = _blocks[block_id];
+        block.ref_count -= 1;
+        if (block.ref_count == 0) {
+            _push_back(block_id); // 引用计数归零时 O(1) 挂回空闲链表尾部
+        }
     }
 };
 ```
+
+这一结构针对高吞吐推理调度带来了四项极限收益：
+1. **热路径零堆内存分配（Zero Runtime Malloc）**：启动阶段根据总显存大小一次性预分配 `_blocks`，运行期所有分配与回收纯为数组索引赋值，消除了操作系统内存分配器的系统调用开销；
+2. **极小元数据与 L2 高速缓存常驻**：单个 `block` 仅含 3 个整数字段（12 字节，对齐后 16 字节）。即便管理 20,000 个物理显存块（对应数十至上百 GB 显存），全量元数据仅约 320 KB，可**完整常驻在单个 CPU 核心的 L2 Cache（通常 1~2 MB）中**，杜绝 Cacheline 颠簸；
+3. **免哈希的确定性 $O(1)$ 随机定位**：`block_id` 直接作为 `_blocks` 数组下标，无需借助 `std::unordered_map` 进行哈希反查，在已知 ID 的情况下可在原子时间内完成双向链表的摘除（`_erase`）与放回（`_push_back`）；
+4. **原生支持前缀缓存与引用计数**：`pin_block` 与 `free` 维护引用计数，多请求并发共享相同前缀时只增减计数，计数归零瞬间以 $O(1)$ 归还至空闲池。
 
 在工程评估中，绝对不能以“层数 × Token 数 × 标称字节”粗暴估算显存占用。源码中的多组底层计算函数展示了极为细致的物理约束：
 

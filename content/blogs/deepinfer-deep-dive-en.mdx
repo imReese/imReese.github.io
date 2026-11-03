@@ -202,28 +202,56 @@ Physical memory is partitioned into distinct views based on layer configuration:
 - **`ca_cache` / `ca_state`**: Key-Value cache and compression accumulators for Compressed Attention;
 - **`swa_cache`**: Sliding Window Attention cache.
 
-### Physical Memory Footprint and Intrusive Allocation
+### Physical Block Allocation via Intrusive Doubly-Linked Lists
 
-In C++, memory block management is delegated to [csrc/engine/block_manager.hpp](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/block_manager.hpp). To eliminate allocation latency and fragmentation under high concurrency, the engine employs an intrusive doubly-linked list over array storage:
+In the C++ scheduling core, block and state allocations are governed by [csrc/engine/block_manager.hpp](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/block_manager.hpp).
+
+Handling high-concurrency token churn exposes critical flaws in conventional STL containers like `std::list`: every insertion invokes a dynamic heap allocation (`malloc`), generating allocator lock contention and memory fragmentation within the microsecond scheduler loop. Furthermore, node addresses scattered across heap memory cause frequent CPU cache misses.
+
+DeepInfer borrows an OS-kernel pattern (resembling Linux `list_head` and physical page frame management) by deploying an **intrusive doubly-linked list backed by a pre-allocated contiguous array with integer indices**:
 
 ```cpp
 // csrc/engine/block_manager.hpp
-// Intrusive doubly-linked list for O(1) allocation and recycling without heap fragmentation
 struct Blocks {
-    std::vector<BlockNode> _blocks;
+    struct block {
+        int ref_count{0}; // Reference count for prefix sharing and speculative branching
+        int next{0};      // Intrusive link: array index of next free block
+        int prev{0};      // Intrusive link: array index of previous free block
+    };
+
+    std::vector<block> _blocks; // Contiguous metadata array pre-allocated at startup
     int _head, _tail, _size;
 
-    void _push_back(int i) {
-        TORCH_CHECK(i > 0 && i < static_cast<int>(_blocks.size()));
-        auto &block = _blocks[i];
-        block.prev = _tail;
-        if (_tail) { _blocks[_tail].next = i; }
-        else { _head = i; }
-        _tail = i;
-        _size += 1;
+    // Block 0 serves as NULL sentinel: slot 0 is excluded from active allocation
+    Blocks(int _n) : _blocks(_n), _head(1), _tail(_n - 1), _size(_n - 1) {
+        for (int i = 1; i < _n; ++i) {
+            _blocks[i].prev = i - 1;
+            _blocks[i].next = i + 1;
+        }
+        _blocks[_n - 1].next = 0;
+    }
+
+    int allocate() {
+        int block_id = _pop_front();
+        _blocks[block_id].ref_count += 1;
+        return block_id;
+    }
+
+    void free(int block_id) {
+        auto &block = _blocks[block_id];
+        block.ref_count -= 1;
+        if (block.ref_count == 0) {
+            _push_back(block_id); // Returns to free list in O(1) when ref_count reaches 0
+        }
     }
 };
 ```
+
+This architecture provides four vital performance guarantees for LLM serving:
+1. **Zero Runtime Heap Allocation**: The entire `_blocks` array is provisioned during startup. Subsequent allocation and recycling operations execute purely as integer assignments with zero `malloc` or `free` syscall overhead;
+2. **Compact Footprint and L2 Cache Residency**: Each `block` node occupies only 12 bytes (16 bytes aligned). Managing 20,000 physical blocks (spanning dozens to hundreds of GB of VRAM) demands merely ~320 KB of metadata, allowing the **entire free list to permanently reside in CPU L2 cache (typically 1-2 MB)** without cacheline eviction;
+3. **Deterministic $O(1)$ Direct Lookup without Hash Tables**: The `block_id` acts directly as an array index into `_blocks`, bypassing `std::unordered_map` hash calculations. Removal (`_erase`) and insertion (`_push_back`) complete in atomic time;
+4. **Native Prefix Sharing and Reference Counting**: Built-in `ref_count` tracking permits multiple concurrent requests to safely reference shared prompt prefixes without duplicate memory assignments.
 
 Estimating memory requirements by multiplying layers by nominal token size is inadequate. Multiple low-level helpers enforce hardware alignment rules:
 
