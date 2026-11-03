@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import Link from 'next/link'
 
 import { Container } from '@/components/layout/Container'
@@ -30,7 +31,7 @@ export function BlogLayout({
   blog: BlogType
   children: React.ReactNode
 }) {
-  const { locale } = useLanguage()
+  const { locale, setLocale, setAlternateLinks } = useLanguage()
   const { blogPage } = useLocalizedContent()
   const chips = getBlogMetaChips(
     blog,
@@ -39,6 +40,26 @@ export function BlogLayout({
     blogPage.readingMap,
     4,
   )
+
+  useEffect(() => {
+    const articleLocale = blog.language === 'zh-CN' ? 'zh' : 'en'
+    if (locale !== articleLocale) {
+      setLocale(articleLocale, { navigate: false })
+    }
+
+    if (blog.translationKey) {
+      setAlternateLinks({
+        zh: `/blogs/${blog.translationKey}-zh/`,
+        en: `/blogs/${blog.translationKey}-en/`,
+      })
+    } else {
+      setAlternateLinks(null)
+    }
+
+    return () => {
+      setAlternateLinks(null)
+    }
+  }, [blog.language, blog.translationKey, locale, setLocale, setAlternateLinks])
 
   return (
     <Container className="mt-14 sm:mt-24">

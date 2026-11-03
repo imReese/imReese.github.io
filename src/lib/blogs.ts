@@ -101,5 +101,10 @@ export function getPublishedBlogs(blogs: BlogType[]) {
 export async function getBlogBySlug(slug: string): Promise<BlogType | null> {
   const cleanSlug = slug.replace(/\.mdx$/, '')
   const blogs = await getAllBlogs()
-  return blogs.find((blog) => blog.slug === cleanSlug) ?? null
+  return (
+    blogs.find((blog) => blog.slug === cleanSlug) ??
+    blogs.find((blog) => blog.sourceSlug === cleanSlug) ??
+    blogs.find((blog) => blog.translationKey === cleanSlug) ??
+    null
+  )
 }

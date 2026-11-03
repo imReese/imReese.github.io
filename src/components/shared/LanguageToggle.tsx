@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import { useLanguage } from '@/components/shared/LanguageProvider'
 
 export function LanguageToggle({ className }: { className?: string }) {
-  const { locale, toggleLocale, t } = useLanguage()
+  const { locale, toggleLocale, setLocale, t } = useLanguage()
 
   return (
     <Button
@@ -20,6 +20,10 @@ export function LanguageToggle({ className }: { className?: string }) {
     >
       <Languages className="h-4 w-4" aria-hidden="true" />
       <span
+        onClick={(e) => {
+          e.stopPropagation()
+          setLocale('en')
+        }}
         className={cn(
           'px-0.5 transition-colors duration-150',
           locale === 'en' ? 'text-primary' : 'text-muted-foreground',
@@ -31,6 +35,10 @@ export function LanguageToggle({ className }: { className?: string }) {
         /
       </span>
       <span
+        onClick={(e) => {
+          e.stopPropagation()
+          setLocale('zh')
+        }}
         className={cn(
           'px-0.5 transition-colors duration-150',
           locale === 'zh' ? 'text-primary' : 'text-muted-foreground',

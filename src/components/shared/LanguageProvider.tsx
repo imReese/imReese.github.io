@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { localeToHtmlLang, type Locale } from '@/lib/language'
 import { getLocalizedPageMetadata } from '@/lib/localizedPageMetadata'
 
@@ -73,11 +73,22 @@ const translations = {
 
 type TranslationKey = keyof typeof translations.en
 
+export type AlternateLinks = {
+  en?: string
+  zh?: string
+}
+
+type SetLocaleOptions = {
+  navigate?: boolean
+}
+
 type LanguageContextValue = {
   locale: Locale
-  setLocale: (locale: Locale) => void
+  setLocale: (locale: Locale, options?: SetLocaleOptions) => void
   toggleLocale: () => void
   t: (key: TranslationKey) => string
+  alternateLinks: AlternateLinks | null
+  setAlternateLinks: (links: AlternateLinks | null) => void
 }
 
 const LanguageContext = createContext<LanguageContextValue | null>(null)
@@ -93,20 +104,52 @@ function readInitialLocale(): Locale {
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>('en')
+  const [alternateLinks, setAlternateLinks] = useState<AlternateLinks | null>(null)
   const pathname = usePathname()
+  const router = useRouter()
 
   useEffect(() => {
     setLocaleState(readInitialLocale())
   }, [])
 
-  const setLocale = useCallback((nextLocale: Locale) => {
-    setLocaleState(nextLocale)
-    window.localStorage.setItem(STORAGE_KEY, nextLocale)
-    document.documentElement.lang = localeToHtmlLang(nextLocale)
-  }, [])
+  const setLocale = useCallback(
+    (nextLocale: Locale, options?: SetLocaleOptions) => {
+      const shouldNavigate = options?.navigate ?? true
+
+      setLocaleState(nextLocale)
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(STORAGE_KEY, nextLocale)
+      }
+      document.documentElement.lang = localeToHtmlLang(nextLocale)
+
+      if (shouldNavigate) {
+        const targetUrl = alternateLinks?.[nextLocale]
+        const cleanPath = pathname?.replace(/\/+$/, '')
+        const cleanTarget = targetUrl?.replace(/\/+$/, '')
+
+        if (targetUrl && cleanTarget && cleanTarget !== cleanPath) {
+          router.push(targetUrl)
+        } else if (!targetUrl && pathname?.startsWith('/blogs/')) {
+          // Fallback pathname deduction for translated blogs with -zh / -en
+          if (nextLocale === 'en' && (pathname.includes('-zh/') || pathname.endsWith('-zh'))) {
+            const enUrl = pathname.replace(/-zh(\/|$)/, '-en$1')
+            if (enUrl.replace(/\/+$/, '') !== cleanPath) {
+              router.push(enUrl)
+            }
+          } else if (nextLocale === 'zh' && (pathname.includes('-en/') || pathname.endsWith('-en'))) {
+            const zhUrl = pathname.replace(/-en(\/|$)/, '-zh$1')
+            if (zhUrl.replace(/\/+$/, '') !== cleanPath) {
+              router.push(zhUrl)
+            }
+          }
+        }
+      }
+    },
+    [alternateLinks, pathname, router],
+  )
 
   const toggleLocale = useCallback(() => {
-    setLocale(locale === 'zh' ? 'en' : 'zh')
+    setLocale(locale === 'zh' ? 'en' : 'zh', { navigate: true })
   }, [locale, setLocale])
 
   const t = useCallback(
@@ -115,8 +158,15 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   )
 
   const value = useMemo(
-    () => ({ locale, setLocale, toggleLocale, t }),
-    [locale, setLocale, toggleLocale, t],
+    () => ({
+      locale,
+      setLocale,
+      toggleLocale,
+      t,
+      alternateLinks,
+      setAlternateLinks,
+    }),
+    [locale, setLocale, toggleLocale, t, alternateLinks],
   )
 
   useEffect(() => {
