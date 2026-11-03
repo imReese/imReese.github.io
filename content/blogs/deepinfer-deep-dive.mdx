@@ -18,9 +18,9 @@ featured: true
 
 > English version: [DeepInfer Deep Dive: Scheduling, Execution, and Model State in Source Code](/blogs/deepinfer-deep-dive-en/)
 
-本文依据 [DeepInfer 公开源码](https://github.com/deepseek-ai/DeepInfer) 与 DeepSeek 的[《DeepSeek V4.1 Flash 大规模推理部署实践》](https://zhuanlan.zhihu.com/p/2095560295930508953)，对该框架的执行机制、调度设计与状态流转进行系统化源码解读。源码链接指向持续演进的 main 分支。
+本文基于 [DeepInfer 开源代码](https://github.com/deepseek-ai/DeepInfer) 与 DeepSeek 官方技术报告，系统梳理其执行机制、调度设计与状态流转路径。文中涉及的源码链接均指向官方仓库的 main 分支。
 
-在展开细节前，必须先厘清实现与架构的边界：DeepInfer README 明确指出，当前开源版本聚焦于离线推理核心引擎；完整的分布式 KV 存储服务、全局 VE/Prefill/Decode 物理集群解耦编排，以及跨副本的全局负载均衡网关属于生产基础设施，未包含在当前单机/多卡开源代码中。下文将严格立足于开源代码可验证的类与数据流，剖析其工业级高性能实现。
+在深入细节前，先厘清开源实现与完整线上架构的边界：DeepInfer 的开源版本聚焦在单机与多卡的离线推理引擎；至于生产环境中的分布式 KV 存储（如 3FS 集群）、全局 Prefill/Decode 物理集群解耦编排，以及跨副本的负载均衡网关，属于线上基础设施，并未包含在当前的开源代码中。本文立足于开源代码中可验证的模块和数据流，分析其关键工程设计。
 
 ## 1. 架构总览与执行控制边界
 
@@ -62,7 +62,7 @@ featured: true
 ]}/>
 
 #### 1. 计算平面与 Python 彻底解耦
-在 DeepInfer 中，Python 代码从不执行底层张量数学运算，它仅充当宿主侧的设备代理（Device Proxy）。在 [`models/deepseek.py`](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/model_executor/models/deepseek.py) 与 [`v4_modules/mlp.py`](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/model_executor/models/v4_modules/mlp.py) 内部，所有密集的矩阵与向量运算全部直接委托给底层硬件原生算子：
+在 DeepInfer 中，Python 代码不参与底层的张量数学计算，仅充当宿主侧的设备代理（Device Proxy）。在 [`models/deepseek.py`](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/model_executor/models/deepseek.py) 与 [`v4_modules/mlp.py`](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/model_executor/models/v4_modules/mlp.py) 内部，所有密集的矩阵乘法与注意力计算，均直接交由底层高性能算子执行：
 
 ```python
 # deepinfer/model_executor/models/v4_modules/mlp.py
@@ -78,11 +78,11 @@ deep_gemm.m_grouped_fp8_fp4_gemm_nt_contiguous(
 - **融合采样与调度辅助核函数**：由 TileLang 编写并在运行时 JIT 编译为底层硬件机器码。
 
 #### 2. Scheduler 下沉 C++：消除 CPU 调度瓶颈
-调度与显存分配属于纯粹的 CPU 密集型与离散数据结构管理。在自回归解码单步仅需数毫秒的极高吞吐下，若在 Python 中遍历几百个序列对象、维护字典并频繁触发垃圾回收（GC），将产生数百微秒至毫秒级的延迟抖动，直接导致 GPU 发生算力饥饿。
+调度和显存管理属于典型的 CPU 密集型与离散结构操作。在自回归解码单步只需数毫秒的场景下，如果在 Python 里遍历几百个序列对象、频繁操作字典或触发垃圾回收（GC），很容易产生数百微秒甚至毫秒级的延迟抖动，导致 GPU 处于算力饥饿状态。
 因此，DeepInfer 将 [Scheduler](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/scheduler.hpp) 与 [BlockManager](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/block_manager.hpp) 移至 C++20，并引入 `ObjectPoolPyObject` 预分配内存池，将整轮调度决策确定在数十微秒以内。
 
 #### 3. ModelRunner 保留 Python：CUDA Graph 消除解释器开销
-在自回归生成阶段，Python 解释器的逐层算子下发开销会被 [CudaGraphRunner](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/cuda_graph_runner.py) 彻底抹平。预热阶段捕获完整前向计算图后，ModelRunner 在解码阶段根本不逐层解释 Python 执行流：
+在自回归解码阶段，Python 逐层下发算子的解释器开销可以通过 [CudaGraphRunner](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/cuda_graph_runner.py) 彻底抹平。在预热阶段捕获完整的静态计算图后，解码过程中的模型前向不再逐层解释执行：
 
 ```python
 # deepinfer/worker/model_runner.py: execute_main_model()
@@ -95,10 +95,10 @@ with cpu_timer.record("launch_forward"), forbid_cuda_sync():
         model_output = self.model(kv_caches=kv_caches, input_metadata=input_metadata)
 ```
 
-底层直接对应一次 `cudaGraphLaunch` API 调用（CPU 耗时小于 2 微秒）。这既获得了与 Hugging Face Safetensors 权重的原生互通，又为 DeepSeek-V4.1 特有的 YOCO 跨层投影、Engram 动态注入等前沿结构的研发演进保留了最高生产力。
+底层只对应单次 `cudaGraphLaunch` 调用（CPU 耗时低于 2 微秒）。这种划分既保留了对 Hugging Face Safetensors 权重与 PyTorch 生态的原生兼容，又极大降低了对 YOCO 跨层投影、Engram 等前沿网络结构进行快速迭代的开发成本。
 
 #### 4. 零拷贝张量原地组装
-为了避免 C++ 调度器向 Python 传递元数据时产生序列化损耗，ModelRunner 预分配好静态张量内存，C++ 原生函数 [`prepare_tensor_input_v4.cpp`](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/input_metadata/prepare_tensor_input_v4.cpp) 直接向这批底层内存填充变长请求的偏移量、块表映射与注意力元数据，实现全链路的零分配与零内存搬运：
+为了避免 C++ 调度器向 Python 传递元数据时产生序列化损耗，ModelRunner 会提前预分配静态张量内存。C++ 原生函数 [`prepare_tensor_input_v4.cpp`](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/input_metadata/prepare_tensor_input_v4.cpp) 直接向这批底层缓冲区原地写入变长请求的偏移量、块表映射与注意力元数据，在执行热路径上做到了零内存分配与零数据搬运：
 
 ```cpp
 // csrc/engine/input_metadata/prepare_tensor_input_v4.cpp
@@ -135,7 +135,7 @@ static void update_common_v4(const PrepareArgs &args, const std::vector<int> &co
 
 ### 三类核心状态的生命周期隔离
 
-审查执行流时，切忌将运行时信息笼统称为“批次状态”。源码在设计上严格区分了三种生命周期完全不同的结构：
+阅读执行流时，不能将运行时上下文笼统地理解为单一的“批次状态”。源码严格划分了三种生命周期各异的核心结构：
 
 <StateDiagram title="三类异构状态在 step 循环中的流转契约" states={[
 { label: 'SchedulerOutputs', detail: 'C++ 调度器生成的决策快照，记录本步选中的序列集、Token 预算及显存操作指令', next: '下发给 Worker', tone: 'amber' },
@@ -151,7 +151,7 @@ static void update_common_v4(const PrepareArgs &args, const std::vector<int> &co
 
 ### C++ 调度器内部机制：GIL 释放、分布式步型对齐与 LCFS 抢占
 
-深入审查 [csrc/engine/scheduler.hpp](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/scheduler.hpp) 的 `_schedule()` 实现，可以看到高吞吐推理调度在底层面临的真实物理约束：
+深入看 [csrc/engine/scheduler.hpp](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/scheduler.hpp) 的 `_schedule()` 实现，可以看到调度器在微秒级决策上面对的真实系统约束：
 
 #### 1. 入口释放 GIL，解绑 Python 解释器
 在 `_schedule()` 入口的第一行，代码立即执行：
@@ -160,7 +160,7 @@ static void update_common_v4(const PrepareArgs &args, const std::vector<int> &co
 py::gil_scoped_release release;
 BlockManagerMutexAcquire acquire{block_manager, state_manager};
 ```
-这使得 C++ 遍历数百个序列与显存分配的数十微秒完全脱离 GIL 锁定，允许外部 Python 线程（如 HTTP 请求接收、异步 IO 与文法编译线程）真正并行运转。
+这使得调度器在 C++ 内部执行微秒级决策（遍历数百个序列、做显存分配）时，完全不需要占用 GIL，外部的 Python 线程（如 HTTP 请求接收、异步 IO 与文法编译）可以真正并行运行。
 
 #### 2. 三种引擎部署模式的物理隔离
 调度器在启动时通过 `EngineType` 严格划分职责：
@@ -169,16 +169,16 @@ BlockManagerMutexAcquire acquire{block_manager, state_manager};
 - **`COMPLETION`**：纯解码节点。构造函数强制断言 `stop_preempted_request=true`——由于纯解码节点没有 Prefill 算力通道，一旦发生显存溢出抢占，无法在本地重算，必须直接终止报错。
 
 #### 3. 分布式数据并行（DP）步型对齐与双轮 AllReduce 投票
-在多卡数据并行（DP）环境下，同一 DP 组内的所有卡在单步必须保持“全做 Prompt”或“全做 Decode”的步型一致性，否则不同的算子与通信流将直接引发集合通信死锁：
+在多卡数据并行（DP）环境下，同一进程组内的所有卡在单步必须保持步型一致（要么全做 Prompt，要么全做 Decode），否则不同的算子与通信流会直接挂死集合通信：
 - **ALL 检查点 vs ANY 检查点**：系统在 `prefill_attempt_interval` 步（ALL 点：全员均有 Prefill 需求才触发，杜绝单个卡干活、其余卡空转陪跑）与 `prefill_any_attempt_interval` 步（ANY 点：任一卡有活即触发，作为孤立卡请求的防饥饿兜底）之间动态决策；
 - **双轮 AllReduce 投票防死锁**：首轮检查显存利用率（`get_gpu_cache_usage() <= 0.9` 水位线）与 waiting 状态；第二轮在各卡执行完 `_schedule_prefill` 后再次投票确认。若因显存紧绷导致全组最终“空手”，全组立刻降级回转 Decode，坚决避免在空 prompt 步上陷入死循环；若组内确有卡调度出 prompt，无活的卡则发射占位步（Placeholder Step）保持物理对齐。
 
 #### 4. 显存紧绷下的 LCFS 抢占与重算复位
-在 Decode 调度循环中，当 `block_manager` 显存不足时，系统依据生成长度执行排序，挑选当前显存占用最多（`output_len` 最大）的序列作为牺牲者执行 `_preempt()`。被抢占请求调用 `seq->reset_for_recompute()` 复位滚动状态并释放全部物理块，随后重新插入 `waiting` 队列头部（`waiting.push_front(seq)`），待显存压力缓解后优先获得重算通道。
+在 Decode 调度过程中，当 `block_manager` 显存不足时，调度器会按已输出长度对运行中序列进行排序，优先挑选当前显存开销最大（`output_len` 最长）的序列作为牺牲者执行 `_preempt()`。被抢占的序列调用 `seq->reset_for_recompute()` 复位状态并归还全部物理块，随后重新插回 `waiting` 队列头部（`waiting.push_front(seq)`），待显存压力缓解后优先重算恢复。
 
 ## 3. Zero-Overhead Scheduling 异步重叠机制
 
-在传统的自回归解码中，单步执行包含 `Schedule → Forward → Sample → Post-process` 四个阶段。由于后处理依赖设备采样结果，CPU 与 GPU 之间存在强同步等待，导致计算设备在 CPU 执行调度与后处理期间处于空闲饥饿状态。
+在传统的自回归解码中，单步执行包含 `Schedule → Forward → Sample → Post-process` 四个阶段。因为后处理依赖采样结果，CPU 与 GPU 之间往往存在强同步等待，导致 GPU 在 CPU 执行调度与后处理期间处于空闲等待状态。
 
 [worker/worker.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py) 的 `execute_model_step()` 实现了零开销异步调度（Zero-Overhead Scheduling, ZOS）：
 
@@ -214,7 +214,7 @@ self.prev_step_state = curr_step_state
 
 这种机制改变了状态可消费的确定性时机：由于在发射第 $N+1$ 步时，第 $N$ 步的采样结果仍在设备端流转，CPU 侧记录的序列长度（`seqlens_q/k`）存在滞后。
 
-若在 CPU 端强行等待第 $N$ 步的采样子结果回传，ZOS 的重叠优势将荡然无存。DeepInfer 在 [worker/worker.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py) 的 `_correct_seqlens_qk()` 中给出了极致的工程解答：
+若在 CPU 端强行等待第 $N$ 步的采样子结果回传，ZOS 的重叠优势将荡然无存。DeepInfer 在 [worker/worker.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py) 的 `_correct_seqlens_qk()` 中给出了直接的工程实现：
 
 ```python
 # deepinfer/worker/worker.py: 显存内就地修正序列长度元数据
@@ -234,7 +234,7 @@ if has_overlap:
         )
 ```
 
-系统并不等待 CPU 端同步，而是将两个批次的映射关系异步推入 GPU，直接在显存内调用核函数根据上一轮采样的实际接受数量就地计算真实的 `seqlens_k`。随后仅利用 `d2h_evt = torch.cuda.Event()` 进行非阻塞跟踪，彻底消除了 Host-Device 数据依赖所导致的流水线断流！
+系统没有选择在 CPU 端做阻塞等待，而是将两批序列的映射关系异步推入 GPU，直接在显存内通过专用核函数依据上一轮采样的实际接受数量计算真实的 `seqlens_k`。随后仅利用 `d2h_evt = torch.cuda.Event()` 进行非阻塞跟踪，彻底消除了 Host-Device 数据依赖导致的流水线断流。
 
 ## 4. CacheEngine：从模型元数据到物理显存字节
 
@@ -249,9 +249,7 @@ if has_overlap:
 
 在 C++ 调度器底层，显存块与状态缓冲管理由 [csrc/engine/block_manager.hpp](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/block_manager.hpp) 接管。
 
-面对每秒数万 Token 的高频分配与回收，常规的 STL 容器（如 `std::list`）存在显著缺陷：每次 `push` 都会触发操作系统的堆分配（`malloc`），在微秒级调度主循环中引发锁竞争与堆碎片；散落在堆空间的节点还会导致频繁的 CPU Cache Miss。
-
-DeepInfer 采用了操作系统内核级（类似于 Linux `list_head` 与物理页帧分配）的**基于预分配连续数组的整数索引侵入式双向链表**：
+面对每秒数万 Token 的高频分配与回收，标准的 STL 容器（如 `std::list`）存在明显的性能短板：每次插入节点都会触发堆内存申请（`malloc`），在微秒级的调度热路径上容易引发分配器锁竞争与内存碎片；且散落在堆中的节点会导致严重的 CPU 缓存失效。DeepInfer 借鉴了操作系统内核管理物理页帧的做法，设计了一套**基于预分配连续数组的整数索引侵入式双向链表**：
 
 ```cpp
 // csrc/engine/block_manager.hpp
@@ -290,11 +288,11 @@ struct Blocks {
 };
 ```
 
-这一结构针对高吞吐推理调度带来了四项极限收益：
-1. **热路径零堆内存分配（Zero Runtime Malloc）**：启动阶段根据总显存大小一次性预分配 `_blocks`，运行期所有分配与回收纯为数组索引赋值，消除了操作系统内存分配器的系统调用开销；
-2. **极小元数据与 L2 高速缓存常驻**：单个 `block` 仅含 3 个整数字段（12 字节，对齐后 16 字节）。即便管理 20,000 个物理显存块（对应数十至上百 GB 显存），全量元数据仅约 320 KB，可**完整常驻在单个 CPU 核心的 L2 Cache（通常 1~2 MB）中**，杜绝 Cacheline 颠簸；
-3. **免哈希的确定性 $O(1)$ 随机定位**：`block_id` 直接作为 `_blocks` 数组下标，无需借助 `std::unordered_map` 进行哈希反查，在已知 ID 的情况下可在原子时间内完成双向链表的摘除（`_erase`）与放回（`_push_back`）；
-4. **原生支持前缀缓存与引用计数**：`pin_block` 与 `free` 维护引用计数，多请求并发共享相同前缀时只增减计数，计数归零瞬间以 $O(1)$ 归还至空闲池。
+这一结构为高并发调度带来了四项直接的工程收益：
+1. **热路径零堆内存分配（Zero Runtime Malloc）**：初始化时根据显存总量一次性预分配 `_blocks`，运行期所有的分配与回收纯为数组索引赋值，完全规避了系统级内存分配器的调用开销；
+2. **极小内存占用与 CPU 缓存常驻**：单个 `block` 仅占 12 字节（对齐后 16 字节）。即便管理 20,000 个物理显存块（对应数十至上百 GB 显存），全部元数据总共只有约 320 KB，能够**长期完整常驻在单个 CPU 核心的 L2 缓存（通常 1~2 MB）中**，极大降低了访问延迟；
+3. **免哈希的确定性 $O(1)$ 定位**：`block_id` 直接充当 `_blocks` 数组下标，无需通过 `std::unordered_map` 进行哈希反查，在已知 ID 时能在原子时间内完成双向链表的摘除（`_erase`）与放回（`_push_back`）；
+4. **原生支持前缀共享与引用计数**：`pin_block` 与 `free` 负责维护引用计数，多请求并发共享前缀时只做计数增减，直到计数归零才以 $O(1)$ 速度归还至空闲链表。
 
 在工程评估中，绝对不能以“层数 × Token 数 × 标称字节”粗暴估算显存占用。源码中的多组底层计算函数展示了极为细致的物理约束：
 
@@ -304,7 +302,7 @@ struct Blocks {
 - **硬件对齐约束**：代码严格规定，DeepGEMM 索引块跨度必须满足 128 字节物理对齐，多处中间偏移量需满足 32 字节对齐。未对齐部分必须计入填充 Padding；
 - **层间共享复用**：通过 `layer_kv_map` 或 `layer_index_module_map` 标记为共享的层，直接复用前序层的物理偏移量，不分配重复空间；纯 SWA 层对应的普通 KV 长度直接置 0。
 
-### SWA 缓存为何显著大于窗口尺寸
+### SWA 缓存为何大于标称窗口
 
 源码明确定义了两个尺寸函数：
 1. `get_inference_swa_block_size(window_size)`：在基础窗口之上，强行叠加 `DEEPINFER_MAX_BACKTRACKING_TOKENS`（最大推测回退历史）；
@@ -320,7 +318,7 @@ struct Blocks {
 
 **SWA Bounded Replay 绝不等于“粗暴丢弃窗口外的缓存”。**
 
-### 为什么 Bounded Replay 具有严格常数级 O(1) 复杂度
+### 为什么重放开销是常数阶 O(1)
 
 在传统自回归模型的长文本前缀缓存方案中，一旦发生缓存跨节点未命中，必须重新计算完整前缀 $[0, L_1]$，计算复杂度高达 $O(L_1^2)$ 或 $O(L_1)$，在 64K 或 128K 超长上下文下会导致调度完全阻塞。
 
@@ -330,7 +328,7 @@ struct Blocks {
 - 重放起点直接对齐至 $\lfloor L_1 / 128 \rfloor \times 128 - W$；
 - 需要重放的区间被严格限制为：
   $$\text{Replay Tokens} = \min(W, L_1) \le 128\text{ Tokens}$$
-- **重放代价从序列长度 $O(L)$ 彻底蜕变为严格的常数阶 $O(1)$！** 无论用户输入上下文是 8K 还是 128K，单次局部重放的 FLOPs 开销始终恒定且极低。
+- **重放代价从依赖上下文总长度的 $O(L)$ 变成了严格的常数阶 $O(1)$**。无论用户输入的上下文是 8K 还是 128K，单次局部重放的计算量上限始终固定且极低。
 
 若要安全恢复解码状态，必须维系三条严格的边界契约：
 1. **重放起点对齐**：重放计算截断在最近的 128 Tokens 边界处，将查询向量限定在局部区间，确保恢复代价为常数级；
@@ -343,13 +341,13 @@ struct Blocks {
 
 DeepInfer 集成了 DSpark 变长推测解码（Speculative Decoding）优化。ModelRunner 针对草稿预测头配置了专用的 `DFlashCudaGraphRunner`。
 
-### MTP Info 预留槽位与动态 Top-K 预算
+### 预留槽位管理与动态验证预算
 
 在调度底层，MTP（Multi-Token Prediction）推测解码的槽位管理通过 `allocate_mtp_info_slot` 与 `free_mtp_info_slots` 实现：
 - 序列在从 `WAITING` 状态准入（`admit`）至 `RUNNING` 状态瞬间，直接绑定一个预留的 `info_slot`；
 - 该槽位在 GPU 显存内映射至静态预分配张量，消除推测头动态写出的内存分配损耗。
 
-在验证预算方面，传统推测解码固定验证步长（如固定 5 个 Draft Tokens），易在低置信度下白白空转硬件。DSpark 在模型前向中引入 Confidence Head 预测每个草稿 Token 的接受概率，在调度阶段利用 TileLang 核函数在 GPU 上执行前缀积与 Top-K 全局排序，动态选取边际收益最高的 Token 组合投入验证（平均验证长度动态伸缩在 3.2 ~ 4.4 之间），在生产环境下实现了 4% ~ 11% 的吞吐收益。
+在验证预算上，传统的推测解码通常采用固定步长（如每步固定验证 5 个候选 Token），在模型预测置信度较低时容易浪费算力。DSpark 在模型前向中引入 Confidence Head 预测候选 Token 的接受概率，并在调度阶段利用 GPU 上的 TileLang 核函数计算前缀积与 Top-K 排序，动态选取高置信度的 Token 组合投入验证（平均验证长度自适应伸缩在 3.2 至 4.4 之间），在线上实现了 4% 至 11% 的吞吐收益。
 
 ### 状态推进与回退链条
 
@@ -366,10 +364,10 @@ DeepInfer 集成了 DSpark 变长推测解码（Speculative Decoding）优化。
 
 ### 编译解耦与异步轮询
 
-Schema 编译为有限状态自动机（DFA）属于典型的 CPU 重型操作：
-1. 引擎在独立线程池中异步调度 `XGrammarCompiler` 编译文法，坚决不阻塞主调度循环；
-2. 调度前通过 `pump()` 非阻塞探测编译 Future；一旦就绪立即绑定 Matcher 并将序列投递给 Scheduler；
-3. 在每步解码采样前，`matcher.fill_vocab_mask()` 根据当前 DFA 状态填充词表合法 Bitmask，强行压制非法 Token 的 Logits。
+将 JSON Schema 或正则表达式编译为有限状态自动机（DFA）属于耗时较长的 CPU 计算：
+1. 引擎在独立的后台线程池中调用 `XGrammarCompiler` 编译文法，避免阻塞调度主循环；
+2. 调度开始前通过 `pump()` 非阻塞检查编译状态，一旦完成便将 Matcher 绑定到对应序列并加入调度；
+3. 每轮解码采样前，`matcher.fill_vocab_mask()` 依据当前 DFA 状态计算词表掩码，屏蔽不合规 Token 的 Logits。
 
 ### 为什么 Matcher 必须实现 Rollback
 
