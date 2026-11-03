@@ -149,6 +149,33 @@ Runtime data must not be lumped together as generic "batch state". The codebase 
 
 In synchronous execution, these structures share a lifecycle; under asynchronous scheduling, `WorkerStepState` survives across step boundaries to form an execution pipeline.
 
+### C++ Scheduler Internals: GIL Release, DP Step Alignment, and LCFS Preemption
+
+Inspecting `_schedule()` in [csrc/engine/scheduler.hpp](https://github.com/deepseek-ai/DeepInfer/blob/main/csrc/engine/scheduler.hpp) reveals the physical realities governing high-throughput serving:
+
+#### 1. Instant GIL Release
+The first action taken inside `_schedule()` detaches execution from Python's interpreter lock:
+```cpp
+// csrc/engine/scheduler.hpp: Release GIL during native scheduling
+py::gil_scoped_release release;
+BlockManagerMutexAcquire acquire{block_manager, state_manager};
+```
+This isolates the microsecond loop traversing sequence lists and assigning memory blocks from Python's GIL, permitting HTTP ingestion, async event loops, and grammar compilers to run concurrently without lock starvation.
+
+#### 2. Physical Partitioning Across Three Engine Modes
+The scheduler enforces specialized deployment targets via `EngineType`:
+- **`NORMAL`**: Standard co-located mode coordinating step types through distributed voting;
+- **`PROMPT`**: Dedicated prefill worker servicing the waiting queue;
+- **`COMPLETION`**: Dedicated decode worker. Its constructor asserts `stop_preempted_request=true` because pure decode instances lack prefill compute paths and cannot recompute preempted prompts locally.
+
+#### 3. Distributed DP Step Alignment via Dual-Round AllReduce Voting
+In Data Parallel (DP) deployments, all workers within a process group must execute the identical step type (either all Prompt or all Decode) to prevent collective communication deadlocks:
+- **ALL vs ANY Checkpoints**: The system alternates between ALL points (every `prefill_attempt_interval` steps: prefill runs only if all ranks have queued work, avoiding idle bystander bubbles) and ANY points (every `prefill_any_attempt_interval` steps: triggers if any rank has work, protecting isolated requests from starvation);
+- **Deadlock-Resistant Dual-Round Voting**: The first round verifies cache watermark limits (`get_gpu_cache_usage() <= 0.9`) and waiting queues; the second round confirms whether memory allocation succeeded. If all ranks exhaust memory blocks, the group falls back to Decode to prevent infinite loops. Ranks without prompts dispatch placeholder steps to maintain collective communication alignment.
+
+#### 4. LCFS Preemption and Clean Recomputation
+During decode scheduling under memory pressure, sequences are sorted by generation length. The scheduler selects victims with the largest output length (`output_len`) to free the maximum number of blocks via `_preempt()`. The victim invokes `reset_for_recompute()` to clear its rolling state, unpins physical memory, and prepends itself to the head of the waiting queue (`waiting.push_front(seq)`) for priority recomputation once memory subsides.
+
 ## 3. Zero-Overhead Scheduling and Overlap Mechanics
 
 Conventional autoregressive decoding steps follow `Schedule → Forward → Sample → Post-process`. Because post-processing depends on sampling results, CPU and GPU run in serial lockstep, leaving accelerators idle while host software handles scheduling.
@@ -183,9 +210,31 @@ if is_prompt or not envs.DEEPINFER_ZERO_OVERHEAD_SCHEDULING:
 self.prev_step_state = curr_step_state
 ```
 
-This shifts the boundary of when data can be safely consumed. Because step $N$ sample tokens are still traversing hardware when launching step $N+1$, CPU sequence lengths (`seqlens_q/k`) lag behind. Worker invokes `_correct_seqlens_qk()` to adjust lengths based on actual sampling results. When device-to-host (D2H) copies occur, CUDA events ensure synchronization before sampling metadata updates.
+### In-VRAM Sequence Length Rectification (_correct_seqlens_qk)
 
-An async function signature does not guarantee complete overlap. Real-world validation requires inspecting profiler timelines to measure overlap between CPU scheduling, kernel execution, and D2H events.
+This asynchronous pipeline shifts the boundary of when data can be safely consumed. Because step $N$ sample tokens are still traversing hardware when launching step $N+1$, CPU sequence lengths (`seqlens_q/k`) lag behind.
+
+Synchronously waiting on the host would dismantle pipeline overlap. DeepInfer resolves this in [worker/worker.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py) via `_correct_seqlens_qk()`:
+
+```python
+# deepinfer/worker/worker.py: In-VRAM sequence length correction
+remap_cpu, seqlens_q_cpu, seqlens_k_cpu, has_overlap = prepare_zos_inputs(
+    seq_metadata_list, prev.seq_metadata_list, n_seq_with_padding, self.nextn
+)
+if has_overlap:
+    remap = remap_cpu.cuda(non_blocking=True)
+    seqlens_q = seqlens_q_cpu.cuda(non_blocking=True)
+    seqlens_k = seqlens_k_cpu.cuda(non_blocking=True)
+
+    # Invoke native GPU kernel to correct sequence lengths directly in VRAM
+    if self.nextn > 0:
+        compute_seqlens_k_zos(
+            seqlens_k[:n_seq], seqlens_q[:n_seq], remap[:n_seq],
+            prev.sampler_output.num_accepted_tokens_gpu, nextn=self.nextn,
+        )
+```
+
+The system streams batch remapping tensors to GPU memory asynchronously, updating lengths in-place with dedicated CUDA/TileLang kernels without interrupting host launch streams. Host tracking relies on non-blocking `d2h_evt = torch.cuda.Event()`, eliminating synchronization pipeline stalls.
 
 ## 4. CacheEngine: From Metadata to Physical Memory Layout
 
@@ -271,6 +320,18 @@ Under DeepSeek-V4.1's YOCO design, decoder layers dispense with full causal self
 
 **Bounded replay is not simply discarding cache outside the window.**
 
+### Why Bounded Replay Guarantees Strictly Constant-Time O(1) Overhead
+
+In traditional causal models, recovering from an eviction or cross-node cache miss requires full recomputation over prefix $[0, L_1]$, incurring $O(L_1^2)$ or $O(L_1)$ compute scaling. Over 64K or 128K context lengths, this severely spikes time-to-first-token.
+
+Under DeepSeek-V4.1's YOCO design, decoder layers forego global self-attention; all long-range semantic dependencies project directly from top-level encoder hidden states. Decoder layers execute only local Sliding Window Attention ($W = 128$ tokens).
+
+Coupled with the `KVSTORE_GRAIN = 128` alignment enforced by persistent storage, recovering missing SWA state requires aligning only to the nearest 128-token boundary:
+- The replay starting position rounds down to $\lfloor L_1 / 128 \rfloor \times 128 - W$;
+- The required replay segment is strictly bounded by:
+  $$\text{Replay Tokens} = \min(W, L_1) \le 128\text{ Tokens}$$
+- **Recomputation collapses from variable $O(L)$ context scaling into a strictly bounded constant $O(1)$!** Whether context spans 8K or 128K tokens, bounded replay overhead remains predictable and minimal.
+
 Safe state restoration requires three contracts:
 1. **Replay anchor alignment**: Replay computation truncates to the nearest 128-token boundary, restricting query vectors to a bounded range for constant-time recovery;
 2. **State ring buffer consistency**: YOCO consumer layers separate SWA memory into retained and dropped sections. Dropped sections reconstruct via forward recomputation, while retained sections must cover both window length and speculative backtracking;
@@ -282,11 +343,13 @@ Evaluating prefix caching benefits without accounting for SWA recomputation over
 
 DeepInfer incorporates DSpark variable-length speculative verification. ModelRunner allocates a dedicated `DFlashCudaGraphRunner` for the draft prediction head.
 
-### Confidence-Scheduled Verification Budgets
+### MTP Info Slots and Dynamic Top-K Verification Budgets
 
-Fixed draft verification lengths (e.g. verifying exactly 5 tokens per step) waste accelerator cycles when acceptance likelihood varies across tokens.
+At the scheduling layer, Multi-Token Prediction (MTP) draft state is tracked through pre-allocated slots via `allocate_mtp_info_slot` and `free_mtp_info_slots`:
+- As sequences transition from `WAITING` to `RUNNING` status, they immediately bind an assigned `info_slot`;
+- This slot maps to static VRAM tensors, eliminating dynamic allocation during draft prediction.
 
-DSpark predicts draft token acceptance probability via a Confidence Head. During scheduling, TileLang kernels compute cumulative products and sort candidate tokens on the GPU. The scheduler dynamically selects token subsets with the highest expected throughput gain (averaging 3.2 to 4.4 tokens), delivering a 4% to 11% throughput increase in production.
+Fixed draft verification lengths (e.g. verifying exactly 5 tokens per step) waste accelerator cycles when acceptance likelihood varies across tokens. DSpark predicts draft token acceptance probability via a Confidence Head. During scheduling, TileLang kernels compute cumulative products and sort candidate tokens on the GPU. The scheduler dynamically selects token subsets with the highest expected throughput gain (averaging 3.2 to 4.4 tokens), delivering a 4% to 11% throughput increase in production.
 
 ### State Progression and Rollback Chains
 
@@ -295,7 +358,7 @@ DSpark predicts draft token acceptance probability via a Confidence Head. During
 When draft tokens are rejected by verification, the pipeline rolls back:
 - Sequence length truncates to the last accepted token;
 - KV Cache and state buffers restore from `max_backtracking_tokens` history;
-- Grammar matchers rollback state to prevent downstream divergence.
+- Grammar matchers synchronize via `rollback()` to prevent downstream DFA divergence.
 
 ## 7. Structured Output: Asynchronous Compilation and Matcher Rollback
 
