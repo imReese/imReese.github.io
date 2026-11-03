@@ -155,13 +155,7 @@ Conventional autoregressive decoding steps follow `Schedule → Forward → Samp
 
 The `execute_model_step()` method in [worker/worker.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py) implements Zero-Overhead Scheduling (ZOS):
 
-<SequenceDiagram title="ZOS decode pipelining across step boundaries" actors={['Engine / Scheduler', 'Worker', 'GPU']} steps={[
-{ from: 'Engine / Scheduler', to: 'Worker', label: 'Dispatch step N+1 scheduling decision' },
-{ from: 'Worker', to: 'GPU', label: 'Launch step N+1 forward kernel' },
-{ from: 'Worker', to: 'Worker', label: 'Concurrently process step N result (prev_step_state)' },
-{ from: 'GPU', to: 'Worker', label: 'Forward pass completes' },
-{ from: 'Worker', to: 'GPU', label: 'Launch step N+1 sampling' },
-]}/>
+<ZosPipelineOverlapExplorer />
 
 ### Cross-Step State Correction and Source Pipeline
 

@@ -155,13 +155,7 @@ static void update_common_v4(const PrepareArgs &args, const std::vector<int> &co
 
 [worker/worker.py](https://github.com/deepseek-ai/DeepInfer/blob/main/deepinfer/worker/worker.py) 的 `execute_model_step()` 实现了零开销异步调度（Zero-Overhead Scheduling, ZOS）：
 
-<SequenceDiagram title="ZOS 解码阶段的跨步工作重叠" actors={['Engine / Scheduler', 'Worker', 'GPU']} steps={[
-{ from: 'Engine / Scheduler', to: 'Worker', label: '下发第 N+1 步调度决策' },
-{ from: 'Worker', to: 'GPU', label: '启动第 N+1 步前向计算' },
-{ from: 'Worker', to: 'Worker', label: 'CPU 并发处理第 N 步结果 (prev_step_state)' },
-{ from: 'GPU', to: 'Worker', label: '前向计算完成' },
-{ from: 'Worker', to: 'GPU', label: '启动第 N+1 步采样' },
-]}/>
+<ZosPipelineOverlapExplorer />
 
 ### 跨步状态修正与源码流水线
 

@@ -15,6 +15,7 @@ import {
   PrefillSpeedupExplorer,
   PrefixCacheTriangle,
   SwaBoundedReplayExplorer,
+  ZosPipelineOverlapExplorer,
 } from './attention-cache'
 import { CodeBlock } from './CodeBlock'
 import {
@@ -129,6 +130,7 @@ export const mdxComponents: MDXComponents = {
   StateDiagram,
   SwaBoundedReplayExplorer,
   SystemBoundaryDiagram,
+  ZosPipelineOverlapExplorer,
   Image: ({ alt = '', className, ...props }: ImageProps) => (
     <Image
       {...props}
