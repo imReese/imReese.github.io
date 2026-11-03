@@ -62,7 +62,7 @@ const ResponsiveTable = ({
   className,
   ...props
 }: TableHTMLAttributes<HTMLTableElement>) => (
-  <div className="not-prose my-8 w-full max-w-[72rem] overflow-hidden rounded-xl border border-border bg-card/30 shadow-sm">
+  <div className="not-prose my-8 w-full max-w-[72rem] xl:max-w-[80rem] 2xl:max-w-[90rem] overflow-hidden rounded-xl border border-border bg-card/30 shadow-sm">
     <div
       className="flex items-center justify-end gap-1.5 border-b border-border/70 bg-muted/20 px-3 py-2 text-[0.6875rem] font-medium text-muted-foreground sm:hidden"
       aria-hidden="true"

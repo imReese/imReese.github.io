@@ -63,7 +63,7 @@ export function BlogLayout({
 
   return (
     <Container className="mt-14 sm:mt-24">
-      <div className="mx-auto w-full max-w-6xl">
+      <div className="mx-auto w-full max-w-6xl xl:max-w-7xl 2xl:max-w-[1440px]">
         <article className="min-w-0" lang={blog.language}>
           <header className="flex flex-col">
             <div className="flex items-center justify-between gap-4 border-b border-border/70 pb-6">

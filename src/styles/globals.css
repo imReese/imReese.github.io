@@ -63,6 +63,18 @@
     --blog-content-width: 72rem;
   }
 
+  @media (min-width: 1280px) {
+    .blog-prose {
+      --blog-content-width: 80rem;
+    }
+  }
+
+  @media (min-width: 1536px) {
+    .blog-prose {
+      --blog-content-width: 90rem;
+    }
+  }
+
   .blog-prose > :where(p, ul, ol, blockquote, h2, h3, hr, .not-prose, table) {
     width: min(100%, var(--blog-content-width));
     max-width: 100%;
