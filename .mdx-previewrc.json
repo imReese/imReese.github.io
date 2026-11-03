@@ -16,6 +16,7 @@
     "PrefixCacheTriangle": "./src/components/shared/mdx-preview/PrefixCacheTriangle.tsx",
     "SequenceDiagram": "./src/components/shared/mdx-preview/SequenceDiagram.tsx",
     "StateDiagram": "./src/components/shared/mdx-preview/StateDiagram.tsx",
+    "SwaBoundedReplayExplorer": "./src/components/shared/mdx-preview/SwaBoundedReplayExplorer.tsx",
     "SystemBoundaryDiagram": "./src/components/shared/mdx-preview/SystemBoundaryDiagram.tsx"
   }
 }

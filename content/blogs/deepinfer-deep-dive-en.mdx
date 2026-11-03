@@ -245,6 +245,8 @@ Storage granularity `KVSTORE_GRAIN` is set to 128 tokens; persistent storage wri
 
 Under DeepSeek-V4.1's YOCO design, decoder layers dispense with full causal self-attention. Global context is projected from top-level encoder hidden states, reducing decoder self-attention to local sliding windows.
 
+<SwaBoundedReplayExplorer />
+
 **Bounded replay is not simply discarding cache outside the window.**
 
 Safe state restoration requires three contracts:

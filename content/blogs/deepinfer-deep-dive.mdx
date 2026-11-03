@@ -245,6 +245,8 @@ struct Blocks {
 
 在 DeepSeek-V4.1 的 YOCO 架构下，Decoder 各层无需对完整前缀进行全局注意力交互，其全局语义通过 Encoder 顶层的隐状态跨层投影获得。因此在解码端，注意力计算退化为局部的滑动窗口（SWA）。
 
+<SwaBoundedReplayExplorer />
+
 **SWA Bounded Replay 绝不等于“粗暴丢弃窗口外的缓存”。**
 
 若要安全恢复解码状态，必须维系三条严格的边界契约：

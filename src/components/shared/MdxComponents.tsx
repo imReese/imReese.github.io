@@ -14,6 +14,7 @@ import {
   AttentionStateEvolution,
   PrefillSpeedupExplorer,
   PrefixCacheTriangle,
+  SwaBoundedReplayExplorer,
 } from './attention-cache'
 import { CodeBlock } from './CodeBlock'
 import {
@@ -126,6 +127,7 @@ export const mdxComponents: MDXComponents = {
   PrefixCacheTriangle,
   SequenceDiagram,
   StateDiagram,
+  SwaBoundedReplayExplorer,
   SystemBoundaryDiagram,
   Image: ({ alt = '', className, ...props }: ImageProps) => (
     <Image
